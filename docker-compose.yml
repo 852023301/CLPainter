@@ -1,0 +1,17 @@
+version: "3.8"
+services:
+  CLPainter:
+    container_name: CLPainter
+    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.3
+    build:
+      context: .
+      dockerfile: "docker/Dockerfile"
+    ports:
+      - "36602:22"
+      - "15000:8001"
+    volumes:
+      - /DataDepartment:/DataDepartment:ro
+    restart: always
+    privileged: true
+#    extra_hosts:
+#      - "x86_64-conda-linux-gnu:127.0.0.1"
