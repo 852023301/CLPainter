@@ -4,8 +4,8 @@ set -e
 # 安装环境相关的命令都写在这个文件中
 #环境相关都用conda命令,安装才用mamba
 
-/bin/bash "$INSTALL_EXE" -b -p "$INSTALL_PATH"
-source "$INSTALL_PATH"/etc/profile.d/conda.sh  && conda init
+/bin/bash "$INSTALL_EXE" -b -p "$INSTALL_PATH" && source "$INSTALL_PATH"/etc/profile.d/conda.sh
+conda init
 conda config --set remote_connect_timeout_secs 600
 conda config --set remote_read_timeout_secs 600
 conda activate base && mamba create -n "$CONDA_ENV_NAME" python="$UPDATE_ENV_PYTHON_VERSION" conda gcc_linux-64  gxx_linux-64 libstdcxx-ng  gcc==11.2.0 gxx==11.2.0 --file /root/requirements_conda.txt  -c conda-forge -c numba -y

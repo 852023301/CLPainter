@@ -1,5 +1,5 @@
 #!/bin/sh
-
+set -e
 . "$INSTALL_PATH"/etc/profile.d/conda.sh
 conda activate "$CONDA_ENV_NAME"
 

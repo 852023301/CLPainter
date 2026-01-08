@@ -18,23 +18,24 @@ RUN echo > /etc/apt/sources.list.d/mssql-release.list
 RUN echo > /etc/apt/sources.list.d/pgdg.list
 
 # 使用阿里云源
-RUN  apt-get update \
-&& apt-get install -y --allow-unauthenticated gnupg ca-certificates curl tar  \
-&& apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 0E98404D386FA1D9 \
-&& apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 6ED0E7B82643E131 \
-&& echo deb https://mirrors.aliyun.com/debian/ bookworm main non-free non-free-firmware contrib >> /etc/apt/sources.list \
-&& echo deb https://mirrors.aliyun.com/debian-security/ bookworm-security main >> /etc/apt/sources.list \
-&& echo deb https://mirrors.aliyun.com/debian/ bookworm-updates main non-free non-free-firmware contrib >> /etc/apt/sources.list \
-&& echo deb https://mirrors.aliyun.com/debian/ bookworm-backports main non-free non-free-firmware contrib >> /etc/apt/sources.list \
+# 设置时区
+RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    apt-get install -y tzdata && \
+    dpkg-reconfigure tzdata
+
+# 密钥管理
+RUN mkdir -m 0755 -p /usr/share/keyrings
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | \
+    gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# 配置源
+RUN apt-get update &&  apt-get install -y lsb-release
+RUN echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
+    https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
+    | tee /etc/apt/sources.list.d/docker.list \
 && apt-get install -y --allow-unauthenticated ceph-common openssh-server rsync git gcc g++  openssl libssl-dev iputils-ping vim
 
-RUN  apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 54404762BBB6E853  \
-&& apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BDE6D2B9216EC7A8 \
-&& apt-get update && apt-get install -y --allow-unauthenticated gcc-11 g++-11 libstdc++6 \
-&& apt-get clean \
-&& rm -rf /var/lib/apt/lists/*  \
-&& /bin/cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone \
-&& sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/ssh_config &&sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && /usr/sbin/sshd -f /etc/ssh/sshd_config \
+RUN  /bin/cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone \
 && echo root:airflow | chpasswd
 
 
@@ -56,11 +57,11 @@ ENV appDir=$prjDir/web/backend/app
 ENV FLASK_APP=$prjDir/web/backend/app/main.py
 ENV FLASK_ENV=$CONDA_ENV_NAME
 
-ENV PYTHONPATH=$prjDir
+ENV PYTHONPATH=$PYTHONPATH:$prjDir
 RUN mkdir -p /app/logs
 ENV LOG_FILE=/app/logs/app.log
 
-RUN chmod +x $prjDir/web/backend/run.sh
 COPY ..  /root/CLPainter
+RUN chmod +x $prjDir/web/backend/run.sh
 #CMD ["/root/CLPainter/web/backend/run.sh"]
 #CMD ["sh", "-c", "tail -f /dev/null"]
