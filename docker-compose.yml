@@ -2,7 +2,7 @@ version: "3.8"
 services:
   CLPainter:
     container_name: CLPainter
-    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.3
+    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.4
     build:
       context: .
       dockerfile: "docker/Dockerfile"
@@ -13,5 +13,6 @@ services:
       - /DataDepartment:/DataDepartment:ro
     restart: always
     privileged: true
+    command: ["sh", "-c", "tail -f /dev/null"]
 #    extra_hosts:
 #      - "x86_64-conda-linux-gnu:127.0.0.1"

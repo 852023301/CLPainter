@@ -26,17 +26,23 @@ RUN  apt-get update \
 && echo deb https://mirrors.aliyun.com/debian-security/ bookworm-security main >> /etc/apt/sources.list \
 && echo deb https://mirrors.aliyun.com/debian/ bookworm-updates main non-free non-free-firmware contrib >> /etc/apt/sources.list \
 && echo deb https://mirrors.aliyun.com/debian/ bookworm-backports main non-free non-free-firmware contrib >> /etc/apt/sources.list \
-&& apt-get install -y --allow-unauthenticated iputils-ping vim
+&& apt-get install -y --allow-unauthenticated ceph-common openssh-server rsync git gcc g++  openssl libssl-dev iputils-ping vim
 
-RUN  /bin/cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone \
+RUN  apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 54404762BBB6E853  \
+&& apt-key adv --keyserver keyserver.ubuntu.com --recv-keys BDE6D2B9216EC7A8 \
+&& apt-get update && apt-get install -y --allow-unauthenticated gcc-11 g++-11 libstdc++6 \
+&& apt-get clean \
+&& rm -rf /var/lib/apt/lists/*  \
+&& /bin/cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone \
+&& sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/ssh_config &&sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && /usr/sbin/sshd -f /etc/ssh/sshd_config \
 && echo root:airflow | chpasswd
 
 
 WORKDIR /root
 COPY docker/envinstall.sh   requirements_conda.txt requirements_pip.txt   /root/
-COPY ..  /root/CLPainter
 RUN curl -o  $INSTALL_EXE  172.17.1.5:5000/pkg/$INSTALL_EXE
 RUN chmod 777 $INSTALL_EXE  && /bin/bash envinstall.sh
+
 
 
 RUN ln -snf $INSTALL_PATH/envs/$CONDA_ENV_NAME/lib/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so.6
@@ -55,7 +61,6 @@ RUN mkdir -p /app/logs
 ENV LOG_FILE=/app/logs/app.log
 
 RUN chmod +x $prjDir/web/backend/run.sh
-RUN apt-get update && apt-get install -y iputils-ping
-
+COPY ..  /root/CLPainter
 #CMD ["/root/CLPainter/web/backend/run.sh"]
-CMD ["sh", "-c", "tail -f /dev/null"]
+#CMD ["sh", "-c", "tail -f /dev/null"]
