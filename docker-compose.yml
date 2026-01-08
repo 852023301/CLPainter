@@ -2,7 +2,7 @@ version: "3.8"
 services:
   CLPainter:
     container_name: CLPainter
-    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.6
+    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.7
     build:
       context: .
       dockerfile: "docker/Dockerfile"

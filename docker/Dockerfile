@@ -45,6 +45,8 @@ RUN curl -o  $INSTALL_EXE  172.17.1.5:5000/pkg/$INSTALL_EXE
 RUN chmod 777 $INSTALL_EXE  && /bin/bash envinstall.sh
 
 
+RUN  mkdir -p /run/sshd && chmod 0755 /run/sshd   && chown root:root /run/sshd \
+&& sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/ssh_config &&sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && /usr/sbin/sshd -f /etc/ssh/sshd_config
 
 RUN ln -snf $INSTALL_PATH/envs/$CONDA_ENV_NAME/lib/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so.6
 

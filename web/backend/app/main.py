@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter
+from .api.api_v1.api import api_router
 
 root_router = APIRouter()
 app = FastAPI(title="DMS Backend API")
@@ -10,6 +11,7 @@ def root() -> str:
 
 
 # app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix="/api/v1")
 app.include_router(root_router)
 
 if __name__ == '__main__':
