@@ -1,16 +1,17 @@
-from fastapi import APIRouter
 import logging
+import os
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pyecharts import options as opts
+from pyecharts.charts import Bar, Kline, Candlestick
+
+from pyecharts import options as opts
 from ...._config.logging_config import setup_logger
 
 setup_logger()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-@router.get("/test1")
-def test1() -> str:
-    logger.info("test1_info")
-    logger.debug("test1_debug")
-
-    return "test1"
+appDir = os.environ.get('appDir')
+templates = Jinja2Templates(directory=f"{appDir}/templates")
