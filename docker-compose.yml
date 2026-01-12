@@ -2,7 +2,7 @@ version: "3.8"
 services:
   CLPainter:
     container_name: CLPainter
-    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.7
+    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.9
     build:
       context: .
       dockerfile: "docker/Dockerfile"
@@ -14,6 +14,8 @@ services:
     restart: always
     privileged: true
 #    command: ["sh", "-c", "tail -f /dev/null"]
-    command: ["/root/CLPainter/web/backend/run.sh"]
+    command: /usr/sbin/sshd -f /etc/ssh/sshd_config -D & && /root/CLPainter/web/backend/run.sh
+#    ["/root/CLPainter/web/backend/run.sh"]
 #    extra_hosts:
+
 #      - "x86_64-conda-linux-gnu:127.0.0.1"

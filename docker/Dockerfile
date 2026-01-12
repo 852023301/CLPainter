@@ -1,4 +1,4 @@
-FROM harbor.techfin.ai/library/python:3.10
+FROM harbor.techfin.ai/library/ubuntu:20.04-ssh
 
 USER root
 
@@ -17,14 +17,11 @@ RUN echo > /etc/apt/sources.list.d/mariadb.list
 RUN echo > /etc/apt/sources.list.d/mssql-release.list
 RUN echo > /etc/apt/sources.list.d/pgdg.list
 
-# 使用阿里云源
-# 设置时区
-RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    apt-get install -y tzdata && \
-    dpkg-reconfigure tzdata
+RUN  apt-get update \
+&& apt-get install -y --allow-unauthenticated gnupg ca-certificates curl tar
 
 # 密钥管理
-RUN mkdir -m 0755 -p /usr/share/keyrings
+RUN mkdir  -p /usr/share/keyrings
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | \
     gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
 
@@ -46,7 +43,9 @@ RUN chmod 777 $INSTALL_EXE  && /bin/bash envinstall.sh
 
 
 RUN  mkdir -p /run/sshd && chmod 0755 /run/sshd   && chown root:root /run/sshd \
-&& sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/ssh_config &&sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && /usr/sbin/sshd -f /etc/ssh/sshd_config
+&&sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/ssh_config  \
+&&sed -i 's/^#\s*PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+&&sed -i 's/^#\s*PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 RUN ln -snf $INSTALL_PATH/envs/$CONDA_ENV_NAME/lib/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so.6
 
