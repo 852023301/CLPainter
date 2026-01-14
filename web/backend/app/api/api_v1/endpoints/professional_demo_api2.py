@@ -334,7 +334,7 @@ def split_data(origin_data) -> dict:
 
     for i in range(len(origin_data)):
         datas.append(origin_data[i][1:])
-        times.append(origin_data[i][0:1][0])
+        times.append(origin_data[i][0])
         vols.append(origin_data[i][5])
         macds.append(origin_data[i][7])
         difs.append(origin_data[i][8])

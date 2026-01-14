@@ -36,7 +36,7 @@ def split_data(data):
     for i, tick in enumerate(data):
         category_data.append(tick[0])
         values.append(tick)
-        volumes.append([i, tick[4], 1 if tick[1] > tick[2] else -1])
+        volumes.append([i, tick[5], 1 if tick[1] > tick[2] else -1])
     return {"categoryData": category_data, "values": values, "volumes": volumes}
 
 
