@@ -1,11 +1,9 @@
 import logging
-import requests
 from typing import List, Sequence, Union
 import os
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pyecharts import options as opts
 from pyecharts.commons.utils import JsCode
 from pyecharts.charts import Kline, Line, Bar, Grid
 
@@ -366,6 +364,7 @@ def split_data_part() -> Sequence:
         if data["datas"][i][5] != 0 or tag == 1:
             mark_line_data.append(
                 [
+                    # 起点
                     {
                         "xAxis": idx,
                         "yAxis": float("%.2f" % data["datas"][idx][3])
@@ -373,6 +372,7 @@ def split_data_part() -> Sequence:
                         else float("%.2f" % data["datas"][idx][2]),
                         "value": vols,
                     },
+                    # 终点
                     {
                         "xAxis": i,
                         "yAxis": float("%.2f" % data["datas"][i][3])

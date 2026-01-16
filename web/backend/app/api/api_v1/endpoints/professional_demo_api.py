@@ -5,7 +5,6 @@ import os
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pyecharts import options as opts
 from pyecharts.charts import Kline, Line, Bar, Grid
 
 from pyecharts import options as opts
