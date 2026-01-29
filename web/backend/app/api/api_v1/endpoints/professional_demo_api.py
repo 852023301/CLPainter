@@ -10,6 +10,8 @@ from pyecharts.charts import Kline, Line, Bar, Grid
 from pyecharts import options as opts
 from ...._config.logging_config import setup_logger
 
+from ..endpoints import get_data_init_set
+
 setup_logger()
 logger = logging.getLogger(__name__)
 
@@ -19,12 +21,12 @@ templates = Jinja2Templates(directory=f"{appDir}/templates")
 
 
 def get_data():
-    response = requests.get(
-        url="https://echarts.apache.org/examples/data/asset/data/stock-DJI.json"
-    )
-    json_response = response.json()
+    # response = requests.get(
+    #     url="https://echarts.apache.org/examples/data/asset/data/stock-DJI.json"
+    # )
+    # json_response = response.json()
     # 解析数据
-    return split_data(data=json_response)
+    return split_data(data=get_data_init_set)
 
 
 def split_data(data):

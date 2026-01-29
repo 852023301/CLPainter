@@ -1,4 +1,5 @@
 import logging
+import requests
 import os
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -7,7 +8,9 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from pyecharts import options as opts
+
 from ...._config.logging_config import setup_logger
+from ..endpoints import get_data_init_set
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -45,6 +48,7 @@ async def test2(request: Request):
 
 
 data = [
+     # 开 收 低 高
     [2320.26, 2320.26, 2287.3, 2362.94],
     [2300, 2291.3, 2288.26, 2308.38],
     [2295.35, 2346.5, 2295.35, 2345.92],
@@ -82,13 +86,131 @@ data = [
 @router.get("/Kline_base", response_class=HTMLResponse)
 async def Kline_base(request: Request):
     c = (
-        Kline()
+        Kline(init_opts=opts.InitOpts(width='100%', height='100%'))
         .add_xaxis(["2017/7/{}".format(i + 1) for i in range(31)])
         .add_yaxis("kline", data)
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(is_scale=True),
             yaxis_opts=opts.AxisOpts(is_scale=True),
             title_opts=opts.TitleOpts(title="Kline-基本示例"),
+        )
+    )
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "chart": c.render_embed()}
+    )
+
+@router.get("/Kline_base_merged", response_class=HTMLResponse)
+async def Kline_base_merged(request: Request):
+    def merge_data():
+        response = requests.get(
+            url="https://echarts.apache.org/examples/data/asset/data/stock-DJI.json"
+        )
+        origin_klines = json_response = get_data_init_set
+
+        class MergedKLine:
+            def __init__(self, trade_date, open_, close, low, high, volume):
+                self.trade_date = trade_date
+                self.open = open_
+                self.close = close
+                self.low = low
+                self.high = high
+                self.volume = volume  # 交易量单位为股
+
+                # 根据上一根k线的状态决定下一根k线的参数
+                self._is_contained = 0  # 是否合并,is_contained=1是合并,is_contained=0是未合并，用于显示颜色
+                self.merged_length = 1  # 连续合并的K线长度
+                self.merged_trend = 1  # 合并结果,trend=1是向上,trend=0是向下，用于显示颜色
+                self.merged_high = high  # 合并后的最高价
+                self.merged_low = low  # 合并后的最低价
+
+            @property
+            def is_contained(self):
+                return self._is_contained
+
+            @is_contained.setter
+            def is_contained(self, value):
+                self._is_contained = value
+
+        all_klines = []
+
+        for idx, kl in enumerate(origin_klines):
+            merged_kline = MergedKLine(*kl)
+
+            if len(all_klines) == 0:
+                # 第一根k线不处理
+                all_klines.append(merged_kline)
+                continue
+
+            # 根据上一根k线的状态决定下一根k线的参数
+            last_merged_kline = all_klines[-1]
+            if last_merged_kline.merged_high < merged_kline.high and last_merged_kline.merged_low < merged_kline.low:
+                merged_kline.merged_trend = 1
+            elif last_merged_kline.merged_high > merged_kline.high and last_merged_kline.merged_low > merged_kline.low:
+                merged_kline.merged_trend = 0
+            else:
+
+                # 判断合并
+                if (last_merged_kline.merged_high <= merged_kline.high
+                    and last_merged_kline.merged_low >= merged_kline.low) or (
+                    last_merged_kline.high >= merged_kline.high and last_merged_kline.merged_low <= merged_kline.low
+                ):
+                    merged_kline.is_contained = 1
+                    merged_kline.merged_trend = last_merged_kline.merged_trend
+                    merged_kline.merged_length = last_merged_kline.merged_length + 1
+
+                    if (
+                        last_merged_kline.merged_high <= merged_kline.high and
+                        last_merged_kline.merged_low >= merged_kline.low):
+                        merged_kline.merged_high = merged_kline.high if merged_kline.merged_trend == 1 \
+                            else last_merged_kline.merged_high
+                        merged_kline.merged_low = last_merged_kline.low if merged_kline.merged_trend == 1 \
+                            else merged_kline.merged_low
+
+                    elif (
+                        last_merged_kline.high >= merged_kline.high and
+                        last_merged_kline.merged_low <= merged_kline.low):
+                        merged_kline.merged_high = last_merged_kline.high if merged_kline.merged_trend == 1 \
+                            else merged_kline.high
+                        merged_kline.merged_low = merged_kline.low if merged_kline.merged_trend == 1 \
+                            else last_merged_kline.merged_low
+                    else:
+                        raise Exception("异常包含关系")
+
+            all_klines.append(merged_kline)
+        return all_klines
+
+    merge_data_list = merge_data()
+    merge_kline_data = [[data.merged_low if data.close > data.open else data.merged_high,
+                         data.merged_high if data.close > data.open else data.merged_low,
+                         data.merged_low, data.merged_high] for data in merge_data_list]
+
+    trade_date_list = [data.trade_date for  data in merge_data_list ]
+
+    c = (
+        Kline(init_opts=opts.InitOpts(width='100%', height='100%'))
+        .add_xaxis(trade_date_list)
+        .add_yaxis("kline", merge_kline_data)
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(is_scale=True),
+            yaxis_opts=opts.AxisOpts(
+                is_scale=True,
+                splitarea_opts=opts.SplitAreaOpts(
+                    is_show=True, areastyle_opts=opts.AreaStyleOpts(opacity=1)
+                ),
+            ),
+            title_opts=opts.TitleOpts(title="Kline-merged"),
+            datazoom_opts=[
+                opts.DataZoomOpts(
+                    is_show=False,
+                    type_="inside",
+                ),
+                opts.DataZoomOpts(
+                    is_show=True,
+                    pos_top="85%",
+                    type_="slider",
+                ),
+            ],
         )
     )
     return templates.TemplateResponse(

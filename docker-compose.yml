@@ -14,7 +14,7 @@ services:
     restart: always
     privileged: true
 #    command: ["sh", "-c", "tail -f /dev/null"]
-    command: /usr/sbin/sshd -f /etc/ssh/sshd_config -D & && /root/CLPainter/web/backend/run.sh
+    command:  /root/CLPainter/web/backend/run.sh & && /usr/sbin/sshd -f /etc/ssh/sshd_config -D
 #    ["/root/CLPainter/web/backend/run.sh"]
 #    extra_hosts:
 
