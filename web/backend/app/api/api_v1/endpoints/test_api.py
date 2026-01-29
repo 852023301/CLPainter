@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
+from pyecharts.commons.utils import JsCode
 
 from pyecharts import options as opts
 
@@ -48,7 +49,7 @@ async def test2(request: Request):
 
 
 data = [
-     # 开 收 低 高
+    # 开 收 低 高
     [2320.26, 2320.26, 2287.3, 2362.94],
     [2300, 2291.3, 2288.26, 2308.38],
     [2295.35, 2346.5, 2295.35, 2345.92],
@@ -99,6 +100,7 @@ async def Kline_base(request: Request):
         "index.html",
         {"request": request, "chart": c.render_embed()}
     )
+
 
 @router.get("/Kline_base_merged", response_class=HTMLResponse)
 async def Kline_base_merged(request: Request):
@@ -185,7 +187,7 @@ async def Kline_base_merged(request: Request):
                          data.merged_high if data.close > data.open else data.merged_low,
                          data.merged_low, data.merged_high] for data in merge_data_list]
 
-    trade_date_list = [data.trade_date for  data in merge_data_list ]
+    trade_date_list = [data.trade_date for data in merge_data_list]
 
     c = (
         Kline(init_opts=opts.InitOpts(width='100%', height='100%'))
@@ -210,21 +212,24 @@ async def Kline_base_merged(request: Request):
                 border_width=1,
                 border_color="#ccc",
                 textstyle_opts=opts.TextStyleOpts(color="#000"),
-            ), # 提示框
+            ),  # 提示框
             title_opts=opts.TitleOpts(title="Kline-merged"),
             datazoom_opts=[
                 opts.DataZoomOpts(
                     is_show=False,
                     type_="inside",
+                    xaxis_index=[0, 0],
                     range_end=100
                 ),
                 opts.DataZoomOpts(
                     is_show=True,
+                    xaxis_index=[0, 1],
                     # pos_top="85%",
                     # pos_bottom="95%",
                     type_="slider",
                     range_end=100
                 ),
+                opts.DataZoomOpts(is_show=False, xaxis_index=[0, 2], range_end=100),
             ],
         )
     )
