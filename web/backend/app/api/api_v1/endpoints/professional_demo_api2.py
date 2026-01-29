@@ -470,6 +470,9 @@ def draw_chart():
             ),
             tooltip_opts=opts.TooltipOpts(trigger="axis", axis_pointer_type="line"),
             datazoom_opts=[
+                # K线图 + xaxis_index=[0, 0]控制
+                # volumn使用xaxis_index=[0,1]控制
+                # MACD + DIF/DEA (副图)使用xaxis_index=[0,2]控制
                 opts.DataZoomOpts(
                     is_show=False, type_="inside", xaxis_index=[0, 0], range_end=100
                 ),

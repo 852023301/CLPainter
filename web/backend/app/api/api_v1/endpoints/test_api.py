@@ -103,9 +103,9 @@ async def Kline_base(request: Request):
 @router.get("/Kline_base_merged", response_class=HTMLResponse)
 async def Kline_base_merged(request: Request):
     def merge_data():
-        response = requests.get(
-            url="https://echarts.apache.org/examples/data/asset/data/stock-DJI.json"
-        )
+        # response = requests.get(
+        #     url="https://echarts.apache.org/examples/data/asset/data/stock-DJI.json"
+        # )
         origin_klines = json_response = get_data_init_set
 
         class MergedKLine:
@@ -190,25 +190,40 @@ async def Kline_base_merged(request: Request):
     c = (
         Kline(init_opts=opts.InitOpts(width='100%', height='100%'))
         .add_xaxis(trade_date_list)
-        .add_yaxis("kline", merge_kline_data)
+        .add_yaxis("Price", merge_kline_data)
         .set_global_opts(
-            xaxis_opts=opts.AxisOpts(is_scale=True),
+            xaxis_opts=opts.AxisOpts(type_="category",
+                                     is_scale=True,
+                                     min_="dataMin",
+                                     max_="dataMax",
+                                     ),
             yaxis_opts=opts.AxisOpts(
                 is_scale=True,
                 splitarea_opts=opts.SplitAreaOpts(
                     is_show=True, areastyle_opts=opts.AreaStyleOpts(opacity=1)
                 ),
             ),
+            tooltip_opts=opts.TooltipOpts(
+                trigger="axis",
+                axis_pointer_type="cross",
+                background_color="rgba(245, 245, 245, 0.8)",
+                border_width=1,
+                border_color="#ccc",
+                textstyle_opts=opts.TextStyleOpts(color="#000"),
+            ), # 提示框
             title_opts=opts.TitleOpts(title="Kline-merged"),
             datazoom_opts=[
                 opts.DataZoomOpts(
                     is_show=False,
                     type_="inside",
+                    range_end=100
                 ),
                 opts.DataZoomOpts(
                     is_show=True,
-                    pos_top="85%",
+                    # pos_top="85%",
+                    # pos_bottom="95%",
                     type_="slider",
+                    range_end=100
                 ),
             ],
         )
