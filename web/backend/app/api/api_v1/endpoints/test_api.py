@@ -5,7 +5,7 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
-from pyecharts.charts import Bar, Kline, Candlestick
+from pyecharts.charts import Bar, Kline, Candlestick, Grid
 from pyecharts.commons.utils import JsCode
 
 from pyecharts import options as opts
@@ -186,13 +186,16 @@ async def Kline_base_merged(request: Request):
     merge_kline_data = [[data.merged_low if data.close > data.open else data.merged_high,
                          data.merged_high if data.close > data.open else data.merged_low,
                          data.merged_low, data.merged_high] for data in merge_data_list]
+    origin_kline_data = [[data.open,
+                         data.close,
+                         data.low, data.high] for data in merge_data_list]
 
     trade_date_list = [data.trade_date for data in merge_data_list]
 
-    c = (
+    kline_origin = (
         Kline(init_opts=opts.InitOpts(width='100%', height='100%'))
         .add_xaxis(trade_date_list)
-        .add_yaxis("Price", merge_kline_data)
+        .add_yaxis("Price", origin_kline_data)
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(type_="category",
                                      is_scale=True,
@@ -224,7 +227,7 @@ async def Kline_base_merged(request: Request):
                 opts.DataZoomOpts(
                     is_show=True,
                     xaxis_index=[0, 1],
-                    # pos_top="85%",
+                    pos_top="65%",
                     # pos_bottom="95%",
                     type_="slider",
                     range_end=100
@@ -233,9 +236,108 @@ async def Kline_base_merged(request: Request):
             ],
         )
     )
+
+    kline_merged = (
+        Kline()
+        .add_xaxis(trade_date_list)
+        .add_yaxis("Merged_Price", merge_kline_data,
+                   xaxis_index=1,
+                   yaxis_index=1,
+                   )
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(is_scale=True,
+                                     type_="category",
+                                     axislabel_opts=opts.LabelOpts(is_show=False),
+                                     ),
+            yaxis_opts=opts.AxisOpts(
+                is_scale=True,
+            ),
+            legend_opts=opts.LegendOpts(is_show=False),
+
+
+        )
+    )
+
+    bar_volume = (
+        Bar()
+        .add_xaxis(xaxis_data=trade_date_list)
+        .add_yaxis(
+            series_name="volume",
+            y_axis=[data.volume for data in merge_data_list],
+            xaxis_index=1,
+            yaxis_index=1,
+            label_opts=opts.LabelOpts(is_show=False),
+            # 根据 echarts demo 的原版是这么写的
+            # itemstyle_opts=opts.ItemStyleOpts(
+            #     color=JsCode("""
+            #     function(params) {
+            #         var colorList;
+            #         if (data.datas[params.dataIndex][1]>data.datas[params.dataIndex][0]) {
+            #           colorList = '#ef232a';
+            #         } else {
+            #           colorList = '#14b143';
+            #         }
+            #         return colorList;
+            #     }
+            #     """)
+            # )
+            # 改进后在 grid 中 add_js_funcs 后变成如下
+            itemstyle_opts=opts.ItemStyleOpts(
+                color=JsCode(
+                    """
+                function(params) {
+                    var colorList;
+                    if (barData[params.dataIndex][1] > barData[params.dataIndex][0]) {
+                        colorList = '#ef232a';
+                    } else {
+                        colorList = '#14b143';
+                    }
+                    return colorList;
+                }
+                """
+                )
+            ),
+        )
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(
+                type_="category",
+                axislabel_opts=opts.LabelOpts(is_show=False),
+            ),
+            legend_opts=opts.LegendOpts(is_show=False),
+        )
+    )
+
+    grid_chart = Grid(
+        init_opts=opts.InitOpts(
+            width="100%",
+            height="100%",
+            animation_opts=opts.AnimationOpts(animation=False),
+        )
+    )
+
+    # 这个是为了把 volume 这个数据写入到 html 中,还没想到怎么跨 series 传值
+    # demo 中的代码也是用全局变量传的
+    grid_chart.add_js_funcs("var barData = {}".format(origin_kline_data))
+
+    grid_chart.add(kline_origin,
+                   grid_opts=opts.GridOpts(pos_left="3%", pos_right="1%", height="60%"),)
+
+    # volume 柱状图
+    grid_chart.add(bar_volume,
+                   grid_opts=opts.GridOpts(
+                       pos_left="3%", pos_right="1%", pos_top="71%", height="5%"
+                   ),
+                   )
+
+    grid_chart.add(
+        kline_merged,
+        grid_opts=opts.GridOpts(
+            pos_left="3%", pos_right="1%", pos_top="77%", height="14%"
+        ),)
+
     return templates.TemplateResponse(
         "index.html",
-        {"request": request, "chart": c.render_embed()}
+        {"request": request, "chart": grid_chart.render_embed()}
     )
 
 
