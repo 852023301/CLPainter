@@ -1,17 +1,19 @@
 import logging
 import requests
 import os
+from typing import List, Union
+import pandas as pd
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
-from pyecharts.charts import Bar, Kline, Candlestick, Grid
+from pyecharts.charts import Bar, Kline, Candlestick, Grid, Line
 from pyecharts.commons.utils import JsCode
 
 from pyecharts import options as opts
 
 from ...._config.logging_config import setup_logger
-from ..endpoints import get_data_init_set
+from ..endpoints import get_data_init_set, trade_date_list, merge_data_list, merge_kline_data, origin_kline_data
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -83,6 +85,19 @@ data = [
     [2255.77, 2270.28, 2253.31, 2276.22],
 ]
 
+def calculate_ma(day_count: int):
+    result: List[Union[float, str]] = []
+
+    for i in range(len(trade_date_list)):
+        if i < day_count:
+            result.append("-")
+            continue
+        sum_total = 0.0
+        for j in range(day_count):
+            sum_total += float(origin_kline_data[i - j][1])
+        result.append(abs(float("%.2f" % (sum_total / day_count))))
+    return result
+
 
 @router.get("/Kline_base", response_class=HTMLResponse)
 async def Kline_base(request: Request):
@@ -104,94 +119,6 @@ async def Kline_base(request: Request):
 
 @router.get("/Kline_base_merged", response_class=HTMLResponse)
 async def Kline_base_merged(request: Request):
-    def merge_data():
-        # response = requests.get(
-        #     url="https://echarts.apache.org/examples/data/asset/data/stock-DJI.json"
-        # )
-        origin_klines = json_response = get_data_init_set
-
-        class MergedKLine:
-            def __init__(self, trade_date, open_, close, low, high, volume):
-                self.trade_date = trade_date
-                self.open = open_
-                self.close = close
-                self.low = low
-                self.high = high
-                self.volume = volume  # 交易量单位为股
-
-                # 根据上一根k线的状态决定下一根k线的参数
-                self._is_contained = 0  # 是否合并,is_contained=1是合并,is_contained=0是未合并，用于显示颜色
-                self.merged_length = 1  # 连续合并的K线长度
-                self.merged_trend = 1  # 合并结果,trend=1是向上,trend=0是向下，用于显示颜色
-                self.merged_high = high  # 合并后的最高价
-                self.merged_low = low  # 合并后的最低价
-
-            @property
-            def is_contained(self):
-                return self._is_contained
-
-            @is_contained.setter
-            def is_contained(self, value):
-                self._is_contained = value
-
-        all_klines = []
-
-        for idx, kl in enumerate(origin_klines):
-            merged_kline = MergedKLine(*kl)
-
-            if len(all_klines) == 0:
-                # 第一根k线不处理
-                all_klines.append(merged_kline)
-                continue
-
-            # 根据上一根k线的状态决定下一根k线的参数
-            last_merged_kline = all_klines[-1]
-            if last_merged_kline.merged_high < merged_kline.high and last_merged_kline.merged_low < merged_kline.low:
-                merged_kline.merged_trend = 1
-            elif last_merged_kline.merged_high > merged_kline.high and last_merged_kline.merged_low > merged_kline.low:
-                merged_kline.merged_trend = 0
-            else:
-
-                # 判断合并
-                if (last_merged_kline.merged_high <= merged_kline.high
-                    and last_merged_kline.merged_low >= merged_kline.low) or (
-                    last_merged_kline.high >= merged_kline.high and last_merged_kline.merged_low <= merged_kline.low
-                ):
-                    merged_kline.is_contained = 1
-                    merged_kline.merged_trend = last_merged_kline.merged_trend
-                    merged_kline.merged_length = last_merged_kline.merged_length + 1
-
-                    if (
-                        last_merged_kline.merged_high <= merged_kline.high and
-                        last_merged_kline.merged_low >= merged_kline.low):
-                        merged_kline.merged_high = merged_kline.high if merged_kline.merged_trend == 1 \
-                            else last_merged_kline.merged_high
-                        merged_kline.merged_low = last_merged_kline.low if merged_kline.merged_trend == 1 \
-                            else merged_kline.merged_low
-
-                    elif (
-                        last_merged_kline.high >= merged_kline.high and
-                        last_merged_kline.merged_low <= merged_kline.low):
-                        merged_kline.merged_high = last_merged_kline.high if merged_kline.merged_trend == 1 \
-                            else merged_kline.high
-                        merged_kline.merged_low = merged_kline.low if merged_kline.merged_trend == 1 \
-                            else last_merged_kline.merged_low
-                    else:
-                        raise Exception("异常包含关系")
-
-            all_klines.append(merged_kline)
-        return all_klines
-
-    merge_data_list = merge_data()
-    merge_kline_data = [[data.merged_low if data.close > data.open else data.merged_high,
-                         data.merged_high if data.close > data.open else data.merged_low,
-                         data.merged_low, data.merged_high] for data in merge_data_list]
-    origin_kline_data = [[data.open,
-                         data.close,
-                         data.low, data.high] for data in merge_data_list]
-
-    trade_date_list = [data.trade_date for data in merge_data_list]
-
     kline_origin = (
         Kline(init_opts=opts.InitOpts(width='100%', height='100%'))
         .add_xaxis(trade_date_list)
@@ -258,6 +185,34 @@ async def Kline_base_merged(request: Request):
         )
     )
 
+    kline_ma= (
+        Line()
+        .add_xaxis(xaxis_data=trade_date_list)
+        .add_yaxis(
+            series_name="MA5",
+            y_axis=calculate_ma(day_count=5),
+            is_smooth=True,
+            linestyle_opts=opts.LineStyleOpts(opacity=0.5),
+            label_opts=opts.LabelOpts(is_show=False),
+        )
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(
+                type_="category",
+                axislabel_opts=opts.LabelOpts(is_show=False),
+            ),
+            yaxis_opts=opts.AxisOpts(
+                split_number=3,
+                axisline_opts=opts.AxisLineOpts(is_on_zero=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=False),
+                axislabel_opts=opts.LabelOpts(is_show=True),
+            ),
+        )
+    )
+
+    # Overlap Kline + Line
+    overlap_kline_line = kline_origin.overlap(kline_ma)
+
     bar_volume = (
         Bar()
         .add_xaxis(xaxis_data=trade_date_list)
@@ -319,7 +274,7 @@ async def Kline_base_merged(request: Request):
     # demo 中的代码也是用全局变量传的
     grid_chart.add_js_funcs("var barData = {}".format(origin_kline_data))
 
-    grid_chart.add(kline_origin,
+    grid_chart.add(overlap_kline_line,
                    grid_opts=opts.GridOpts(pos_left="3%", pos_right="1%", height="60%"),)
 
     # volume 柱状图
