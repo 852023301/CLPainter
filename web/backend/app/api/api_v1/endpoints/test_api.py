@@ -104,6 +104,29 @@ def calculate_ma(day_count: int):
     return result
 
 
+def calculate_macd(short_window=10, long_window=21, signal_window=7):
+    close = pd.DataFrame(origin_kline_data).iloc[:, 1]
+    # 计算EMA
+    ema_short = close.ewm(span=short_window, adjust=False).mean()
+    ema_long = close.ewm(span=long_window, adjust=False).mean()
+
+    # 计算DIF
+    dif = ema_short - ema_long
+
+    # 计算DEA
+    dea = dif.ewm(span=signal_window, adjust=False).mean()
+
+    # 计算柱状图
+    histogram = (dif - dea) * 2
+
+    result = dict()
+    # 合并到原数据
+    result['DIF'] = dif
+    result['DEA'] = dea
+    result['MACD_Hist'] =   [100]*len(histogram)
+    return result
+
+
 @router.get("/Kline_base", response_class=HTMLResponse)
 async def Kline_base(request: Request):
     c = (
@@ -165,6 +188,7 @@ async def Kline_base_merged(request: Request):
                     range_end=100
                 ),
                 opts.DataZoomOpts(is_show=False, xaxis_index=[0, 2], range_end=100),
+                opts.DataZoomOpts(is_show=False, xaxis_index=[0, 3], range_end=100),
             ],
         )
     )
@@ -174,7 +198,6 @@ async def Kline_base_merged(request: Request):
         .add_xaxis(trade_date_list)
         .add_yaxis("Merged_Price", merge_kline_data,
                    xaxis_index=1,
-                   yaxis_index=1,
                    )
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(is_scale=True,
@@ -189,7 +212,7 @@ async def Kline_base_merged(request: Request):
         )
     )
 
-    kline_ma = (
+    line_ma = (
         Line()
         .add_xaxis(xaxis_data=trade_date_list)
         .add_yaxis(
@@ -224,7 +247,7 @@ async def Kline_base_merged(request: Request):
     )
 
     # Overlap Kline + Line
-    overlap_kline_line = kline_origin.overlap(kline_ma)
+    overlap_kline_line = kline_origin.overlap(line_ma)
 
     bar_volume = (
         Bar()
@@ -232,8 +255,7 @@ async def Kline_base_merged(request: Request):
         .add_yaxis(
             series_name="volume",
             y_axis=[data.volume for data in merge_data_list],
-            xaxis_index=1,
-            yaxis_index=1,
+            xaxis_index=2,
             label_opts=opts.LabelOpts(is_show=False),
             # 根据 echarts demo 的原版是这么写的
             # itemstyle_opts=opts.ItemStyleOpts(
@@ -275,6 +297,68 @@ async def Kline_base_merged(request: Request):
         )
     )
 
+    macd_data = calculate_macd()
+    bar_macd = (
+        Bar()
+        .add_xaxis(xaxis_data=trade_date_list)
+        .add_yaxis(
+            series_name="MACD",
+            y_axis=macd_data["MACD_Hist"],
+            xaxis_index=3,
+            label_opts=opts.LabelOpts(is_show=False),
+            itemstyle_opts=opts.ItemStyleOpts(
+                color=JsCode(
+                    """
+                        function(params) {
+                            var colorList;
+                            if (params.data >= 0) {
+                              colorList = '#ef232a';
+                            } else {
+                              colorList = '#14b143';
+                            }
+                            return colorList;
+                        }
+                        """
+                )
+            ),
+        )
+        .set_global_opts(
+            xaxis_opts=opts.AxisOpts(
+                type_="category",
+                axislabel_opts=opts.LabelOpts(is_show=False),
+            ),
+            yaxis_opts=opts.AxisOpts(
+                split_number=4,
+                axisline_opts=opts.AxisLineOpts(is_on_zero=False),
+                axistick_opts=opts.AxisTickOpts(is_show=False),
+                splitline_opts=opts.SplitLineOpts(is_show=False),
+                axislabel_opts=opts.LabelOpts(is_show=True),
+            ),
+            legend_opts=opts.LegendOpts(is_show=False),
+        )
+    )
+
+    line_macd = (
+        Line()
+        .add_xaxis(xaxis_data=trade_date_list)
+        .add_yaxis(
+            series_name="DIF",
+            y_axis=macd_data["DIF"],
+            xaxis_index=3,
+            label_opts=opts.LabelOpts(is_show=False),
+        )
+        .add_yaxis(
+            series_name="DEA",
+            y_axis=macd_data["DEA"],
+            xaxis_index=1,
+            label_opts=opts.LabelOpts(is_show=False),
+        )
+        .set_global_opts(legend_opts=opts.LegendOpts(is_show=False))
+    )
+
+    # 最下面的MACD
+    overlap_bar_line_macd = bar_macd.overlap(line_macd)
+
     grid_chart = Grid(
         init_opts=opts.InitOpts(
             width="100%",
@@ -300,8 +384,16 @@ async def Kline_base_merged(request: Request):
     grid_chart.add(
         kline_merged,
         grid_opts=opts.GridOpts(
-            pos_left="3%", pos_right="1%", pos_top="77%", height="14%"
+            pos_left="3%", pos_right="1%", pos_top="77%", height="12%"
         ), )
+
+    # MACD DIFS DEAS
+    grid_chart.add(
+        overlap_bar_line_macd,
+        grid_opts=opts.GridOpts(
+            pos_left="3%", pos_right="1%", pos_top="90%", height="8%"
+        ),
+    )
 
     return templates.TemplateResponse(
         "index.html",
