@@ -85,17 +85,22 @@ data = [
     [2255.77, 2270.28, 2253.31, 2276.22],
 ]
 
-def calculate_ma(day_count: int):
-    result: List[Union[float, str]] = []
 
-    for i in range(len(trade_date_list)):
-        if i < day_count:
-            result.append("-")
-            continue
-        sum_total = 0.0
-        for j in range(day_count):
-            sum_total += float(origin_kline_data[i - j][1])
-        result.append(abs(float("%.2f" % (sum_total / day_count))))
+def calculate_ma(day_count: int):
+    # result: List[Union[float, str]] = []
+    #
+    # for i in range(len(trade_date_list)):
+    #     if i < day_count:
+    #         result.append("-")
+    #         continue
+    #     sum_total = 0.0
+    #     for j in range(day_count):
+    #         sum_total += float(origin_kline_data[i - j][1])
+    #     result.append(abs(float("%.2f" % (sum_total / day_count))))
+    #
+
+    result = pd.DataFrame(origin_kline_data).iloc[:, 1].rolling(window=day_count).mean().round(2)
+
     return result
 
 
@@ -181,11 +186,10 @@ async def Kline_base_merged(request: Request):
             ),
             legend_opts=opts.LegendOpts(is_show=False),
 
-
         )
     )
 
-    kline_ma= (
+    kline_ma = (
         Line()
         .add_xaxis(xaxis_data=trade_date_list)
         .add_yaxis(
@@ -275,7 +279,7 @@ async def Kline_base_merged(request: Request):
     grid_chart.add_js_funcs("var barData = {}".format(origin_kline_data))
 
     grid_chart.add(overlap_kline_line,
-                   grid_opts=opts.GridOpts(pos_left="3%", pos_right="1%", height="60%"),)
+                   grid_opts=opts.GridOpts(pos_left="3%", pos_right="1%", height="60%"), )
 
     # volume 柱状图
     grid_chart.add(bar_volume,
@@ -288,7 +292,7 @@ async def Kline_base_merged(request: Request):
         kline_merged,
         grid_opts=opts.GridOpts(
             pos_left="3%", pos_right="1%", pos_top="77%", height="14%"
-        ),)
+        ), )
 
     return templates.TemplateResponse(
         "index.html",
