@@ -123,7 +123,7 @@ def calculate_macd(short_window=10, long_window=21, signal_window=7):
     # 合并到原数据
     result['DIF'] = dif
     result['DEA'] = dea
-    result['MACD_Hist'] =   [100]*len(histogram)
+    result['MACD_Hist'] =   list(histogram)
     return result
 
 
