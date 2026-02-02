@@ -198,6 +198,15 @@ async def Kline_base_merged(request: Request):
             is_smooth=True,
             linestyle_opts=opts.LineStyleOpts(opacity=0.5),
             label_opts=opts.LabelOpts(is_show=False),
+            color="#000000"
+        )
+        .add_yaxis(
+            series_name="MA8",
+            y_axis=calculate_ma(day_count=8),
+            is_smooth=True,
+            linestyle_opts=opts.LineStyleOpts(opacity=0.5),
+            label_opts=opts.LabelOpts(is_show=False),
+            color="#FFA500"
         )
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(
