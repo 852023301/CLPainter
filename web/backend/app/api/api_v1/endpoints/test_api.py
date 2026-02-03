@@ -246,6 +246,11 @@ async def Kline_base_merged(request: Request):
                 splitline_opts=opts.SplitLineOpts(is_show=False),
                 # axislabel_opts=opts.LabelOpts(is_show=True),
             ),
+            legend_opts=opts.LegendOpts(
+                selected_map={
+                    "MA8": False,
+                }
+            ),
         )
     )
 
