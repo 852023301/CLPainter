@@ -172,6 +172,7 @@ async def Kline_base_merged(request: Request):
                 textstyle_opts=opts.TextStyleOpts(color="#000"),
             ),  # 提示框
             title_opts=opts.TitleOpts(title="Kline-merged"),
+            # xaxis_index = [0, 1]的含义是[grip_index，xaxis_index]。不同副图应该对应不同index
             datazoom_opts=[
                 opts.DataZoomOpts(
                     is_show=False,
@@ -221,7 +222,8 @@ async def Kline_base_merged(request: Request):
             is_smooth=True,
             linestyle_opts=opts.LineStyleOpts(opacity=0.5),
             label_opts=opts.LabelOpts(is_show=False),
-            color="#000000"
+            color="#000000",
+            is_symbol_show=False,  # 不显示端点
         )
         .add_yaxis(
             series_name="MA8",
@@ -229,7 +231,8 @@ async def Kline_base_merged(request: Request):
             is_smooth=True,
             linestyle_opts=opts.LineStyleOpts(opacity=0.5),
             label_opts=opts.LabelOpts(is_show=False),
-            color="#FFA500"
+            color="#FFA500",
+            is_symbol_show=False,
         )
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(
@@ -241,7 +244,7 @@ async def Kline_base_merged(request: Request):
                 axisline_opts=opts.AxisLineOpts(is_on_zero=False),
                 axistick_opts=opts.AxisTickOpts(is_show=False),
                 splitline_opts=opts.SplitLineOpts(is_show=False),
-                axislabel_opts=opts.LabelOpts(is_show=True),
+                # axislabel_opts=opts.LabelOpts(is_show=True),
             ),
         )
     )
@@ -341,18 +344,26 @@ async def Kline_base_merged(request: Request):
     line_macd = (
         Line()
         .add_xaxis(xaxis_data=trade_date_list)
-        .add_yaxis(
+        .add_yaxis(  # 这段代码的color设置在add_yaxis的color属性不生效，必须放在LineStyleOpts中，而且不会改变图例的颜色
             series_name="DIF",
             y_axis=macd_data["DIF"],
             xaxis_index=3,
             label_opts=opts.LabelOpts(is_show=False),
+            is_symbol_show=False,
+            is_smooth=True,
+            linestyle_opts=opts.LineStyleOpts(opacity=1,color="#000000",),
         )
         .add_yaxis(
             series_name="DEA",
             y_axis=macd_data["DEA"],
-            xaxis_index=1,
+            xaxis_index=3,
             label_opts=opts.LabelOpts(is_show=False),
+            linestyle_opts=opts.LineStyleOpts(opacity=1, color="#FFA500", ),
+            is_symbol_show=False,
+            is_smooth=True,
+
         )
+
         .set_global_opts(legend_opts=opts.LegendOpts(is_show=False))
     )
 
