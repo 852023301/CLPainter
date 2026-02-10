@@ -106,6 +106,46 @@ async def Kline_base(request: Request):
         {"request": request, "chart": c.render_embed()}
     )
 
+@router.get("/Kline_base_test", response_class=HTMLResponse)
+async def Kline_base_test(request: Request):
+    dates = ["2017/7/{}".format(i + 1) for i in range(31)]
+
+    c = (
+    Kline()
+    .add_xaxis(dates)
+    .add_yaxis(
+        "kline",
+        data,
+        markpoint_opts=opts.MarkPointOpts(data=[
+                opts.MarkPointItem(
+                    coord=[dates[i], data[i][1]],  # 第i天的收盘价坐标
+                    name=f"收盘价 {i+1}",
+                    symbol_size=10,
+                    itemstyle_opts=opts.ItemStyleOpts(color="#0000FF"),
+                    label_opts=opts.LabelOpts(
+                        position="top",  # 标签在标记点上方
+                        color="#333",
+                        font_size=12,
+                        formatter=f"{data[i][1]}"  # 显示收盘价数值
+                    )
+                ) for i in range(10)  # 仅前十根
+            ])
+    )
+    .set_global_opts(
+        title_opts=opts.TitleOpts(
+            title="股票K线图",
+            title_textstyle_opts=opts.TextStyleOpts(font_size=20)
+        ),
+        xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12)),
+        yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12)),
+        legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(font_size=14))
+    )
+)
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "chart": c.render_embed()}
+    )
+
 
 @router.get("/Kline_split_area", response_class=HTMLResponse)
 async def Kline_split_area(request: Request):

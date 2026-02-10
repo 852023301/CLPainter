@@ -8,7 +8,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Grid, Line
 from pyecharts.commons.utils import JsCode
 
-from ..endpoints import trade_date_list, merge_data_list, merge_kline_data, origin_kline_data
+from ..endpoints import MergedKLine, trade_date_list, merge_data_list, merge_kline_data, origin_kline_data
 from ...._config.logging_config import setup_logger
 from ....toolbox.calculate import calculate_macd, calculate_ma
 
@@ -71,11 +71,46 @@ async def Kline_base_merged(request: Request):
         )
     )
 
+
+
+    mark_points = []
+    for idx, kl in enumerate(merge_data_list):
+        kl : MergedKLine
+
+        if kl.is_top_bottom == 0:
+            continue
+
+        if kl.is_top_bottom == 1:
+            y = kl.merged_high
+            position = 'top'
+            text = "顶"
+            color = "#33cc33"
+        else:
+            y = kl.merged_low
+            position = 'bottom'
+            text = "底"
+            color = "#ff0000"
+
+        mp = opts.MarkPointItem(
+                    coord=[kl.trade_date, y],  # 第i天的收盘价坐标
+                    name=f"收盘价 {idx+1}",
+                    symbol_size=5,
+                    itemstyle_opts=opts.ItemStyleOpts(color="#0000FF"), # 图钉颜色
+                    label_opts=opts.LabelOpts(
+                        position=position,  # 标签在标记点上方
+                        color=color,
+                        font_size=12,
+                        formatter=f"{text}"  # 显示收盘价数值
+                    )
+                )
+        mark_points.append(mp)
+
     kline_merged = (
         Kline()
         .add_xaxis(trade_date_list)
         .add_yaxis("Merged_Price", merge_kline_data,
                    xaxis_index=1,
+                   markpoint_opts = opts.MarkPointOpts(data=mark_points)
                    )
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(is_scale=True,
