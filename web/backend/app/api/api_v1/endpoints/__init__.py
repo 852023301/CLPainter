@@ -2,6 +2,8 @@ import os
 import pickle
 from pathlib import Path
 from typing import List
+from dataclasses import dataclass
+from typing import List, Optional
 
 
 class MergedKLine:
@@ -123,6 +125,127 @@ def merge_data():
         all_klines.append(merged_kline)
 
     return all_klines
+
+
+@dataclass
+class Bi:
+    """笔数据结构"""
+    start_idx: int  # 笔起始位置索引
+    end_idx: int  # 笔结束位置索引
+    start_date: str  # 起始日期
+    end_date: str  # 结束日期
+    start_price: float  # 起始价格
+    end_price: float  # 结束价格
+    bi_type: str  # 'up' 或 'down' - 笔的方向
+    high_price: float  # 笔中的最高价
+    low_price: float  # 笔中的最低价
+    start_is_top: bool  # 笔起点是否为顶分型
+
+    @property
+    def is_up(self) -> bool:
+        """是否为向上笔"""
+        return self.bi_type == 'up'
+
+    @property
+    def is_down(self) -> bool:
+        """是否为向下笔"""
+        return self.bi_type == 'down'
+
+
+def find_bi(old_klines: List[MergedKLine]) -> List[Bi]:
+    """
+    根据顶底分型划分笔（旧笔规则）
+    旧笔规则：顶底必须交替，中间可以跳过不符合的分型
+    """
+    if len(old_klines) < 3:
+        return []
+
+    # 找出所有顶底分型
+    top_bottoms = []
+    for idx, kline in enumerate(old_klines):
+        if kline.is_top_bottom != 0:
+            top_bottoms.append({
+                'idx': idx,
+                'date': kline.trade_date,
+                'price': kline.low if kline.is_top_bottom == -1 else kline.high,
+                'is_top': kline.is_top_bottom == 1,
+                'is_bottom': kline.is_top_bottom == -1,
+                'high': kline.high,
+                'low': kline.low
+            })
+
+    if len(top_bottoms) < 2:
+        return []
+
+    bi_list = []
+    i = 0
+
+    # 确定第一笔的起点（必须是顶或底）
+    while i < len(top_bottoms):
+        if top_bottoms[i]['is_top'] or top_bottoms[i]['is_bottom']:
+            break
+        i += 1
+
+    if i >= len(top_bottoms) - 1:
+        return []
+
+    current_start = top_bottoms[i]
+
+    # 遍历剩余的顶底分型
+    for j in range(i + 1, len(top_bottoms)):
+        current_end = top_bottoms[j]
+
+        # 检查是否满足笔的规则
+        # 旧笔规则：顶底交替，且价格满足特定条件
+        if current_start['is_top'] and current_end['is_bottom']:
+            # 顶到底：确认是向下笔
+            # 检查价格是否有效：底分型的低点应该低于顶分型的低点
+            if current_end['low'] < current_start['low']:
+                # 计算笔的高低点
+                # 向下笔：起点是顶（高点），终点是底（低点）
+                high_price = current_start['high']
+                low_price = current_end['low']
+
+                bi = Bi(
+                    start_idx=current_start['idx'],
+                    end_idx=current_end['idx'],
+                    start_date=current_start['date'],
+                    end_date=current_end['date'],
+                    start_price=current_start['price'],
+                    end_price=current_end['price'],
+                    bi_type='down',
+                    high_price=high_price,
+                    low_price=low_price,
+                    start_is_top=True
+                )
+                bi_list.append(bi)
+                current_start = current_end
+
+        elif current_start['is_bottom'] and current_end['is_top']:
+            # 底到顶：确认是向上笔
+            # 检查价格是否有效：顶分型的高点应该高于底分型的高点
+            if current_end['high'] > current_start['high']:
+                # 计算笔的高低点
+                # 向上笔：起点是底（低点），终点是顶（高点）
+                high_price = current_end['high']
+                low_price = current_start['low']
+
+                bi = Bi(
+                    start_idx=current_start['idx'],
+                    end_idx=current_end['idx'],
+                    start_date=current_start['date'],
+                    end_date=current_end['date'],
+                    start_price=current_start['price'],
+                    end_price=current_end['price'],
+                    bi_type='up',
+                    high_price=high_price,
+                    low_price=low_price,
+                    start_is_top=False
+                )
+                bi_list.append(bi)
+                current_start = current_end
+
+    return bi_list
 
 
 def get_data_init():
