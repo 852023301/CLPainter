@@ -197,7 +197,7 @@ class Bi:
         else:
             # 下降笔：起点是顶，终点是底
             # 底分型最低点 < 顶分型三根 K 线最低点
-            if self.start_fx_low > self.start_fx_low:
+            if self.start_fx_low > self.end_fx_low:
                 return False
             # 顶分型最高点 > 底分型三根 K 线最高点
             if self.start_fx_high > self.end_fx_high:
