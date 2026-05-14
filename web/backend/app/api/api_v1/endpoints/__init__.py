@@ -2,40 +2,44 @@ import os
 import pickle
 from pathlib import Path
 from typing import List
+from dataclasses import dataclass, field
 
 
+@dataclass
 class MergedKLine:
     """合并后的K线数据类"""
-
-    def __init__(self, trade_date: str, open_: float, close: float,
-                 low: float, high: float, volume: float):
-        self.trade_date = trade_date
-        self.open = open_
-        self.close = close
-        self.low = low
-        self.high = high
-        self.volume = volume  # 交易量单位为股
-
-        # K线合并状态
-        self._is_contained = 0  # 是否被合并：1=合并，0=未合并
-        self.merged_length = 1  # 连续合并的K线数量
-        self.merged_trend = 1  # 合并趋势：1=向上，0=向下
-        self.merged_high = high  # 合并后的最高价
-        self.merged_low = low  # 合并后的最低价
-
-        # 分型标记：1=顶分型，-1=底分型，0=无分型
-        self.is_top_bottom = 0
-
+    
+    trade_date: str
+    open: float
+    close: float
+    low: float
+    high: float
+    volume: float  # 交易量单位为股
+    
+    # K线合并状态
+    _is_contained: int = field(default=0, repr=False)  # 是否被合并：1=合并，0=未合并
+    merged_length: int = 1  # 连续合并的K线数量
+    merged_trend: int = 1  # 合并趋势：1=向上，0=向下
+    merged_high: float = field(init=False)  # 合并后的最高价
+    merged_low: float = field(init=False)  # 合并后的最低价
+    
+    # 分型标记：1=顶分型，-1=底分型，0=无分型
+    is_top_bottom: int = 0
+    
+    def __post_init__(self):
+        # 初始化合并后的高低点为当前K线的高低点
+        self.merged_high = self.high
+        self.merged_low = self.low
+    
     @property
     def is_contained(self) -> int:
         return self._is_contained
-
+    
     @is_contained.setter
     def is_contained(self, value: int):
         if value not in (0, 1):
             raise ValueError("is_contained must be 0 or 1")
         self._is_contained = value
-
 
 
 def merge_klines(origin_klines: List[List]) -> List[MergedKLine]:
