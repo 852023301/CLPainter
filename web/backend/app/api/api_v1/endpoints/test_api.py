@@ -336,8 +336,8 @@ async def lightweight_charts_demo(request: Request):
     try:
         # 取前50根K线作为示例数据
         sample_size = 50
-        sample_dates = trade_date_list[:sample_size]
-        sample_data = origin_kline_data[:sample_size]
+        sample_dates = trade_date_list
+        sample_data = origin_kline_data
         
         # 转换为Lightweight Charts格式
         candle_data = []

@@ -29,6 +29,7 @@
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: relative;
         }
 
         .info {
@@ -48,12 +49,45 @@
             color: #666;
             line-height: 1.6;
         }
+
+        .ohlc-tooltip {
+            position: absolute;
+            display: none;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.6;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .ohlc-tooltip .label {
+            color: #aaa;
+        }
+
+        .ohlc-tooltip .value {
+            font-weight: bold;
+            margin-left: 5px;
+        }
+
+        .ohlc-tooltip .up {
+            color: #ef5350;
+        }
+
+        .ohlc-tooltip .down {
+            color: #26a69a;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📊 Lightweight Charts 简单示例</h1>
-        <div id="chart"></div>
+        <div id="chart">
+            <div class="ohlc-tooltip" id="ohlcTooltip"></div>
+        </div>
 
         <div class="info">
             <h3>说明</h3>
@@ -78,6 +112,8 @@
         } else {
             // 创建图表
             const chartContainer = document.getElementById('chart');
+            const tooltip = document.getElementById('ohlcTooltip');
+
             const chart = LightweightCharts.createChart(chartContainer, {
                 width: chartContainer.clientWidth,
                 height: 600,
@@ -103,11 +139,11 @@
 
             // 创建K线系列
             const candlestickSeries = chart.addCandlestickSeries({
-                upColor: '#26a69a',        // 上涨颜色（绿色）
-                downColor: '#ef5350',      // 下跌颜色（红色）
+                upColor: '#ef5350',        // 上涨颜色（红色）
+                downColor: '#26a69a',      // 下跌颜色（绿色）
                 borderVisible: false,
-                wickUpColor: '#26a69a',
-                wickDownColor: '#ef5350',
+                wickUpColor: '#ef5350',
+                wickDownColor: '#26a69a',
             });
 
             // 设置数据
@@ -122,6 +158,75 @@
                     chart.applyOptions({
                         width: chartContainer.clientWidth
                     });
+                });
+
+                // 订阅十字光标移动事件，显示OHLC信息
+                chart.subscribeCrosshairMove((param) => {
+                    if (
+                        param.point === undefined ||
+                        !param.time ||
+                        param.point.x < 0 ||
+                        param.point.x > chartContainer.clientWidth ||
+                        param.point.y < 0 ||
+                        param.point.y > chartContainer.clientHeight
+                    ) {
+                        tooltip.style.display = 'none';
+                        return;
+                    }
+
+                    const data = param.seriesData.get(candlestickSeries);
+                    if (!data) {
+                        tooltip.style.display = 'none';
+                        return;
+                    }
+
+                    // 格式化价格数据
+                    const open = data.open.toFixed(2);
+                    const high = data.high.toFixed(2);
+                    const low = data.low.toFixed(2);
+                    const close = data.close.toFixed(2);
+
+                    // 判断涨跌
+                    const isUp = close >= open;
+                    const priceClass = isUp ? 'up' : 'down';
+                    const arrow = isUp ? '↑' : '↓';
+
+                    // 更新tooltip内容
+                    tooltip.innerHTML = `
+                        <div><span class="label">日期:</span><span class="value">${param.time}</span></div>
+                        <div><span class="label">开盘:</span><span class="value ${priceClass}">${open}</span></div>
+                        <div><span class="label">最高:</span><span class="value ${priceClass}">${high}</span></div>
+                        <div><span class="label">最低:</span><span class="value ${priceClass}">${low}</span></div>
+                        <div><span class="label">收盘:</span><span class="value ${priceClass}">${close} ${arrow}</span></div>
+                    `;
+
+                    // 计算tooltip位置
+                    const x = param.point.x + 15;
+                    const y = param.point.y + 15;
+
+                    // 确保tooltip不超出容器边界
+                    const tooltipRect = tooltip.getBoundingClientRect();
+                    const containerRect = chartContainer.getBoundingClientRect();
+
+                    let finalX = x;
+                    let finalY = y;
+
+                    if (x + tooltipRect.width > containerRect.width) {
+                        finalX = param.point.x - tooltipRect.width - 15;
+                    }
+
+                    if (y + tooltipRect.height > containerRect.height) {
+                        finalY = param.point.y - tooltipRect.height - 15;
+                    }
+
+                    tooltip.style.left = finalX + 'px';
+                    tooltip.style.top = finalY + 'px';
+                    tooltip.style.display = 'block';
+                });
+
+                // 鼠标离开图表时隐藏tooltip
+                chartContainer.addEventListener('mouseleave', () => {
+                    tooltip.style.display = 'none';
                 });
 
                 console.log('图表已加载，共', candleData.length, '根K线');
