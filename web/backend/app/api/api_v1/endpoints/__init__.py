@@ -37,43 +37,6 @@ class MergedKLine:
         self._is_contained = value
 
 
-def find_top_bottom(all_klines: List[MergedKLine]) -> None:
-    """
-    寻找合并后K线的顶底分型
-
-    Args:
-        all_klines: 合并后的K线列表
-    """
-    if len(all_klines) < 3:
-        return
-
-    for idx in range(2, len(all_klines)):
-        current_kline = all_klines[idx]
-
-        # 只处理未被合并的K线
-        if current_kline.merged_length != 1:
-            continue
-
-        # 获取前两根未合并的K线
-        prev_offset = current_kline.merged_length
-        mid_idx = idx - prev_offset
-        left_idx = mid_idx - all_klines[mid_idx].merged_length
-
-        if left_idx < 0:
-            continue
-
-        left_kline = all_klines[left_idx]
-        mid_kline = all_klines[mid_idx]
-
-        # 判断底分型：左中右形成V型
-        if left_kline.merged_low > mid_kline.merged_low < current_kline.merged_low:
-            current_kline.is_top_bottom = -1
-        # 判断顶分型：左中右形成倒V型
-        elif left_kline.merged_high < mid_kline.merged_high > current_kline.merged_high:
-            current_kline.is_top_bottom = 1
-        else:
-            current_kline.is_top_bottom = 0
-
 
 def merge_klines(origin_klines: List[List]) -> List[MergedKLine]:
     """
@@ -176,6 +139,82 @@ def load_raw_data() -> List[List]:
         raise ValueError(f"数据文件解析失败: {e}")
 
 
+def find_top_bottom(all_klines: List[MergedKLine]) -> None:
+    """
+    寻找合并后K线的顶底分型
+    """
+    if len(all_klines) < 3:
+        return
+
+    for idx in range(2, len(all_klines)):
+        current_kline = all_klines[idx]
+
+        # 只处理未被合并的K线
+        if current_kline.merged_length != 1:
+            continue
+
+        # 获取前两根未合并的K线
+        prev_offset = current_kline.merged_length
+        mid_idx = idx - prev_offset
+        left_idx = mid_idx - all_klines[mid_idx].merged_length
+
+        if left_idx < 0:
+            continue
+
+        left_kline = all_klines[left_idx]
+        mid_kline = all_klines[mid_idx]
+
+        # 判断底分型：左中右形成V型
+        if left_kline.merged_low > mid_kline.merged_low < current_kline.merged_low:
+            current_kline.is_top_bottom = -1
+        # 判断顶分型：左中右形成倒V型
+        elif left_kline.merged_high < mid_kline.merged_high > current_kline.merged_high:
+            current_kline.is_top_bottom = 1
+        else:
+            current_kline.is_top_bottom = 0
+
+
+def identify_bi(all_klines: List[MergedKLine]) -> List[dict]:
+    """
+    根据顶底分型划分缠论笔
+    Returns: list of dicts with 'start_idx', 'end_idx', 'direction' ('up' or 'down')
+    """
+    bi_list = []
+    last_fractal = None
+
+    for i, kl in enumerate(all_klines):
+        if kl.is_top_bottom != 0:
+            if last_fractal is None:
+                last_fractal = (i, kl)
+                continue
+
+            last_idx, last_kl = last_fractal
+
+            # 规则：同向分型取极值（如果两个都是顶，取更高的那个；两个都是底，取更低的那个）
+            if last_kl.is_top_bottom == kl.is_top_bottom:
+                if kl.is_top_bottom == 1 and kl.merged_high > last_kl.merged_high:
+                    last_fractal = (i, kl)
+                elif kl.is_top_bottom == -1 and kl.merged_low < last_kl.merged_low:
+                    last_fractal = (i, kl)
+                continue
+
+            # 规则：顶底之间至少要有1根独立K线 (索引差 >= 4，因为中间要隔一根)
+            # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
+            # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
+            # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
+            if abs(i - last_idx) >= 4:
+                direction = "up" if kl.is_top_bottom == 1 else "down"
+                bi_list.append({
+                    "start": last_idx,
+                    "end": i,
+                    "direction": direction,
+                    "start_price": last_kl.merged_low if direction == "up" else last_kl.merged_high,
+                    "end_price": kl.merged_high if direction == "up" else kl.merged_low
+                })
+                last_fractal = (i, kl)
+
+    return bi_list
+
 # 懒加载数据缓存
 class _DataCache:
     """数据缓存类，实现懒加载"""
@@ -196,6 +235,7 @@ class _DataCache:
         self._trade_dates = None
         self._origin_kline_data = None
         self._merge_kline_data = None
+        self._bi_list = None
         self._initialized = True
 
     def ensure_loaded(self):
@@ -212,6 +252,9 @@ class _DataCache:
 
         # 查找顶底分型
         find_top_bottom(merged_klines)
+
+        # 划分笔
+        self._bi_list = identify_bi(merged_klines)
 
         # 生成各种格式的数据
         self._merge_kline_data = [
@@ -256,6 +299,11 @@ class _DataCache:
         self.ensure_loaded()
         return self._merge_kline_data
 
+    @property
+    def bi_list(self) -> List[dict]:
+        self.ensure_loaded()
+        return self._bi_list
+
 
 # 创建全局数据缓存实例
 _data_cache = _DataCache()
@@ -278,3 +326,4 @@ merge_data_list = _data_cache.merged_klines
 trade_date_list = _data_cache.trade_dates
 origin_kline_data = _data_cache.origin_kline_data
 merge_kline_data = _data_cache.merge_kline_data
+bi_data_list = _data_cache.bi_list

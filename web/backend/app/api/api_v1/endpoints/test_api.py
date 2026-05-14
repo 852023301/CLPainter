@@ -9,11 +9,12 @@ from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick, Grid, Line
 from pyecharts.commons.utils import JsCode
+from ..endpoints import origin_kline_data, trade_date_list, bi_data_list, merge_data_list
 
 from pyecharts import options as opts
 
 from ...._config.logging_config import setup_logger
-from ..endpoints import origin_kline_data, trade_date_list
+from ..endpoints import origin_kline_data, trade_date_list, merge_data_list, MergedKLine
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -330,16 +331,13 @@ async def Kline_markline(request: Request):
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
 async def lightweight_charts_demo(request: Request):
     """
-    Lightweight Charts 简单示例
-    显示前50根K线数据
+    Lightweight Charts 优化版：显示K线与缠论笔
     """
     try:
-        # 取前50根K线作为示例数据
-        sample_size = 50
+        # 1. 准备 K 线数据
         sample_dates = trade_date_list
         sample_data = origin_kline_data
-        
-        # 转换为Lightweight Charts格式
+
         candle_data = []
         for i, (date, kline) in enumerate(zip(sample_dates, sample_data)):
             candle = {
@@ -350,22 +348,35 @@ async def lightweight_charts_demo(request: Request):
                 "close": float(kline[1])
             }
             candle_data.append(candle)
-        
-        logger.info(f"生成Lightweight Charts示例数据: {len(candle_data)}根K线")
-        logger.debug(f"示例数据第一条: {candle_data[0] if candle_data else '无数据'}")
-        
+
+        # 2. 准备笔（Bi）数据 - 转换为折线图格式
+        # 笔的数据点通常是顶底分型的坐标
+        bi_line_data = []
+        for bi in bi_data_list:
+            # 起点
+            bi_line_data.append({
+                "time": sample_dates[bi['start']],
+                "value": bi['start_price']
+            })
+            # 终点
+            bi_line_data.append({
+                "time": sample_dates[bi['end']],
+                "value": bi['end_price']
+            })
+
+        logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(bi_data_list)}笔")
+
         import json
-        candle_data_json = json.dumps(candle_data, ensure_ascii=False)
-        
         return templates.TemplateResponse(
             "lightweight_charts_demo.html",
             {
                 "request": request,
-                "candle_data": candle_data_json,
+                "candle_data": json.dumps(candle_data, ensure_ascii=False),
+                "bi_data": json.dumps(bi_line_data, ensure_ascii=False),
                 "candle_count": len(candle_data)
             }
         )
-    
+
     except Exception as e:
         logger.error(f"生成Lightweight Charts数据失败: {str(e)}", exc_info=True)
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(e)}</p>", status_code=500)
