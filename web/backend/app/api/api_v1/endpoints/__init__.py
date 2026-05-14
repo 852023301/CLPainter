@@ -124,18 +124,6 @@ def merge_data():
 
     return all_klines
 
-
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
-from enum import Enum
-
-
-class BiType(str, Enum):
-    """笔的类型"""
-    UP = 'up'  # 上升笔：底→顶
-    DOWN = 'down'  # 下降笔：顶→底
-
-
 def get_data_init():
     # import requests
     # response = requests.get(
