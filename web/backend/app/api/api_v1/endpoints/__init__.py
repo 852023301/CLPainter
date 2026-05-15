@@ -43,11 +43,16 @@ class MergedKLine:
             raise ValueError("is_contained must be 0 or 1")
         self._is_contained = value
 
+class FenXingType(str, Enum):
+    """笔的类型"""
+    Ding = 'Ding'  # 顶分型
+    Di = 'Di'  # 底分型
+
 @dataclass
 class FenXing:
     """分型数据结构"""
     # 分型标记：1=顶分型，-1=底分型
-    is_top_bottom: int
+    is_top_bottom: FenXingType
     # 分型开始位置索引
     idx: int = field(init=False)
     # 分型长度
@@ -356,6 +361,7 @@ class _DataCache:
 
     @property
     def merge_kline_data(self) -> List[List[float]]:
+        """获取合并后的K线数据"""
         self.ensure_loaded()
         return self._merge_kline_data
 
