@@ -1,27 +1,29 @@
+import json
 import logging
-import requests
-import os
-from typing import List, Union
-import pandas as pd
-from fastapi import APIRouter, FastAPI, Request
+
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
-from pyecharts.charts import Bar, Kline, Candlestick, Grid, Line
-from pyecharts.commons.utils import JsCode
-from ..endpoints import origin_kline_data, trade_date_list, bi_data_list, merge_data_list
+from pyecharts.charts import Bar, Kline, Candlestick
 
-from pyecharts import options as opts
-
+from ..endpoints import bi_data_list
+from ..endpoints import origin_kline_data, trade_date_list
 from ...._config.logging_config import setup_logger
-from ..endpoints import origin_kline_data, trade_date_list, merge_data_list, MergedKLine
+from ...._config.settings import settings
 
 setup_logger()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-APP_DIR = os.environ.get('APP_DIR')
-templates = Jinja2Templates(directory=f"{APP_DIR}/templates")
+
+# 调试：打印模板目录路径
+template_dir = f"{settings.APP_DIR}/templates"
+
+
+templates = Jinja2Templates(directory=template_dir)
+# 禁用模板缓存以避免 unhashable type 错误
+templates.env.cache = None
 
 
 @router.get("/test1")
@@ -368,16 +370,23 @@ async def lightweight_charts_demo(request: Request):
 
         logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(bi_data_list)}笔")
 
-        import json
-        return templates.TemplateResponse(
-            "lightweight_charts_demo.html",
-            {
-                "request": request,
-                "candle_data": json.dumps(candle_data, ensure_ascii=False),
-                "bi_data": json.dumps(bi_line_data, ensure_ascii=False),
-                "candle_count": len(candle_data)
-            }
-        )
+        # 调试：检查模板名称类型
+        template_name = "lightweight_charts_demo.html"
+
+
+        # 尝试直接渲染模板
+        try:
+            template = templates.env.get_template(template_name)
+            html_content = template.render(
+                request=request,
+                candle_data=json.dumps(candle_data, ensure_ascii=False),
+                bi_data=json.dumps(bi_line_data, ensure_ascii=False),
+                candle_count=len(candle_data)
+            )
+            return HTMLResponse(content=html_content)
+        except Exception as render_error:
+            logger.error(f"Template rendering error: {str(render_error)}", exc_info=True)
+            raise
 
     except Exception as e:
         logger.error(f"生成Lightweight Charts数据失败: {str(e)}", exc_info=True)
