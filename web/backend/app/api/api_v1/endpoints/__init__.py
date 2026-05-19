@@ -319,7 +319,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         # 底分型：取中间K线的最低价
         if kline.is_top_bottom == 1:  # 顶分型
             fenxing.high_price = mid_kline.merged_high
-            fenxing.high_idx = get_high_price_idx(all_klines[left_idx + 1:mid_idx + 1])
+            fenxing.high_idx = get_high_price_idx(all_klines[left_idx + 1:mid_idx + 1]) + (left_idx + 1)
             # 底价为三根K线中的最低价
             fenxing.low_price = min(left_kline.merged_low, mid_kline.merged_low, kline.merged_low)
 
@@ -332,7 +332,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
 
         else:  # 底分型
             fenxing.low_price = mid_kline.merged_low
-            fenxing.low_idx = get_low_price_idx(all_klines[left_idx + 1:mid_idx + 1])
+            fenxing.low_idx = get_low_price_idx(all_klines[left_idx + 1:mid_idx + 1]) + (left_idx + 1)
             # 高价为三根K线中的最高价
             fenxing.high_price = max(left_kline.merged_high, mid_kline.merged_high, kline.merged_high)
             fenxing.high_idx = max(
@@ -343,6 +343,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
             )[1]
         
         fenxing_list.append(fenxing)
+    # print(fenxing_list)
     
     return fenxing_list
 
@@ -383,14 +384,14 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing]) -> List[dict]:
             direction = "up" if fenxing.is_top_bottom == 1 else "down"
 
             bi_list.append({
-                "start": last_fx.idx,
-                "end": fenxing.idx,
+                "start": last_fx.low_idx if direction == "up" else last_fx.high_idx,
+                "end": fenxing.high_idx if direction == "up" else fenxing.low_idx,
                 "direction": direction,
                 "start_price": last_fx.low_price if direction == "up" else last_fx.high_price,
                 "end_price": fenxing.high_price if direction == "up" else fenxing.low_price
             })
             last_fractal = (i, fenxing)
-
+    # print(bi_list)
     return bi_list
 
 
