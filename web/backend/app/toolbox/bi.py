@@ -23,8 +23,9 @@ class Bi:
     bi_type: BiDirectionType  # 笔的方向
 
 
-    # 新增字段：笔包含的 K 线索引范围（用于验证至少 5 根）
-    kline_count: int = 0  # 笔包含的合并 K 线数量
+    # 笔包含的 K 线数量
+    origin_kline_count: int  # 笔包含的原始 K 线数量（一端分型最高点到另一端最低点之间）
+    merged_kline_count: int  # 笔包含的合并 K 线数量（一端分型最高点到另一端最低点之间）
 
     @property
     def is_up(self) -> bool:
@@ -83,13 +84,15 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
         # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
         # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
         # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
-        if abs(fenxing.idx - last_fx.idx) >= 4:
+        if abs(fenxing.end_idx - last_fx.end_idx) >= 4:
             direction = "up" if fenxing.is_top_bottom == 1 else "down"
             bi_type = BiDirectionType.UP if direction == "up" else BiDirectionType.DOWN
 
             # 确定起始和结束索引
             start_idx = last_fx.low_idx if direction == "up" else last_fx.high_idx
             end_idx = fenxing.high_idx if direction == "up" else fenxing.low_idx
+            if end_idx <= start_idx:
+                raise ValueError("结束索引不能小于起始索引")
 
             # 获取时间信息（如果提供了 all_klines）
             start_time = all_klines[start_idx].trade_date
@@ -104,6 +107,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                 start_price=last_fx.low_price if direction == "up" else last_fx.high_price,
                 end_price=fenxing.high_price if direction == "up" else fenxing.low_price,
                 bi_type=bi_type,
+                origin_kline_count=end_idx - start_idx + 1,
+                merged_kline_count=0
             )
 
             bi_list.append(bi)

@@ -11,8 +11,10 @@ class FenXing:
     """分型数据结构"""
     # 分型标记：1=顶分型，-1=底分型
     is_top_bottom: int
-    # 分型开始位置索引
-    idx: int = field(init=False)
+    # 分型结束位置索引
+    start_idx: int = field(init=False)
+    # 分型结束位置索引
+    end_idx: int = field(init=False)
     # 分型长度
     length: int = field(init=False)
     # 三根合并后K线各自的长度
@@ -55,7 +57,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         fenxing = FenXing(is_top_bottom=kline.is_top_bottom)
 
         # 设置分型索引（当前K线索引）
-        fenxing.idx = idx
+        fenxing.end_idx = idx + kline.merged_length - 1
 
         # 计算分型长度：包含左、中、右三根K线的总长度
         # 左K线
