@@ -26,6 +26,14 @@ RUN echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.g
 RUN  /bin/cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone \
 && echo root:airflow | chpasswd
 
+ARG INSTALL_EXE
+ARG INSTALL_PATH
+ARG CONDA_ENV_NAME
+ARG UPDATE_ENV_PYTHON_VERSION
+ARG DUFS_URL
+ARG PRJ_DIR
+ARG ROOT_DIR
+
 
 WORKDIR /root
 COPY docker/envinstall.sh   requirements_conda.txt requirements_pip.txt   /root/
@@ -42,10 +50,14 @@ RUN ln -snf $INSTALL_PATH/envs/$CONDA_ENV_NAME/lib/libstdc++.so.6 /usr/lib/x86_6
 
 
 ENV PYTHONPATH="${PYTHONPATH}:${ROOT_DIR}"
+
+ARG LOG_DIR
+
 RUN mkdir -p $LOG_DIR
 
+
 COPY ..  $PRJ_DIR
-RUN pip_loc=$(pip show pip | grep Location | awk '{print $2}');echo $ROOT_DIR >>  $pip_loc/project_path.pth
+#RUN pip_loc=$(pip show pip | grep Location | awk '{print $2}');echo $ROOT_DIR >>  $pip_loc/project_path.pth
 RUN chmod +x $PRJ_DIR/web/backend/run.sh
 #CMD ["/root/CLPainter/web/backend/run.sh"]
 #CMD ["sh", "-c", "tail -f /dev/null"]

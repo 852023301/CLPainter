@@ -6,6 +6,15 @@ services:
     build:
       context: .
       dockerfile: "docker/Dockerfile"
+      args:
+        INSTALL_EXE: "Miniforge3-25.3.1-0-Linux-x86_64.sh"
+        INSTALL_PATH: ${INSTALL_PATH}
+        CONDA_ENV_NAME: ${CONDA_ENV_NAME}
+        UPDATE_ENV_PYTHON_VERSION: "3.12"
+        DUFS_URL: "172.17.1.5:5000"
+        PRJ_DIR: ${PRJ_DIR}
+        ROOT_DIR: ${ROOT_DIR}
+        LOG_DIR: ${LOG_DIR}
     env_file:
       - .env
     ports:
