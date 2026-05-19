@@ -14,8 +14,8 @@ setup_logger()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-appDir = os.environ.get('appDir')
-templates = Jinja2Templates(directory=f"{appDir}/templates")
+APP_DIR = os.environ.get('APP_DIR')
+templates = Jinja2Templates(directory=f"{APP_DIR}/templates")
 
 # 数据
 echarts_data = [

@@ -3,6 +3,7 @@ import pickle
 from pathlib import Path
 from typing import List
 
+from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.toolbox.bi import identify_bi_from_fenxing, Bi
 from CLPainter.web.backend.app.toolbox.fenxing import extract_fenxing_list, FenXing
 from CLPainter.web.backend.app.toolbox.merged_kline import merge_klines, find_top_bottom, MergedKLine
@@ -15,9 +16,10 @@ def load_raw_data() -> List[List]:
     Returns:
         原始K线数据列表
     """
-    app_dir = os.environ.get('appDir')
+    # 优先使用配置类中的路径，如果未设置则尝试环境变量
+    app_dir = settings.APP_DIR or os.environ.get('APP_DIR')
     if not app_dir:
-        raise EnvironmentError("环境变量 'appDir' 未设置")
+        raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     data_file = Path(app_dir) / "data_set/data_set.pkl"
 

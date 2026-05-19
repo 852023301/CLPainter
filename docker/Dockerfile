@@ -2,15 +2,6 @@ FROM harbor.techfin.ai/library/ubuntu:20.04-ssh
 
 USER root
 
-
-ENV INSTALL_EXE="Miniforge3-25.3.1-0-Linux-x86_64.sh"
-ENV INSTALL_PATH="/root/mambaforge"
-ENV CONDA_ENV_NAME="echarts"
-ENV UPDATE_ENV_PYTHON_VERSION="3.12"
-
-
-
-
 # 剔除无用的源
 RUN echo > /etc/apt/sources.list.d/docker.list
 RUN echo > /etc/apt/sources.list.d/mariadb.list
@@ -38,7 +29,7 @@ RUN  /bin/cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shan
 
 WORKDIR /root
 COPY docker/envinstall.sh   requirements_conda.txt requirements_pip.txt   /root/
-RUN curl -o  $INSTALL_EXE  172.17.1.5:5000/pkg/$INSTALL_EXE
+RUN curl -o  $INSTALL_EXE  $DUFS_URL/pkg/$INSTALL_EXE
 RUN chmod 777 $INSTALL_EXE  && /bin/bash envinstall.sh
 
 
@@ -50,20 +41,11 @@ RUN  mkdir -p /run/sshd && chmod 0755 /run/sshd   && chown root:root /run/sshd \
 RUN ln -snf $INSTALL_PATH/envs/$CONDA_ENV_NAME/lib/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so.6
 
 
+ENV PYTHONPATH="${PYTHONPATH}:${ROOT_DIR}"
+RUN mkdir -p $LOG_DIR
 
-ENV prjDir=/root/CLPainter
-ENV bkdDir=$prjDir/web/backend
-ENV appDir=$prjDir/web/backend/app
-# 环境变量配置
-ENV FLASK_APP=$prjDir/web/backend/app/main.py
-ENV FLASK_ENV=$CONDA_ENV_NAME
-
-ENV PYTHONPATH=$PYTHONPATH:$prjDir
-RUN mkdir -p /app/logs
-ENV LOG_FILE=/app/logs/app.log
-
-COPY ..  /root/CLPainter
-RUN pip_loc=$(pip show pip | grep Location | awk '{print $2}');echo "/root" >>  $pip_loc/project_path.pth
-RUN chmod +x $prjDir/web/backend/run.sh
+COPY ..  $PRJ_DIR
+RUN pip_loc=$(pip show pip | grep Location | awk '{print $2}');echo $ROOT_DIR >>  $pip_loc/project_path.pth
+RUN chmod +x $PRJ_DIR/web/backend/run.sh
 #CMD ["/root/CLPainter/web/backend/run.sh"]
 #CMD ["sh", "-c", "tail -f /dev/null"]

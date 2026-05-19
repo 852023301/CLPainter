@@ -2,10 +2,12 @@ version: "3.8"
 services:
   CLPainter:
     container_name: CLPainter
-    image: harbor.techfin.ai/wjl-toolkit/cl_painter:1.9
+    image: harbor.techfin.ai/wjl-toolkit/cl_painter:2.0
     build:
       context: .
       dockerfile: "docker/Dockerfile"
+    env_file:
+      - .env
     ports:
       - "36602:22"
       - "15000:8001"

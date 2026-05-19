@@ -10,14 +10,14 @@ from pyecharts.commons.utils import JsCode
 
 from ..endpoints import MergedKLine, trade_date_list, merge_data_list, merge_kline_data, origin_kline_data
 from ...._config.logging_config import setup_logger
+from ...._config.settings import settings
 from ....toolbox.calculate import calculate_macd, calculate_ma
 
 setup_logger()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-appDir = os.environ.get('appDir')
-templates = Jinja2Templates(directory=f"{appDir}/templates")
+templates = Jinja2Templates(directory=f"{settings.APP_DIR}/templates")
 
 
 

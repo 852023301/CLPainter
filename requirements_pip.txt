@@ -1,4 +1,5 @@
 DBUtils
+python-dotenv
 ray[default]>=2.32.0
 database>=2.0.5
 tdata
