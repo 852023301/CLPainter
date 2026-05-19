@@ -1,42 +1,54 @@
+from typing import Dict, Union
 import pandas as pd
 
 
-def calculate_macd(close , short_window=10, long_window=21, signal_window=7):
-    # 计算EMA
+def calculate_macd(
+    close: pd.Series,
+    short_window: int = 10,
+    long_window: int = 21,
+    signal_window: int = 7
+) -> Dict[str, Union[pd.Series, list]]:
+    """
+    计算 MACD 指标
+
+    Args:
+        close: 收盘价序列
+        short_window: 短期 EMA 窗口
+        long_window: 长期 EMA 窗口
+        signal_window: 信号线 DEA 窗口
+
+    Returns:
+        包含 DIF, DEA 和 MACD_Hist 的字典
+    """
+    # 计算 EMA
     ema_short = close.ewm(span=short_window, adjust=False).mean()
     ema_long = close.ewm(span=long_window, adjust=False).mean()
 
-    # 计算DIF
+    # 计算 DIF (差离值)
     dif = ema_short - ema_long
 
-    # 计算DEA
+    # 计算 DEA (讯号线)
     dea = dif.ewm(span=signal_window, adjust=False).mean()
 
-    # 计算柱状图
+    # 计算柱状图 (MACD Histogram)
     histogram = (dif - dea) * 2
 
-    result = dict()
-    # 合并到原数据
-    result['DIF'] = dif
-    result['DEA'] = dea
-    result['MACD_Hist'] =   list(histogram)
-    return result
+    return {
+        'DIF': dif,
+        'DEA': dea,
+        'MACD_Hist': histogram.tolist()
+    }
 
 
+def calculate_ma(close: pd.Series, day_count: int) -> pd.Series:
+    """
+    计算移动平均线 (MA)
 
-def calculate_ma(close, day_count: int):
-    # result: List[Union[float, str]] = []
-    #
-    # for i in range(len(trade_date_list)):
-    #     if i < day_count:
-    #         result.append("-")
-    #         continue
-    #     sum_total = 0.0
-    #     for j in range(day_count):
-    #         sum_total += float(origin_kline_data[i - j][1])
-    #     result.append(abs(float("%.2f" % (sum_total / day_count))))
-    #
+    Args:
+        close: 收盘价序列
+        day_count: 移动平均的天数
 
-    result = close.rolling(window=day_count).mean().round(2)
-
-    return result
+    Returns:
+        移动平均值序列
+    """
+    return close.rolling(window=day_count).mean().round(2)
