@@ -1,0 +1,112 @@
+from dataclasses import dataclass
+from enum import Enum
+from typing import List
+
+from .fenxing import FenXing
+from .merged_kline import MergedKLine
+
+
+class BiDirectionType(str, Enum):
+    """笔的类型"""
+    UP = 'up'  # 上升笔：底→顶
+    DOWN = 'down'  # 下降笔：顶→底
+
+@dataclass
+class Bi:
+    """笔数据结构（优化版）"""
+    start_idx: int  # 笔起始位置索引（分型所在 K 线索引）
+    end_idx: int  # 笔结束位置索引（分型所在 K 线索引）
+    start_time: str  # 起始时间
+    end_time: str  # 结束时间
+    start_price: float  # 起始价格（顶/底分型的极值）
+    end_price: float  # 结束价格（顶/底分型的极值）
+    bi_type: BiDirectionType  # 笔的方向
+
+
+    # 新增字段：笔包含的 K 线索引范围（用于验证至少 5 根）
+    kline_count: int = 0  # 笔包含的合并 K 线数量
+
+    @property
+    def is_up(self) -> bool:
+        return self.bi_type == BiDirectionType.UP
+
+    @property
+    def is_down(self) -> bool:
+        return self.bi_type == BiDirectionType.DOWN
+
+    def to_dict(self) -> dict:
+        """
+        将 Bi 对象转换为字典格式（兼容原有 identify_bi 的输出格式）
+
+        Returns:
+            dict: 包含 start, end, direction, start_price, end_price 的字典
+        """
+        return {
+            "start": self.start_idx,
+            "end": self.end_idx,
+            "direction": self.bi_type.value,
+            "start_price": self.start_price,
+            "end_price": self.end_price
+        }
+
+
+def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine] = None) -> List[Bi]:
+    """
+    根据分型列表划分缠论笔
+
+    Args:
+        fenxing_list: 分型对象列表
+        all_klines: 合并后的K线列表（可选，用于获取时间信息）
+
+    Returns:
+        List[Bi]: Bi 对象列表
+    """
+    bi_list = []
+    last_fractal = None
+
+    for i, fenxing in enumerate(fenxing_list):
+        if last_fractal is None:
+            last_fractal = (i, fenxing)
+            continue
+
+        last_idx, last_fx = last_fractal
+
+        # 规则：同向分型取极值（如果两个都是顶，取更高的那个；两个都是底，取更低的那个）
+        if last_fx.is_top_bottom == fenxing.is_top_bottom:
+            if fenxing.is_top_bottom == 1 and fenxing.high_price > last_fx.high_price:
+                last_fractal = (i, fenxing)
+            elif fenxing.is_top_bottom == -1 and fenxing.low_price < last_fx.low_price:
+                last_fractal = (i, fenxing)
+            continue
+
+        # 规则：顶底之间至少要有1根独立K线 (索引差 >= 4，因为中间要隔一根)
+        # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
+        # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
+        # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
+        if abs(fenxing.idx - last_fx.idx) >= 4:
+            direction = "up" if fenxing.is_top_bottom == 1 else "down"
+            bi_type = BiDirectionType.UP if direction == "up" else BiDirectionType.DOWN
+
+            # 确定起始和结束索引
+            start_idx = last_fx.low_idx if direction == "up" else last_fx.high_idx
+            end_idx = fenxing.high_idx if direction == "up" else fenxing.low_idx
+
+            # 获取时间信息（如果提供了 all_klines）
+            start_time = all_klines[start_idx].trade_date
+            end_time = all_klines[end_idx].trade_date
+
+            # 创建 Bi 对象
+            bi = Bi(
+                start_idx=start_idx,
+                end_idx=end_idx,
+                start_time=start_time,
+                end_time=end_time,
+                start_price=last_fx.low_price if direction == "up" else last_fx.high_price,
+                end_price=fenxing.high_price if direction == "up" else fenxing.low_price,
+                bi_type=bi_type,
+            )
+
+            bi_list.append(bi)
+            last_fractal = (i, fenxing)
+    # print(bi_list)
+    return bi_list

@@ -63,6 +63,7 @@ RUN mkdir -p /app/logs
 ENV LOG_FILE=/app/logs/app.log
 
 COPY ..  /root/CLPainter
+RUN pip_loc=$(pip show pip | grep Location | awk '{print $2}');echo "/root" >>  $pip_loc/project_path.pth
 RUN chmod +x $prjDir/web/backend/run.sh
 #CMD ["/root/CLPainter/web/backend/run.sh"]
 #CMD ["sh", "-c", "tail -f /dev/null"]
