@@ -83,8 +83,6 @@ class Bi:
     start_price: float  # 起始价格（顶/底分型的极值）
     end_price: float  # 结束价格（顶/底分型的极值）
     bi_type: BiDirectionType  # 笔的方向
-    high_price: float  # 笔中的最高价
-    low_price: float  # 笔中的最低价
 
 
     # 新增字段：笔包含的 K 线索引范围（用于验证至少 5 根）
@@ -97,6 +95,21 @@ class Bi:
     @property
     def is_down(self) -> bool:
         return self.bi_type == BiDirectionType.DOWN
+
+    def to_dict(self) -> dict:
+        """
+        将 Bi 对象转换为字典格式（兼容原有 identify_bi 的输出格式）
+        
+        Returns:
+            dict: 包含 start, end, direction, start_price, end_price 的字典
+        """
+        return {
+            "start": self.start_idx,
+            "end": self.end_idx,
+            "direction": self.bi_type.value,
+            "start_price": self.start_price,
+            "end_price": self.end_price
+        }
 
 
 def merge_klines(origin_klines: List[List]) -> List[MergedKLine]:
@@ -348,15 +361,16 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
     return fenxing_list
 
 
-def identify_bi_from_fenxing(fenxing_list: List[FenXing]) -> List[dict]:
+def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine] = None) -> List[Bi]:
     """
     根据分型列表划分缠论笔
     
     Args:
         fenxing_list: 分型对象列表
+        all_klines: 合并后的K线列表（可选，用于获取时间信息）
         
     Returns:
-        list of dicts with 'start_idx', 'end_idx', 'direction' ('up' or 'down')
+        List[Bi]: Bi 对象列表
     """
     bi_list = []
     last_fractal = None
@@ -382,14 +396,28 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing]) -> List[dict]:
         # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
         if abs(fenxing.idx - last_fx.idx) >= 4:
             direction = "up" if fenxing.is_top_bottom == 1 else "down"
+            bi_type = BiDirectionType.UP if direction == "up" else BiDirectionType.DOWN
+            
+            # 确定起始和结束索引
+            start_idx = last_fx.low_idx if direction == "up" else last_fx.high_idx
+            end_idx = fenxing.high_idx if direction == "up" else fenxing.low_idx
+            
+            # 获取时间信息（如果提供了 all_klines）
+            start_time = all_klines[start_idx].trade_date
+            end_time = all_klines[end_idx].trade_date
 
-            bi_list.append({
-                "start": last_fx.low_idx if direction == "up" else last_fx.high_idx,
-                "end": fenxing.high_idx if direction == "up" else fenxing.low_idx,
-                "direction": direction,
-                "start_price": last_fx.low_price if direction == "up" else last_fx.high_price,
-                "end_price": fenxing.high_price if direction == "up" else fenxing.low_price
-            })
+            # 创建 Bi 对象
+            bi = Bi(
+                start_idx=start_idx,
+                end_idx=end_idx,
+                start_time=start_time,
+                end_time=end_time,
+                start_price=last_fx.low_price if direction == "up" else last_fx.high_price,
+                end_price=fenxing.high_price if direction == "up" else fenxing.low_price,
+                bi_type=bi_type,
+            )
+            
+            bi_list.append(bi)
             last_fractal = (i, fenxing)
     # print(bi_list)
     return bi_list
@@ -438,7 +466,7 @@ class _DataCache:
         self._fenxing_list = extract_fenxing_list(merged_klines)
 
         # 基于分型列表划分笔
-        self._bi_list = identify_bi_from_fenxing(self._fenxing_list)
+        self._bi_list = identify_bi_from_fenxing(self._fenxing_list, merged_klines)
 
         # 生成各种格式的数据
         self._merge_kline_data = [
@@ -484,7 +512,7 @@ class _DataCache:
         return self._merge_kline_data
 
     @property
-    def bi_list(self) -> List[dict]:
+    def bi_list(self) -> List[Bi]:
         self.ensure_loaded()
         return self._bi_list
 

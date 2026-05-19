@@ -353,15 +353,17 @@ async def lightweight_charts_demo(request: Request):
         # 笔的数据点通常是顶底分型的坐标
         bi_line_data = []
         for bi in bi_data_list:
+            # 如果 bi 是 Bi 对象，使用 to_dict() 方法转换
+            bi_dict = bi.to_dict()
             # 起点
             bi_line_data.append({
-                "time": sample_dates[bi['start']],
-                "value": bi['start_price']
+                "time": sample_dates[bi_dict['start']],
+                "value": bi_dict['start_price']
             })
             # 终点
             bi_line_data.append({
-                "time": sample_dates[bi['end']],
-                "value": bi['end_price']
+                "time": sample_dates[bi_dict['end']],
+                "value": bi_dict['end_price']
             })
 
         logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(bi_data_list)}笔")
