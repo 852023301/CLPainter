@@ -347,44 +347,49 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
     return fenxing_list
 
 
-def identify_bi(all_klines: List[MergedKLine]) -> List[dict]:
+def identify_bi_from_fenxing(fenxing_list: List[FenXing]) -> List[dict]:
     """
-    根据顶底分型划分缠论笔
-    Returns: list of dicts with 'start_idx', 'end_idx', 'direction' ('up' or 'down')
+    根据分型列表划分缠论笔
+    
+    Args:
+        fenxing_list: 分型对象列表
+        
+    Returns:
+        list of dicts with 'start_idx', 'end_idx', 'direction' ('up' or 'down')
     """
     bi_list = []
     last_fractal = None
 
-    for i, kl in enumerate(all_klines):
-        if kl.is_top_bottom != 0:
-            if last_fractal is None:
-                last_fractal = (i, kl)
-                continue
+    for i, fenxing in enumerate(fenxing_list):
+        if last_fractal is None:
+            last_fractal = (i, fenxing)
+            continue
 
-            last_idx, last_kl = last_fractal
+        last_idx, last_fx = last_fractal
 
-            # 规则：同向分型取极值（如果两个都是顶，取更高的那个；两个都是底，取更低的那个）
-            if last_kl.is_top_bottom == kl.is_top_bottom:
-                if kl.is_top_bottom == 1 and kl.merged_high > last_kl.merged_high:
-                    last_fractal = (i, kl)
-                elif kl.is_top_bottom == -1 and kl.merged_low < last_kl.merged_low:
-                    last_fractal = (i, kl)
-                continue
+        # 规则：同向分型取极值（如果两个都是顶，取更高的那个；两个都是底，取更低的那个）
+        if last_fx.is_top_bottom == fenxing.is_top_bottom:
+            if fenxing.is_top_bottom == 1 and fenxing.high_price > last_fx.high_price:
+                last_fractal = (i, fenxing)
+            elif fenxing.is_top_bottom == -1 and fenxing.low_price < last_fx.low_price:
+                last_fractal = (i, fenxing)
+            continue
 
-            # 规则：顶底之间至少要有1根独立K线 (索引差 >= 4，因为中间要隔一根)
-            # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
-            # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
-            # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
-            if abs(i - last_idx) >= 4:
-                direction = "up" if kl.is_top_bottom == 1 else "down"
-                bi_list.append({
-                    "start": last_idx,
-                    "end": i,
-                    "direction": direction,
-                    "start_price": last_kl.merged_low if direction == "up" else last_kl.merged_high,
-                    "end_price": kl.merged_high if direction == "up" else kl.merged_low
-                })
-                last_fractal = (i, kl)
+        # 规则：顶底之间至少要有1根独立K线 (索引差 >= 4，因为中间要隔一根)
+        # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
+        # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
+        # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
+        if abs(fenxing.idx - last_fx.idx) >= 4:
+            direction = "up" if fenxing.is_top_bottom == 1 else "down"
+
+            bi_list.append({
+                "start": last_fx.idx,
+                "end": fenxing.idx,
+                "direction": direction,
+                "start_price": last_fx.low_price if direction == "up" else last_fx.high_price,
+                "end_price": fenxing.high_price if direction == "up" else fenxing.low_price
+            })
+            last_fractal = (i, fenxing)
 
     return bi_list
 
@@ -406,6 +411,7 @@ class _DataCache:
 
         self._raw_data = None
         self._merged_klines = None
+        self._fenxing_list = None
         self._trade_dates = None
         self._origin_kline_data = None
         self._merge_kline_data = None
@@ -427,8 +433,11 @@ class _DataCache:
         # 查找顶底分型
         find_top_bottom(merged_klines)
 
-        # 划分笔
-        self._bi_list = identify_bi(merged_klines)
+        # 提取分型列表
+        self._fenxing_list = extract_fenxing_list(merged_klines)
+
+        # 基于分型列表划分笔
+        self._bi_list = identify_bi_from_fenxing(self._fenxing_list)
 
         # 生成各种格式的数据
         self._merge_kline_data = [
@@ -478,6 +487,12 @@ class _DataCache:
         self.ensure_loaded()
         return self._bi_list
 
+    @property
+    def fenxing_list(self) -> List[FenXing]:
+        """获取分型列表"""
+        self.ensure_loaded()
+        return self._fenxing_list
+
 
 # 创建全局数据缓存实例
 _data_cache = _DataCache()
@@ -494,10 +509,16 @@ def get_merge_data_list() -> List[MergedKLine]:
     return _data_cache.merged_klines
 
 
+def get_fenxing_list() -> List[FenXing]:
+    """获取分型列表"""
+    return _data_cache.fenxing_list
+
+
 # 导出变量（保持向后兼容）
 get_data_init_set = _data_cache.raw_data
 merge_data_list = _data_cache.merged_klines
+fenxing_data_list = _data_cache.fenxing_list
 trade_date_list = _data_cache.trade_dates
 origin_kline_data = _data_cache.origin_kline_data
-merge_kline_data = _data_cache.merge_kline_data
+merge_kline_data = _data_cache.merge_kline_data  # 高开低收用merge_high和merge_low表示
 bi_data_list = _data_cache.bi_list
