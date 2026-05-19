@@ -56,7 +56,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         # 创建分型对象
         fenxing = FenXing(is_top_bottom=kline.is_top_bottom)
 
-        # 设置分型索引（当前K线索引）
+        # 设置分型结束索引
         fenxing.end_idx = idx + kline.merged_length - 1
 
         # 计算分型长度：包含左、中、右三根K线的总长度
@@ -91,6 +91,9 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
             left_idx + 1,
             mid_idx + 1
         ]
+
+        # 设置分型开始索引
+        fenxing.start_idx = fenxing.idx_list[0]
 
         def get_high_price_idx(mid_klines):
             HHV = -1
