@@ -11,6 +11,7 @@ class BiDirectionType(str, Enum):
     UP = 'up'  # 上升笔：底→顶
     DOWN = 'down'  # 下降笔：顶→底
 
+
 @dataclass
 class Bi:
     """笔数据结构（优化版）"""
@@ -21,7 +22,6 @@ class Bi:
     start_price: float  # 起始价格（顶/底分型的极值）
     end_price: float  # 结束价格（顶/底分型的极值）
     bi_type: BiDirectionType  # 笔的方向
-
 
     # 笔包含的 K 线数量
     origin_kline_count: int  # 笔包含的原始 K 线数量（一端分型最高点到另一端最低点之间）
@@ -108,10 +108,35 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                 end_price=fenxing.high_price if direction == "up" else fenxing.low_price,
                 bi_type=bi_type,
                 origin_kline_count=end_idx - start_idx + 1,
-                merged_kline_count=0
+                merged_kline_count=calculate_bi_merged_kline_count(last_fx.get_mid_idx(), fenxing.get_mid_idx(),
+                                                                   all_klines)
             )
-
             bi_list.append(bi)
             last_fractal = (i, fenxing)
     # print(bi_list)
     return bi_list
+
+
+def calculate_bi_merged_kline_count(start_kline_idx: int, end_kline_idx: int, all_klines: List[MergedKLine]) -> int:
+    """
+    计算一笔中的合并K线数量
+
+    Args:
+        bi_list: Bi 列表
+        all_klines: 完整的合并K线列表
+
+    Returns:
+        List[Bi]: 计算了合并K线数量的 Bi 列表
+    """
+    if start_kline_idx >= end_kline_idx:
+        raise ValueError("起始索引不能大于结束索引")
+    bi_merged_kline_count = 1
+    last_idx = start_kline_idx
+    last_kline = all_klines[start_kline_idx]
+    while (last_idx := last_idx + last_kline.merged_length) < end_kline_idx:
+        last_kline = all_klines[last_idx]
+        bi_merged_kline_count += 1
+
+    bi_merged_kline_count += 1
+
+    return bi_merged_kline_count
