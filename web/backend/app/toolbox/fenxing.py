@@ -126,26 +126,26 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         # 底分型：取中间K线的最低价
         if kline.is_top_bottom == 1:  # 顶分型
             fenxing.high_price = mid_kline.merged_high
-            fenxing.high_idx = get_high_price_idx(all_klines[left_idx + 1:mid_idx + 1]) + (left_idx + 1)
+            fenxing.high_idx = mid_kline.high_idx
             # 底价为三根K线中的最低价
             fenxing.low_price = min(left_kline.merged_low, mid_kline.merged_low, kline.merged_low)
 
             fenxing.low_idx = min(
-                [(left_kline.merged_low, left_idx),
-                 (mid_kline.merged_low, mid_idx),
-                 (kline.merged_low, idx)],
+                [(left_kline.merged_low, left_kline.low_idx),
+                 (mid_kline.merged_low, mid_kline.low_idx),
+                 (kline.merged_low, kline.low_idx)],
                 key=lambda x: x[0]
             )[1]
 
         else:  # 底分型
             fenxing.low_price = mid_kline.merged_low
-            fenxing.low_idx = get_low_price_idx(all_klines[left_idx + 1:mid_idx + 1]) + (left_idx + 1)
+            fenxing.low_idx = mid_kline.low_idx
             # 高价为三根K线中的最高价
             fenxing.high_price = max(left_kline.merged_high, mid_kline.merged_high, kline.merged_high)
             fenxing.high_idx = max(
-                [(left_kline.merged_high, left_idx),
-                 (mid_kline.merged_high, mid_idx),
-                 (kline.merged_high, idx)],
+                [(left_kline.merged_high, left_kline.high_idx),
+                 (mid_kline.merged_high, mid_kline.high_idx),
+                 (kline.merged_high, kline.high_idx)],
                 key=lambda x: x[0]
             )[1]
 

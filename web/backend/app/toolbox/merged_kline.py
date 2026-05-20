@@ -29,11 +29,25 @@ class MergedKLine:
     # 分型标记：1=顶分型，-1=底分型，0=无分型
     is_top_bottom: int = 0
 
+    # 分型最高价
+    high_price: float = field(init=False)
+    # 分型最低价
+    low_price: float = field(init=False)
+    # 分型最高价索引
+    high_idx: int = field(init=False)
+    # 分型最低价索引
+    low_idx: int = field(init=False)
+
+
+
 
     def __post_init__(self):
         # 初始化合并后的高低点为当前K线的高低点
         self.merged_high = self.high
         self.merged_low = self.low
+
+        self.high_price = self.high
+        self.low_price = self.low
 
     @property
     def is_contained(self) -> int:
@@ -62,8 +76,11 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
 
     all_klines: List[MergedKLine] = []
 
-    for kl in origin_klines:
+    for idx, kl in enumerate(origin_klines):
         merged_kline = MergedKLine(*kl)
+
+        merged_kline.high_idx = idx
+        merged_kline.low_idx = idx
 
         if not all_klines:
             # 第一根K线直接添加
@@ -81,6 +98,19 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
             # 存在包含关系，需要合并
             if _has_containment(last_kline, merged_kline):
                 _apply_containment(last_kline, merged_kline)
+
+                # 寻找极值点
+                if merged_kline.merged_trend == 1:
+                    merged_kline.high_price = merged_kline.high_price if merged_kline.high_price > last_kline.high_price else last_kline.high_price
+                    merged_kline.high_idx =  idx if merged_kline.high_price > last_kline.high_price else (idx -1)
+                    merged_kline.low_price =  merged_kline.merged_low
+                    merged_kline.low_idx = idx if merged_kline.low > last_kline.low else (idx - 1)
+                else:
+                    merged_kline.low_price = merged_kline.low_price if merged_kline.low_price < last_kline.low_price else last_kline.low_price
+                    merged_kline.low_idx = idx if merged_kline.low_price < last_kline.low_price else (idx - 1)
+                    merged_kline.high_price =  merged_kline.merged_high
+                    merged_kline.high_idx = idx if merged_kline.high < last_kline.high else (idx - 1)
+
                 all_klines.append(merged_kline)
                 continue
 

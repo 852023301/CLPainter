@@ -110,18 +110,14 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             if end_idx <= start_idx:
                 raise ValueError("结束索引不能小于起始索引")
 
-            # 获取时间信息（如果提供了 all_klines）
-            start_time = all_klines[start_idx].trade_date
-            end_time = all_klines[end_idx].trade_date
-
             bi_real_merged_kline_count, bi_has_gap_count = calculate_bi_real_merged_kline_count_and_gap_count(last_fx.get_mid_idx(), fenxing.get_mid_idx(),
                                             all_klines)
             # 创建 Bi 对象
             bi = Bi(
                 start_idx=start_idx,
                 end_idx=end_idx,
-                start_time=start_time,
-                end_time=end_time,
+                start_time=all_klines[start_idx].trade_date,
+                end_time=all_klines[end_idx].trade_date,
                 start_price=last_fx.low_price if direction == "up" else last_fx.high_price,
                 end_price=fenxing.high_price if direction == "up" else fenxing.low_price,
                 bi_type=bi_type,
@@ -129,6 +125,10 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                 real_merged_kline_count=bi_real_merged_kline_count,
                 has_gap_count=bi_has_gap_count
             )
+
+            if bi.merged_kline_count<4 or bi.origin_kline_count <5:
+                continue
+
             bi_list.append(bi)
             last_fractal = (i, fenxing)
     # print(bi_list)
