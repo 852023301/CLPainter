@@ -1,7 +1,14 @@
 import dataclasses
-from dataclasses import dataclass, field, asdict, fields
+from dataclasses import dataclass, fields
 from typing import List, Tuple
+from enum import Enum
 from .gap import Gap, GapDirectionType
+
+
+class OriginKlineType(str, Enum):
+    """笔的类型"""
+    UP = 'up'  # 涨
+    DOWN = 'down'  # 跌
 
 
 @dataclass
@@ -17,6 +24,9 @@ class OriginKLine:
 
     # 是否有缺口：True=有缺口，False=无缺口
     has_gap: bool = False
+
+    # 涨或跌
+    type: OriginKlineType = OriginKlineType.UP
 
     def to_kwargs(self):
         return dataclasses.asdict(self)
@@ -42,6 +52,10 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
     for idx, kl in enumerate(origin_klines):
         if idx < 1:
             continue
+
+        # 涨或跌
+        kl.type = OriginKlineType.UP if kl.close >= kl.open else OriginKlineType.DOWN
+
         last_origin_kline = origin_klines[idx - 1]
         if kl.low > last_origin_kline.high:
             kl.has_gap = True

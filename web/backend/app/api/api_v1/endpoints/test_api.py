@@ -343,9 +343,9 @@ async def lightweight_charts_demo(request: Request):
         sample_gaps = gaps_list
 
         candle_data = []
-        for i, (date, kline) in enumerate(zip(sample_dates, sample_data)):
+        for kline in sample_data:
             candle = {
-                "time": date,
+                "time": kline.trade_date,
                 "open": float(kline.open),
                 "high": float(kline.high),
                 "low": float(kline.low),
@@ -370,6 +370,16 @@ async def lightweight_charts_demo(request: Request):
                 "value": bi_dict['end_price']
             })
 
+        # 3.成交量数据
+        volume_data = [
+            {
+                'time': kline.trade_date,
+                'value': kline.volume,
+                'color': '#ef5350'  if kline.type == 'up' else '#26a69a'
+            }
+            for kline in sample_data
+        ]
+
         logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(bi_data_list)}笔")
 
         # 调试：检查模板名称类型
@@ -384,6 +394,8 @@ async def lightweight_charts_demo(request: Request):
                 bi_data=json.dumps(bi_line_data, ensure_ascii=False),
                 candle_count=len(candle_data),
                 gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
+                volume_data=json.dumps(volume_data, ensure_ascii=False),
+
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:

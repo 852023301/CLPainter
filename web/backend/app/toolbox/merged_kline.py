@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List
-from .origin_kline import OriginKLine
+from .origin_kline import OriginKLine, OriginKlineType
 
 @dataclass
 class MergedKLine:
@@ -15,6 +15,9 @@ class MergedKLine:
 
     # 是否有缺口：True=有缺口，False=无缺口
     has_gap: bool = False
+
+    # 涨或跌
+    type: OriginKlineType = OriginKlineType.UP
 
     # K线合并状态
     _is_contained: int = field(default=0, repr=False)  # 是否被合并：1=合并，0=未合并

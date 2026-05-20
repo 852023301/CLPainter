@@ -32,12 +32,14 @@
             position: relative;
         }
 
-        .info {
-            margin-top: 20px;
-            padding: 15px;
+        .volume-container {
+            width: 100%;
+            height: 150px;
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-top: 10px;
+            position: relative;
         }
 
         .info h3 {
@@ -88,28 +90,25 @@
         <div id="chart">
             <div class="ohlc-tooltip" id="ohlcTooltip"></div>
         </div>
-
-        <div class="info">
-            <h3>说明</h3>
-            <p>这是一个使用 TradingView Lightweight Charts 的简单示例。</p>
-            <p>图表显示了 {{ candle_count }} 根K线数据。</p>
-            <p>特性：支持缩放、平移、十字光标悬停显示详细信息。</p>
-        </div>
+        <div id="volume-chart" class="volume-container"></div>
     </div>
 
     <script>        // 从后端传入的数据
         const candleData = {{ candle_data | safe }};
         const biData = {{ bi_data | safe }};
         const gapsData = {{ gaps_data | safe }};
+        const volumeData = {{ volume_data | safe }};
 
         console.log('收到的K线数据:', candleData.length);
         console.log('收到的笔数据:', biData.length);
         console.log('收到的缺口数据:', gapsData.length);
+        console.log('收到的成交量数据:', volumeData.length);
 
         if (!candleData || !Array.isArray(candleData) || candleData.length === 0) {
             document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
         } else {
             const chartContainer = document.getElementById('chart');
+            const volumeContainer = document.getElementById('volume-chart');
             const tooltip = document.getElementById('ohlcTooltip');
 
             const chart = LightweightCharts.createChart(chartContainer, {
@@ -154,12 +153,56 @@
             biData.sort((a, b) => new Date(a.time) - new Date(b.time));
             biSeries.setData(biData);
 
+            // 3.创建成交量图表
+            const volumeChart = LightweightCharts.createChart(volumeContainer, {
+                width: volumeContainer.clientWidth,
+                height: 150,
+                layout: {
+                    background: { color: '#ffffff' },
+                    textColor: '#333',
+                },
+                grid: {
+                    vertLines: { visible: false },
+                    horzLines: { visible: false },
+                },
+                timeScale: {
+                    visible: true,
+                    timeVisible: true,
+                },
+                rightPriceScale: {
+                    visible: false, // 隐藏右侧价格刻度
+                },
+            });
+
+            // 创建成交量系列
+            const volumeSeries = volumeChart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: '', // 共享价格轴
+            });
+
+            volumeSeries.setData(volumeData);
+
+            // 同步两个图表的时间轴
+            chart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+                volumeChart.timeScale().setVisibleRange(timeRange);
+            });
+
+            volumeChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+                chart.timeScale().setVisibleRange(timeRange);
+            });
+
+
             // 自动调整显示范围
             chart.timeScale().fitContent();
+            volumeChart.timeScale().fitContent();
 
             // 响应式调整
             window.addEventListener('resize', () => {
                 chart.applyOptions({ width: chartContainer.clientWidth });
+                volumeChart.applyOptions({ width: volumeContainer.clientWidth });
             });
 
             // Tooltip 逻辑保持不变...
