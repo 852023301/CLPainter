@@ -18,3 +18,6 @@ class Gap:
     color: str
     shape: str  # 'arrowUp' 或者 'arrowDown'
     text: str
+
+    def to_kwargs(self):
+        return dataclasses.asdict(self)

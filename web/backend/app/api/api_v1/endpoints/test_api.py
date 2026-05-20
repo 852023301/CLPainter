@@ -9,7 +9,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from ..endpoints import bi_data_list
-from ..endpoints import origin_kline_data, trade_date_list
+from ..endpoints import origin_kline_data, trade_date_list, gaps_list
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -222,21 +222,6 @@ async def Kline_datazoom_inside(request: Request):
     )
 
 
-# ========== Lightweight Charts 缺口显示相关API ==========
-
-@router.get("/lightweight-charts-gap-demo", response_class=HTMLResponse)
-async def lightweight_charts_gap_demo(request: Request):
-    """
-    Lightweight Charts 缺口显示演示页面
-    """
-    template = templates.env.get_template("lightweight_charts_gap_backend.html")
-    html_content = template.render(
-        name="lightweight_charts_gap_backend.html",
-        context={"request": request}
-    )
-    return HTMLResponse(content=html_content)
-
-
 @router.get("/Kline_datazoom_slider_position", response_class=HTMLResponse)
 async def Kline_datazoom_slider_position(request: Request):
     c = (
@@ -355,6 +340,7 @@ async def lightweight_charts_demo(request: Request):
         # 1. 准备 K 线数据
         sample_dates = trade_date_list
         sample_data = origin_kline_data
+        sample_gaps = gaps_list
 
         candle_data = []
         for i, (date, kline) in enumerate(zip(sample_dates, sample_data)):
@@ -375,12 +361,12 @@ async def lightweight_charts_demo(request: Request):
             bi_dict = bi.to_dict()
             # 起点
             bi_line_data.append({
-                "time": sample_dates[bi_dict['start']],
+                "time": sample_dates[bi_dict['start_idx']],
                 "value": bi_dict['start_price']
             })
             # 终点
             bi_line_data.append({
-                "time": sample_dates[bi_dict['end']],
+                "time": sample_dates[bi_dict['end_idx']],
                 "value": bi_dict['end_price']
             })
 
@@ -389,7 +375,6 @@ async def lightweight_charts_demo(request: Request):
         # 调试：检查模板名称类型
         template_name = "lightweight_charts_demo.html"
 
-
         # 尝试直接渲染模板
         try:
             template = templates.env.get_template(template_name)
@@ -397,7 +382,8 @@ async def lightweight_charts_demo(request: Request):
                 request=request,
                 candle_data=json.dumps(candle_data, ensure_ascii=False),
                 bi_data=json.dumps(bi_line_data, ensure_ascii=False),
-                candle_count=len(candle_data)
+                candle_count=len(candle_data),
+                gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:

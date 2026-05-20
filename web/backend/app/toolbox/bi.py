@@ -59,8 +59,8 @@ class Bi:
             dict: 包含 start, end, direction, start_price, end_price 的字典
         """
         return {
-            "start": self.start_idx,
-            "end": self.end_idx,
+            "start_idx": self.start_idx,
+            "end_idx": self.end_idx,
             "direction": self.bi_type.value,
             "start_price": self.start_price,
             "end_price": self.end_price

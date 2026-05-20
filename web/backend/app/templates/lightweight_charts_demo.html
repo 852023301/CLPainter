@@ -100,9 +100,11 @@
     <script>        // 从后端传入的数据
         const candleData = {{ candle_data | safe }};
         const biData = {{ bi_data | safe }};
+        const gapsData = {{ gaps_data | safe }};
 
         console.log('收到的K线数据:', candleData.length);
         console.log('收到的笔数据:', biData.length);
+        console.log('收到的缺口数据:', gapsData.length);
 
         if (!candleData || !Array.isArray(candleData) || candleData.length === 0) {
             document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
@@ -198,6 +200,24 @@
             chartContainer.addEventListener('mouseleave', () => {
                 tooltip.style.display = 'none';
             });
+
+            // ========== 方法1：使用标记（Markers）显示缺口 ==========
+
+        function displayGapsWithMarkers(gaps) {
+            const markers = gaps.map(gap => ({
+                            time: gap.trade_date,
+                            position: gap.position,
+                            color: gap.color,
+                            shape: gap.shape,
+                            text: gap.text
+                        }));
+            candlestickSeries.setMarkers(markers);
+        }
+
+
+
+        displayGapsWithMarkers(gapsData);
+
         }
     </script>
 </body>

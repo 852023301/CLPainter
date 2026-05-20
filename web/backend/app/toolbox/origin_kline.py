@@ -64,7 +64,7 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
                 position='aboveBar',
                 color='#26a69a',
                 shape='arrowDown',
-                text=f'+{(ratio)}%'
+                text=f'-{(ratio)}%'
             ))
 
     return origin_klines, gaps_list
