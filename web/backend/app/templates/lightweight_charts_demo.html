@@ -205,14 +205,74 @@
                 volumeChart.applyOptions({ width: volumeContainer.clientWidth });
             });
 
-            // Tooltip 逻辑保持不变...
+            // ========== 跨图表十字光标同步 ==========
+            let isSyncingCrosshair = false;
+
+            // 主图表十字光标移动时同步到成交量图表
             chart.subscribeCrosshairMove((param) => {
+                if (isSyncingCrosshair) return;
+                isSyncingCrosshair = true;
+
+                if (param.time) {
+                    // 同步成交量图表的十字光标位置
+                    const volumeDataAtTime = volumeData.find(d => d.time === param.time);
+                    if (volumeDataAtTime) {
+                        volumeChart.setCrosshairPosition(
+                            volumeDataAtTime.value,
+                            param.time,
+                            volumeSeries
+                        );
+                    }
+                } else {
+                    volumeChart.clearCrosshairPosition();
+                }
+
+                // 更新 Tooltip
+                updateTooltip(param, candlestickSeries);
+
+                isSyncingCrosshair = false;
+
+            });
+
+            // 成交量图表十字光标移动时同步到主图表
+            volumeChart.subscribeCrosshairMove((param) => {
+                if (isSyncingCrosshair) return;
+                isSyncingCrosshair = true;
+
+                if (param.time) {
+                    // 同步主图表的十字光标位置
+                    const candleDataAtTime = candleData.find(d => d.time === param.time);
+                    if (candleDataAtTime) {
+                        chart.setCrosshairPosition(
+                            candleDataAtTime.close,
+                            param.time,
+                            candlestickSeries
+                        );
+                    }
+                } else {
+                    chart.clearCrosshairPosition();
+                }
+
+                // 更新 Tooltip（显示主图表数据）
+                const mainParam = {
+                    ...param,
+                    seriesData: new Map([
+                        [candlestickSeries, candleData.find(d => d.time === param.time)]
+                    ])
+                };
+                updateTooltip(mainParam, candlestickSeries);
+
+                isSyncingCrosshair = false;
+            });
+
+            // Tooltip 更新函数
+            function updateTooltip(param, series) {
                 if (param.point === undefined || !param.time) {
                     tooltip.style.display = 'none';
                     return;
                 }
 
-                const data = param.seriesData.get(candlestickSeries);
+                const data = param.seriesData.get(series);
                 if (!data) {
                     tooltip.style.display = 'none';
                     return;
@@ -226,7 +286,8 @@
                 const priceClass = isUp ? 'up' : 'down';
                 const arrow = isUp ? '↑' : '↓';
 
-                tooltip.innerHTML = `                    <div><span class="label">日期:</span><span class="value">${param.time}</span></div>
+                tooltip.innerHTML = `
+                    <div><span class="label">日期:</span><span class="value">${param.time}</span></div>
                     <div><span class="label">开盘:</span><span class="value ${priceClass}">${open}</span></div>
                     <div><span class="label">最高:</span><span class="value ${priceClass}">${high}</span></div>
                     <div><span class="label">最低:</span><span class="value ${priceClass}">${low}</span></div>
@@ -238,11 +299,8 @@
                 tooltip.style.left = x + 'px';
                 tooltip.style.top = y + 'px';
                 tooltip.style.display = 'block';
-            });
+            }
 
-            chartContainer.addEventListener('mouseleave', () => {
-                tooltip.style.display = 'none';
-            });
 
             // ========== 方法1：使用标记（Markers）显示缺口 ==========
 
