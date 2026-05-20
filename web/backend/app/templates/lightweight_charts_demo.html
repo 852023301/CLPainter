@@ -124,9 +124,29 @@
                 },
                 crosshair: {
                     mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        width: 1,
+                        color: '#758694',
+                        style: 2, // 虚线
+                    },
+                    horzLine: {
+                        width: 1,
+                        color: '#758694',
+                        style: 2, // 虚线
+                    },
                 },
                 timeScale: {
                     timeVisible: true,
+                    rightOffset: 12,
+                    barSpacing: 10,
+                    minBarSpacing: 0.5,
+                },
+                rightPriceScale: {
+                    visible: true,
+                    autoScale: true,
+                },
+                leftPriceScale: {
+                    visible: false,
                 },
             });
 
@@ -165,12 +185,33 @@
                     vertLines: { visible: false },
                     horzLines: { visible: false },
                 },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        width: 1,
+                        color: '#758694',
+                        style: 2, // 虚线
+                    },
+                    horzLine: {
+                        visible: false, // 隐藏水平线
+                    },
+                },
                 timeScale: {
                     visible: true,
                     timeVisible: true,
+                    rightOffset: 12, // 与主图表保持一致
+                    barSpacing: 10, // 与主图表保持一致
+                    minBarSpacing: 0.5, // 与主图表保持一致
                 },
                 rightPriceScale: {
-                    visible: false, // 隐藏右侧价格刻度
+                    visible: true, // 显示右侧价格刻度，保持与主图表一致
+                    autoScale: true,
+                },
+                leftPriceScale: {
+                    visible: false,
+                },
+                handleScroll: {
+                    vertTouchDrag: false, // 禁止垂直拖动
                 },
             });
 
@@ -185,13 +226,37 @@
 
             volumeSeries.setData(volumeData);
 
-            // 同步两个图表的时间轴
+            // ========== 时间轴和滚动同步 ==========
+            let isSyncingTimeRange = false;
+
+            // 同步两个图表的时间轴范围
             chart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+                if (isSyncingTimeRange) return;
+                isSyncingTimeRange = true;
                 volumeChart.timeScale().setVisibleRange(timeRange);
+                isSyncingTimeRange = false;
             });
 
             volumeChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+                if (isSyncingTimeRange) return;
+                isSyncingTimeRange = true;
                 chart.timeScale().setVisibleRange(timeRange);
+                isSyncingTimeRange = false;
+            });
+
+            // 同步滚动位置（确保完全对齐）
+            chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+                if (isSyncingTimeRange) return;
+                isSyncingTimeRange = true;
+                volumeChart.timeScale().setVisibleLogicalRange(logicalRange);
+                isSyncingTimeRange = false;
+            });
+
+            volumeChart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+                if (isSyncingTimeRange) return;
+                isSyncingTimeRange = true;
+                chart.timeScale().setVisibleLogicalRange(logicalRange);
+                isSyncingTimeRange = false;
             });
 
 
