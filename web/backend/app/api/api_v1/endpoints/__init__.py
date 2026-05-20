@@ -6,7 +6,8 @@ from typing import List
 from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.toolbox.bi import identify_bi_from_fenxing, Bi
 from CLPainter.web.backend.app.toolbox.fenxing import extract_fenxing_list, FenXing
-from CLPainter.web.backend.app.toolbox.merged_kline import merge_klines, find_top_bottom, MergedKLine
+from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
+from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 
 
 def load_raw_data() -> List[List]:
@@ -65,8 +66,12 @@ class _DataCache:
         # 加载原始数据
         self._raw_data = load_raw_data()
 
+
+        # 生成原始K线数据类
+        self._origin_kline_data = generate_origin_klines(self._raw_data)
+
         # 合并K线
-        merged_klines = merge_klines(self._raw_data)
+        merged_klines = generate_merge_klines(self._origin_kline_data)
         self._merged_klines = merged_klines
 
         # 查找顶底分型
@@ -78,7 +83,7 @@ class _DataCache:
         # 基于分型列表划分笔
         self._bi_list = identify_bi_from_fenxing(self._fenxing_list, merged_klines)
 
-        # 生成各种格式的数据
+        # 生成高开低收都为merged_low或merged_high合并后的数据（主要用于指标显示）
         self._merge_kline_data = [
             [
                 data.merged_low if data.close > data.open else data.merged_high,
@@ -86,11 +91,6 @@ class _DataCache:
                 data.merged_low,
                 data.merged_high
             ]
-            for data in merged_klines
-        ]
-
-        self._origin_kline_data = [
-            [data.open, data.close, data.low, data.high]
             for data in merged_klines
         ]
 
@@ -112,7 +112,7 @@ class _DataCache:
         return self._trade_dates
 
     @property
-    def origin_kline_data(self) -> List[List[float]]:
+    def origin_kline_data(self) -> List[OriginKLine]:
         self.ensure_loaded()
         return self._origin_kline_data
 

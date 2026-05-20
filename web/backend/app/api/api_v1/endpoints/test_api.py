@@ -360,10 +360,10 @@ async def lightweight_charts_demo(request: Request):
         for i, (date, kline) in enumerate(zip(sample_dates, sample_data)):
             candle = {
                 "time": date,
-                "open": float(kline[0]),
-                "high": float(kline[3]),
-                "low": float(kline[2]),
-                "close": float(kline[1])
+                "open": float(kline.open),
+                "high": float(kline.high),
+                "low": float(kline.low),
+                "close": float(kline.close)
             }
             candle_data.append(candle)
 

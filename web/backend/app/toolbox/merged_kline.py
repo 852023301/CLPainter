@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List
-
+from .origin_kline import OriginKLine
 
 @dataclass
 class MergedKLine:
@@ -13,6 +13,9 @@ class MergedKLine:
     high: float
     volume: float  # 交易量单位为股
 
+    # 是否有缺口：True=有缺口，False=无缺口
+    has_gap: bool = False
+
     # K线合并状态
     _is_contained: int = field(default=0, repr=False)  # 是否被合并：1=合并，0=未合并
     merged_length: int = 1  # 连续合并的K线数量
@@ -23,8 +26,6 @@ class MergedKLine:
     # 分型标记：1=顶分型，-1=底分型，0=无分型
     is_top_bottom: int = 0
 
-    # 是否有缺口：True=有缺口，False=无缺口
-    has_gap: bool = False
 
     def __post_init__(self):
         # 初始化合并后的高低点为当前K线的高低点
@@ -43,12 +44,12 @@ class MergedKLine:
 
 
 
-def merge_klines(origin_klines: List[List]) -> List[MergedKLine]:
+def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]:
     """
     K线合并处理（缠论包含关系处理）
 
     Args:
-        origin_klines: 原始K线数据列表，每个元素为 [date, open, close, low, high, volume]
+        origin_klines: 原始K线数据列表类，每个元素为 [date, open, close, low, high, volume]
 
     Returns:
         合并后的K线列表
@@ -67,9 +68,6 @@ def merge_klines(origin_klines: List[List]) -> List[MergedKLine]:
             continue
 
         last_kline = all_klines[-1]
-
-        if merged_kline.low > last_kline.high or merged_kline.high < last_kline.low:
-            merged_kline.has_gap = True
 
         # 判断趋势方向
         if last_kline.merged_high < merged_kline.high and last_kline.merged_low < merged_kline.low:
