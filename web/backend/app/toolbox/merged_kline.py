@@ -23,6 +23,9 @@ class MergedKLine:
     # 分型标记：1=顶分型，-1=底分型，0=无分型
     is_top_bottom: int = 0
 
+    # 是否有缺口：True=有缺口，False=无缺口
+    has_gap: bool = False
+
     def __post_init__(self):
         # 初始化合并后的高低点为当前K线的高低点
         self.merged_high = self.high
@@ -64,6 +67,9 @@ def merge_klines(origin_klines: List[List]) -> List[MergedKLine]:
             continue
 
         last_kline = all_klines[-1]
+
+        if merged_kline.low > last_kline.high or merged_kline.high < last_kline.low:
+            merged_kline.has_gap = True
 
         # 判断趋势方向
         if last_kline.merged_high < merged_kline.high and last_kline.merged_low < merged_kline.low:

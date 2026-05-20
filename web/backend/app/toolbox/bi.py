@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
+from typing import List,Tuple
 
 from .fenxing import FenXing
 from .merged_kline import MergedKLine
@@ -23,9 +23,12 @@ class Bi:
     end_price: float  # 结束价格（顶/底分型的极值）
     bi_type: BiDirectionType  # 笔的方向
 
-    # 笔包含的 K 线数量
-    origin_kline_count: int  # 笔包含的原始 K 线数量（一端分型最高点到另一端最低点之间）
-    merged_kline_count: int  # 笔包含的合并 K 线数量（一端分型最高点到另一端最低点之间）
+
+    real_origin_kline_count: int  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
+    real_merged_kline_count: int  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
+    
+    # 包含缺口数量
+    has_gap_count: int = 0
 
     @property
     def is_up(self) -> bool:
@@ -34,6 +37,19 @@ class Bi:
     @property
     def is_down(self) -> bool:
         return self.bi_type == BiDirectionType.DOWN
+
+    @property
+    def origin_kline_count(self):
+        """笔包含的原始 K 线数量（一端分型最高点到另一端最低点之间）+缺口数量"""
+        return self.real_origin_kline_count + self.has_gap_count
+    
+    
+    @property
+    def merged_kline_count(self):
+        """笔包含的合并 K 线数量（一端分型最高点到另一端最低点之间）+缺口数量"""
+        return self.real_merged_kline_count+ self.has_gap_count
+        
+    
 
     def to_dict(self) -> dict:
         """
@@ -98,6 +114,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             start_time = all_klines[start_idx].trade_date
             end_time = all_klines[end_idx].trade_date
 
+            bi_real_merged_kline_count, bi_has_gap_count = calculate_bi_real_merged_kline_count_and_gap_count(last_fx.get_mid_idx(), fenxing.get_mid_idx(),
+                                            all_klines)
             # 创建 Bi 对象
             bi = Bi(
                 start_idx=start_idx,
@@ -107,9 +125,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                 start_price=last_fx.low_price if direction == "up" else last_fx.high_price,
                 end_price=fenxing.high_price if direction == "up" else fenxing.low_price,
                 bi_type=bi_type,
-                origin_kline_count=end_idx - start_idx + 1,
-                merged_kline_count=calculate_bi_merged_kline_count(last_fx.get_mid_idx(), fenxing.get_mid_idx(),
-                                                                   all_klines)
+                real_origin_kline_count=end_idx - start_idx + 1,
+                real_merged_kline_count=bi_real_merged_kline_count,
+                has_gap_count=bi_has_gap_count
             )
             bi_list.append(bi)
             last_fractal = (i, fenxing)
@@ -117,26 +135,29 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     return bi_list
 
 
-def calculate_bi_merged_kline_count(start_kline_idx: int, end_kline_idx: int, all_klines: List[MergedKLine]) -> int:
+def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int, all_klines: List[MergedKLine]) -> Tuple[int,int]:
     """
-    计算一笔中的合并K线数量
+        计算一笔中的真实合并K线数量和缺口数量
 
-    Args:
-        bi_list: Bi 列表
-        all_klines: 完整的合并K线列表
-
-    Returns:
-        List[Bi]: 计算了合并K线数量的 Bi 列表
     """
     if start_kline_idx >= end_kline_idx:
-        raise ValueError("起始索引不能大于结束索引")
-    bi_merged_kline_count = 1
+        raise ValueError("起始索引不能大于等于结束索引")
+    bi_real_merged_kline_count = 1
+    bi_has_gap_count = 0
     last_idx = start_kline_idx
     last_kline = all_klines[start_kline_idx]
     while (last_idx := last_idx + last_kline.merged_length) < end_kline_idx:
         last_kline = all_klines[last_idx]
-        bi_merged_kline_count += 1
+        bi_real_merged_kline_count += 1
+        # 判断是否有缺口
+        if last_kline.has_gap:
+            bi_has_gap_count += 1
 
-    bi_merged_kline_count += 1
+    bi_real_merged_kline_count += 1
+    # 判断是否有缺口
+    last_kline = all_klines[last_idx]
+    if last_kline.has_gap:
+        bi_has_gap_count += 1
 
-    return bi_merged_kline_count
+    return bi_real_merged_kline_count, bi_has_gap_count
+
