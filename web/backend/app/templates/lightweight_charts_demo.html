@@ -82,6 +82,21 @@
         .ohlc-tooltip .down {
             color: #26a69a;
         }
+
+        .volume-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -90,7 +105,9 @@
         <div id="chart">
             <div class="ohlc-tooltip" id="ohlcTooltip"></div>
         </div>
-        <div id="volume-chart" class="volume-container"></div>
+        <div id="volume-chart" class="volume-container">
+            <div class="volume-label" id="volumeLabel">成交量: --</div>
+        </div>
     </div>
 
     <script>        // 从后端传入的数据
@@ -110,6 +127,7 @@
             const chartContainer = document.getElementById('chart');
             const volumeContainer = document.getElementById('volume-chart');
             const tooltip = document.getElementById('ohlcTooltip');
+            const volumeLabel = document.getElementById('volumeLabel');
 
             const chart = LightweightCharts.createChart(chartContainer, {
                 width: chartContainer.clientWidth,
@@ -287,9 +305,12 @@
                             param.time,
                             volumeSeries
                         );
+                        // 更新成交量标签
+                        updateVolumeLabel(volumeDataAtTime.value);
                     }
                 } else {
                     volumeChart.clearCrosshairPosition();
+                    volumeLabel.style.display = 'none';
                 }
 
                 // 更新 Tooltip
@@ -314,8 +335,15 @@
                             candlestickSeries
                         );
                     }
+                    
+                    // 更新成交量标签
+                    const volumeDataAtTime = volumeData.find(d => d.time === param.time);
+                    if (volumeDataAtTime) {
+                        updateVolumeLabel(volumeDataAtTime.value);
+                    }
                 } else {
                     chart.clearCrosshairPosition();
+                    volumeLabel.style.display = 'none';
                 }
 
                 // 更新 Tooltip（显示主图表数据）
@@ -364,6 +392,22 @@
                 tooltip.style.left = x + 'px';
                 tooltip.style.top = y + 'px';
                 tooltip.style.display = 'block';
+            }
+
+            // 成交量标签更新函数
+            function updateVolumeLabel(volume) {
+                // 格式化成交量数值
+                let formattedVolume;
+                if (volume >= 100000000) {
+                    formattedVolume = (volume / 100000000).toFixed(2) + '亿';
+                } else if (volume >= 10000) {
+                    formattedVolume = (volume / 10000).toFixed(2) + '万';
+                } else {
+                    formattedVolume = volume.toLocaleString();
+                }
+                
+                volumeLabel.textContent = `成交量: ${formattedVolume}`;
+                volumeLabel.style.display = 'block';
             }
 
 
