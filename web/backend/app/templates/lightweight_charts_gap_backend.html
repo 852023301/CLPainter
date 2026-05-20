@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lightweight Charts - 后端缺口数据显示</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        #chart {
+            width: 100%;
+            height: 600px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .info h3 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .gap-item {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .gap-up {
+            background-color: rgba(38, 166, 154, 0.1);
+            border-left: 3px solid #26a69a;
+        }
+
+        .gap-down {
+            background-color: rgba(239, 83, 80, 0.1);
+            border-left: 3px solid #ef5350;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Lightweight Charts - 显示后端计算的缺口</h1>
+        <div id="chart"></div>
+
+        <div class="info">
+            <h3>缺口列表（来自后端数据）</h3>
+            <div id="gapList"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========== 模拟后端返回的数据 ==========
+        
+        // K线数据
+        const candleData = [
+            { time: '2024-01-02', open: 100, high: 105, low: 98, close: 103 },
+            { time: '2024-01-03', open: 108, high: 112, low: 107, close: 110 }, // 向上缺口
+            { time: '2024-01-04', open: 109, high: 111, low: 106, close: 107 },
+            { time: '2024-01-05', open: 105, high: 108, low: 103, close: 104 }, // 向下缺口
+            { time: '2024-01-08', open: 103, high: 106, low: 101, close: 105 },
+        ];
+
+        // 后端计算的缺口数据（实际使用时从API获取）
+        const gapsFromBackend = [
+            {
+                index: 1,                    // 缺口在K线数组中的索引
+                time: '2024-01-03',         // 缺口发生的时间
+                type: 'up',                  // 类型：'up' 或 'down'
+                size: 2.91,                  // 缺口大小（百分比）
+                top: 107,                    // 缺口上边界价格
+                bottom: 105,                 // 缺口下边界价格
+                prev_close: 103,             // 前一根K线收盘价
+                curr_open: 108               // 当前K线开盘价
+            },
+            {
+                index: 3,
+                time: '2024-01-05',
+                type: 'down',
+                size: 1.89,
+                top: 106,
+                bottom: 105,
+                prev_close: 107,
+                curr_open: 105
+            }
+        ];
+
+        // ========== 初始化图表 ==========
+        
+        const chartContainer = document.getElementById('chart');
+        
+        const chart = LightweightCharts.createChart(chartContainer, {
+            width: chartContainer.clientWidth,
+            height: 600,
+            layout: {
+                background: { color: '#ffffff' },
+                textColor: '#333',
+            },
+            grid: {
+                vertLines: { color: '#e0e0e0' },
+                horzLines: { color: '#e0e0e0' },
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            timeScale: {
+                timeVisible: true,
+            },
+        });
+
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#ef5350',
+            downColor: '#26a69a',
+            borderVisible: false,
+            wickUpColor: '#ef5350',
+            wickDownColor: '#26a69a',
+        });
+        candlestickSeries.setData(candleData);
+
+        chart.timeScale().fitContent();
+
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: chartContainer.clientWidth });
+        });
+
+        // ========== 方法1：使用标记（Markers）显示缺口 ==========
+        
+        function displayGapsWithMarkers(gaps) {
+            const markers = gaps.map(gap => ({
+                time: gap.time,
+                position: gap.type === 'up' ? 'belowBar' : 'aboveBar',
+                color: gap.type === 'up' ? '#26a69a' : '#ef5350',
+                shape: gap.type === 'up' ? 'arrowUp' : 'arrowDown',
+                text: `${gap.type === 'up' ? '+' : '-'}${gap.size}%`
+            }));
+            
+            candlestickSeries.setMarkers(markers);
+        }
+
+
+
+        displayGapsWithMarkers(gapsFromBackend);
+        
+
+    </script>
+</body>
+</html>

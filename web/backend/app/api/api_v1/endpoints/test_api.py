@@ -1,8 +1,9 @@
 import json
 import logging
+from typing import List, Dict, Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
@@ -219,6 +220,21 @@ async def Kline_datazoom_inside(request: Request):
         "index.html",
         {"request": request, "chart": c.render_embed()}
     )
+
+
+# ========== Lightweight Charts 缺口显示相关API ==========
+
+@router.get("/lightweight-charts-gap-demo", response_class=HTMLResponse)
+async def lightweight_charts_gap_demo(request: Request):
+    """
+    Lightweight Charts 缺口显示演示页面
+    """
+    template = templates.env.get_template("lightweight_charts_gap_backend.html")
+    html_content = template.render(
+        name="lightweight_charts_gap_backend.html",
+        context={"request": request}
+    )
+    return HTMLResponse(content=html_content)
 
 
 @router.get("/Kline_datazoom_slider_position", response_class=HTMLResponse)
