@@ -169,5 +169,5 @@ origin_kline_data = _data_cache.origin_kline_data
 merge_kline_data = _data_cache.merge_kline_data  # 高开低收用merge_high和merge_low表示
 bi_data_list = _data_cache.bi_list
 gaps_list = _data_cache.gaps_list
-print(fenxing_data_list)
-print(trade_date_list.index('2014-08-26'))
+# print(fenxing_data_list)
+# print(trade_date_list.index('2014-08-26'))

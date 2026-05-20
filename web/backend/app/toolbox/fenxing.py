@@ -103,23 +103,23 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         # 设置分型开始索引
         fenxing.start_idx = fenxing.get_left_idx()
 
-        def get_high_price_idx(mid_klines):
-            HHV = -1
-            loc = None
-            for idx, kline in enumerate(mid_klines):
-                if kline.merged_high > HHV:
-                    HHV = kline.merged_high
-                    loc = idx
-            return loc
-
-        def get_low_price_idx(mid_klines):
-            LLV = np.inf
-            loc = None
-            for idx, kline in enumerate(mid_klines):
-                if kline.merged_low < LLV:
-                    LLV = kline.merged_low
-                    loc = idx
-            return loc
+        # def get_high_price_idx(mid_klines):
+        #     HHV = -1
+        #     loc = None
+        #     for idx, kline in enumerate(mid_klines):
+        #         if kline.merged_high > HHV:
+        #             HHV = kline.merged_high
+        #             loc = idx
+        #     return loc
+        #
+        # def get_low_price_idx(mid_klines):
+        #     LLV = np.inf
+        #     loc = None
+        #     for idx, kline in enumerate(mid_klines):
+        #         if kline.merged_low < LLV:
+        #             LLV = kline.merged_low
+        #             loc = idx
+        #     return loc
 
         # 确定分型的最高价和最低价及其索引
         # 顶分型：取中间K线的最高价
