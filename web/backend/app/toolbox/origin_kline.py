@@ -1,6 +1,8 @@
 import dataclasses
 from dataclasses import dataclass, field, asdict, fields
-from typing import List
+from typing import List, Tuple
+from .gap import Gap, GapDirectionType
+
 
 @dataclass
 class OriginKLine:
@@ -23,7 +25,7 @@ class OriginKLine:
         return (getattr(self, f.name) for f in fields(self))
 
 
-def generate_origin_klines(raw_klines: List[List]) -> List[OriginKLine]:
+def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], List[Gap]]:
     """
         原始K线处理（
 
@@ -34,19 +36,35 @@ def generate_origin_klines(raw_klines: List[List]) -> List[OriginKLine]:
             处理后的K线列表
         """
 
-
     origin_klines = [OriginKLine(*kl) for kl in raw_klines]
-    gaps = []
+    gaps_list = []
 
     for idx, kl in enumerate(origin_klines):
         if idx < 1:
             continue
-        last_origin_kline = origin_klines[idx-1]
+        last_origin_kline = origin_klines[idx - 1]
         if kl.low > last_origin_kline.high:
             kl.has_gap = True
+            ratio = ((kl.low - last_origin_kline.high) / last_origin_kline.high * 100).__round__(2)
+            gaps_list.append(Gap(
+                trade_date=kl.trade_date,
+                type=GapDirectionType.UP,
+                position='belowBar',
+                color='#ef5350',
+                shape='arrowUp',
+                text=f'+{(ratio)}%'
+            ))
 
         if kl.high < last_origin_kline.low:
             kl.has_gap = True
+            ratio = ((last_origin_kline.low - kl.high) / last_origin_kline.low * 100).__round__(2)
+            gaps_list.append(Gap(
+                trade_date=kl.trade_date,
+                type=GapDirectionType.DOWN,
+                position='aboveBar',
+                color='#26a69a',
+                shape='arrowDown',
+                text=f'+{(ratio)}%'
+            ))
 
-
-    return origin_klines
+    return origin_klines, gaps_list

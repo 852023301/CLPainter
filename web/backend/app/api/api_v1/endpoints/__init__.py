@@ -8,6 +8,7 @@ from CLPainter.web.backend.app.toolbox.bi import identify_bi_from_fenxing, Bi
 from CLPainter.web.backend.app.toolbox.fenxing import extract_fenxing_list, FenXing
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
+from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
 def load_raw_data() -> List[List]:
@@ -50,10 +51,11 @@ class _DataCache:
             return
 
         self._raw_data = None
+        self._origin_kline_data = None
+        self._gaps_list = None
         self._merged_klines = None
         self._fenxing_list = None
         self._trade_dates = None
-        self._origin_kline_data = None
         self._merge_kline_data = None
         self._bi_list = None
         self._initialized = True
@@ -68,7 +70,7 @@ class _DataCache:
 
 
         # 生成原始K线数据类
-        self._origin_kline_data = generate_origin_klines(self._raw_data)
+        self._origin_kline_data, self._gaps_list = generate_origin_klines(self._raw_data)
 
         # 合并K线
         merged_klines = generate_merge_klines(self._origin_kline_data)
@@ -102,6 +104,16 @@ class _DataCache:
         return self._raw_data
 
     @property
+    def origin_kline_data(self) -> List[OriginKLine]:
+        self.ensure_loaded()
+        return self._origin_kline_data
+
+    @property
+    def gaps_list(self) -> List[Gap]:
+        self.ensure_loaded()
+        return self._gaps_list
+
+    @property
     def merged_klines(self) -> List[MergedKLine]:
         self.ensure_loaded()
         return self._merged_klines
@@ -110,11 +122,6 @@ class _DataCache:
     def trade_dates(self) -> List[str]:
         self.ensure_loaded()
         return self._trade_dates
-
-    @property
-    def origin_kline_data(self) -> List[OriginKLine]:
-        self.ensure_loaded()
-        return self._origin_kline_data
 
     @property
     def merge_kline_data(self) -> List[List[float]]:
@@ -161,3 +168,4 @@ trade_date_list = _data_cache.trade_dates
 origin_kline_data = _data_cache.origin_kline_data
 merge_kline_data = _data_cache.merge_kline_data  # 高开低收用merge_high和merge_low表示
 bi_data_list = _data_cache.bi_list
+gaps_list = _data_cache.gaps_list
