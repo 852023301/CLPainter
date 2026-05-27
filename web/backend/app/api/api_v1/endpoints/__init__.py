@@ -23,7 +23,7 @@ def load_raw_data() -> List[List]:
     if not app_dir:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
-    data_file = Path(app_dir) / "data_set/data_set.pkl"
+    data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
