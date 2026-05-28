@@ -29,6 +29,8 @@ class FenXing:
     high_idx: int = field(init=False)
     # 分型最低价索引
     low_idx: int = field(init=False)
+    # 极值的交易日
+    trade_date: str = field(init=False)
 
     def get_left_idx(self) -> int:
         """获取分型中间K线的索引"""
@@ -129,14 +131,17 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.high_idx = mid_kline.high_idx
             # 底价为三根K线中的最低价
             fenxing.low_price = mid_kline.merged_low
-
             fenxing.low_idx = mid_kline.low_idx
+
+            fenxing.trade_date = all_klines[fenxing.high_idx].trade_date
         else:  # 底分型
             fenxing.low_price = mid_kline.merged_low
             fenxing.low_idx = mid_kline.low_idx
             # 高价为三根K线中的最高价
             fenxing.high_price = mid_kline.merged_high
             fenxing.high_idx = mid_kline.high_idx
+
+            fenxing.trade_date = all_klines[fenxing.low_idx].trade_date
 
         fenxing_list.append(fenxing)
     # print(fenxing_list)

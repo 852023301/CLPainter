@@ -26,8 +26,13 @@ class Bi:
     real_origin_kline_count: int  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
     real_merged_kline_count: int  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
 
+    # 左右分型
+    left_fx : FenXing
+    right_fx : FenXing
+
     # 包含缺口数量
-    has_gap_count: int = 0
+    has_gap_count: int
+
 
     @property
     def is_up(self) -> bool:
@@ -63,41 +68,45 @@ class Bi:
         }
 
     @classmethod
-    def from_fenxing(self, left_fenxing: FenXing, right_fenxing: FenXing, all_klines: List[MergedKLine]):
+    def from_fenxing(self, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine]):
         """
         从两个分型对象中创建一个笔对象
 
         Args:
-            left_fenxing: 左侧分型对象
-            right_fenxing: 右侧分型对象
+            left_fx: 左侧分型对象
+            right_fx: 右侧分型对象
             all_klines: 合并后的K线列表
 
         Returns:
             Bi: 笔对象
         """
-        direction = "up" if right_fenxing.is_top_bottom == 1 else "down"
+        if left_fx.is_top_bottom == right_fx.is_top_bottom:
+            raise ValueError(f"分型方向一致: {left_fx.is_top_bottom=}")
+        direction = "up" if right_fx.is_top_bottom == 1 else "down"
         bi_type = BiDirectionType.UP if direction == "up" else BiDirectionType.DOWN
 
         # 确定起始和结束索引
-        start_idx = left_fenxing.low_idx if direction == "up" else left_fenxing.high_idx
-        end_idx = right_fenxing.high_idx if direction == "up" else right_fenxing.low_idx
+        start_idx = left_fx.low_idx if direction == "up" else left_fx.high_idx
+        end_idx = right_fx.high_idx if direction == "up" else right_fx.low_idx
         if end_idx <= start_idx:
-            raise ValueError("结束索引不能小于起始索引")
+            raise ValueError(f"结束索引不能小于起始索引:{end_idx=}<={start_idx=}")
 
         bi_real_merged_kline_count, bi_has_gap_count = calculate_bi_real_merged_kline_count_and_gap_count(
-            left_fenxing.get_mid_idx(), right_fenxing.get_mid_idx(),
+            left_fx.get_mid_idx(), right_fx.get_mid_idx(),
             all_klines)
         bi = Bi(
             start_idx=start_idx,
             end_idx=end_idx,
-            start_time=all_klines[start_idx].trade_date,
-            end_time=all_klines[end_idx].trade_date,
-            start_price=left_fenxing.low_price if direction == "up" else left_fenxing.high_price,
-            end_price=right_fenxing.high_price if direction == "up" else right_fenxing.low_price,
+            start_time=left_fx.trade_date,
+            end_time=right_fx.trade_date,
+            start_price=left_fx.low_price if direction == "up" else left_fx.high_price,
+            end_price=right_fx.high_price if direction == "up" else right_fx.low_price,
             bi_type=bi_type,
             real_origin_kline_count=end_idx - start_idx + 1,
             real_merged_kline_count=bi_real_merged_kline_count,
-            has_gap_count=bi_has_gap_count
+            left_fx=left_fx,
+            right_fx=right_fx,
+            has_gap_count=bi_has_gap_count,
         )
 
         return bi
@@ -110,7 +119,18 @@ class Bi:
             bool: 笔是否结束
         """
 
+
         return True
+
+    def has_different_Fenxing(self):
+        """
+        判断笔是否包含不同的分型
+
+        Returns:
+            bool: 笔是否包含不同的分型
+        """
+        if self.left_fx.is_top_bottom == self.right_fx.is_top_bottom:
+            raise ValueError(f"分型方向一致: {self.left_fx.is_top_bottom=}")
 
 
 def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine] = None) -> List[Bi]:
