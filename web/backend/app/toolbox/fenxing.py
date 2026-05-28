@@ -32,11 +32,13 @@ class FenXing:
     # 极值的交易日
     trade_date: str = field(init=False)
 
-    def get_left_idx(self) -> int:
-        """获取分型中间K线的索引"""
+    @property
+    def left_idx(self) -> int:
+        """获取分型左边K线的索引"""
         return self.idx_list[0]
 
-    def get_mid_idx(self) -> int:
+    @property
+    def mid_idx(self) -> int:
         """获取分型中间K线的索引"""
         return self.idx_list[1]
 
@@ -103,7 +105,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         ]
 
         # 设置分型开始索引
-        fenxing.start_idx = fenxing.get_left_idx()
+        fenxing.start_idx = fenxing.left_idx
 
         # def get_high_price_idx(mid_klines):
         #     HHV = -1

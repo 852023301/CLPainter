@@ -97,8 +97,8 @@ class Bi:
         if left_fx.is_top_bottom == right_fx.is_top_bottom:
             raise ValueError(f"分型方向一致: {left_fx.is_top_bottom=}")
 
-        bi_real_merged_kline_count, bi_has_gap_count = calculate_bi_real_merged_kline_count_and_gap_count(
-            left_fx.get_mid_idx(), right_fx.get_mid_idx(),
+        bi_real_merged_kline_count, bi_has_gap_count = Bi.calculate_bi_real_merged_kline_count_and_gap_count(
+            left_fx.mid_idx, right_fx.mid_idx,
             all_klines)
 
         bi = Bi(
@@ -111,17 +111,25 @@ class Bi:
 
         return bi
 
-    def is_finished(self):
+    def is_finished(self) -> bool:
         """
-        判断笔是否结束
+        判断笔是否可以完成
 
         Returns:
-            bool: 笔是否结束
+            bool: 笔是否可以完成
         """
+        if not self.has_different_Fenxing():
+            return False
+
+        if not self.is_leaving_interval():
+            return False
+
+        if not self.is_kline_count_enough():
+            return False
 
         return True
 
-    def has_different_Fenxing(self):
+    def has_different_Fenxing(self) -> bool:
         """
         判断笔是否包含不同的分型
 
@@ -130,6 +138,101 @@ class Bi:
         """
         if self.left_fx.is_top_bottom == self.right_fx.is_top_bottom:
             raise ValueError(f"分型方向一致: {self.left_fx.is_top_bottom=}")
+        return True
+
+    def is_leaving_interval(self) -> bool:
+        """
+        判断底分型最低点低于顶分型中间K线的最低点+顶分型最高点高于底分型中间K线的最高点
+
+        Returns:
+            bool: 笔是否满足底分型和顶分型拉开距离
+        """
+        if self.bi_type == BiDirectionType.UP:
+            return self.left_fx.low_price < self.right_fx.low_price and self.left_fx.high_price < self.right_fx.high_price
+        else:
+            return self.left_fx.high_price > self.right_fx.high_price and self.left_fx.low_price > self.right_fx.low_price
+
+    def is_kline_count_enough(self) -> bool:
+        """
+        一笔中有效K线至少四根，并且顶分型最高点到底分型最低点最低点之间共有五根原始K线，跳空一次算一根
+
+
+        Returns:
+            bool: 笔是否包含指定数量的K线
+
+        """
+        return self.origin_kline_count >= 5 and self.merged_kline_count >= 4
+
+    @staticmethod
+    def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int,
+                                                           all_klines: List[MergedKLine]) -> Tuple[
+        int, int]:
+        """
+            计算一笔中的真实合并K线数量和缺口数量
+
+        """
+        if start_kline_idx >= end_kline_idx:
+            raise ValueError("起始索引不能大于等于结束索引")
+        bi_real_merged_kline_count = 1
+        bi_has_gap_count = 0
+        last_idx = start_kline_idx
+        last_kline = all_klines[start_kline_idx]
+
+        while (last_idx := last_idx + last_kline.merged_length) < end_kline_idx:
+            last_kline = all_klines[last_idx]
+            bi_real_merged_kline_count += 1
+            # 判断是否有缺口
+            if last_kline.has_gap:
+                bi_has_gap_count += 1
+
+        bi_real_merged_kline_count += 1
+        # 判断是否有缺口
+        last_kline = all_klines[last_idx]
+        if last_kline.has_gap:
+            bi_has_gap_count += 1
+
+        return bi_real_merged_kline_count, bi_has_gap_count
+
+    @staticmethod
+    def get_highest_lowest_price(start_kline_idx: int, end_kline_idx: int,
+                                 all_klines: List[MergedKLine]) -> Tuple[float, float]:
+        """
+        获取笔中的最高价和最低价
+
+        Args:
+            left_fx: 左侧分型对象
+            right_fx: 右侧分型对象
+
+        Returns:
+            Tuple[float, float]: 笔中的最高价和最低价
+        """
+        if start_kline_idx >= end_kline_idx:
+            raise ValueError("起始索引不能大于等于结束索引")
+        last_idx = start_kline_idx
+        last_kline = all_klines[start_kline_idx]
+
+        highest_price = last_kline.high_price
+        lowest_price = last_kline.low_price
+
+        while (last_idx := last_idx + last_kline.merged_length) < end_kline_idx:
+            last_kline = all_klines[last_idx]
+
+            # 收集笔中的最高价和最低价
+            if last_kline.merged_high > highest_price:
+                highest_price = last_kline.merged_high
+            if last_kline.merged_low < lowest_price:
+                lowest_price = last_kline.merged_low
+
+        # 判断是否有缺口
+        last_kline = all_klines[last_idx]
+
+        # 收集笔中的最高价和最低价
+        if last_kline.merged_high > highest_price:
+            highest_price = last_kline.merged_high
+        if last_kline.merged_low < lowest_price:
+            lowest_price = last_kline.merged_low
+
+        return highest_price, lowest_price
 
 
 def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine] = None) -> List[Bi]:
@@ -175,32 +278,14 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             bi_list.append(bi)
             last_fractal = (i, fenxing)
     # print(bi_list)
+
+
+    # TODO：极值检查
+    # for bi in bi_list:
+    #     highest_price, lowest_price = bi.get_highest_lowest_price(bi.start_idx, bi.end_idx, all_klines)
+    #     if highest_price > max(bi.left_fx.high_price, bi.right_fx.high_price):
+    #         raise ValueError(f"顶分型最高价不是一笔中的最高价: {highest_price=},{bi.left_fx.trade_date=}")
+    #     if lowest_price < min(bi.left_fx.low_price, bi.right_fx.low_price):
+    #         raise ValueError(f"底分型最低价不是一笔中的最低价: {lowest_price=},{bi.left_fx.trade_date=}")
+
     return bi_list
-
-
-def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int,
-                                                       all_klines: List[MergedKLine]) -> Tuple[int, int]:
-    """
-        计算一笔中的真实合并K线数量和缺口数量
-
-    """
-    if start_kline_idx >= end_kline_idx:
-        raise ValueError("起始索引不能大于等于结束索引")
-    bi_real_merged_kline_count = 1
-    bi_has_gap_count = 0
-    last_idx = start_kline_idx
-    last_kline = all_klines[start_kline_idx]
-    while (last_idx := last_idx + last_kline.merged_length) < end_kline_idx:
-        last_kline = all_klines[last_idx]
-        bi_real_merged_kline_count += 1
-        # 判断是否有缺口
-        if last_kline.has_gap:
-            bi_has_gap_count += 1
-
-    bi_real_merged_kline_count += 1
-    # 判断是否有缺口
-    last_kline = all_klines[last_idx]
-    if last_kline.has_gap:
-        bi_has_gap_count += 1
-
-    return bi_real_merged_kline_count, bi_has_gap_count
