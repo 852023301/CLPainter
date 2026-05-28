@@ -128,7 +128,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.high_price = mid_kline.merged_high
             fenxing.high_idx = mid_kline.high_idx
             # 底价为三根K线中的最低价
-            fenxing.low_price =  mid_kline.merged_low
+            fenxing.low_price = mid_kline.merged_low
 
             fenxing.low_idx = mid_kline.low_idx
         else:  # 底分型
@@ -136,7 +136,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.low_idx = mid_kline.low_idx
             # 高价为三根K线中的最高价
             fenxing.high_price = mid_kline.merged_high
-            fenxing.high_idx =  mid_kline.high_idx
+            fenxing.high_idx = mid_kline.high_idx
 
         fenxing_list.append(fenxing)
     # print(fenxing_list)

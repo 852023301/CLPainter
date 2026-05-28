@@ -20,8 +20,6 @@ router = APIRouter()
 templates = Jinja2Templates(directory=f"{settings.APP_DIR}/templates")
 
 
-
-
 @router.get("/Kline_base_merged", response_class=HTMLResponse)
 async def Kline_base_merged(request: Request):
     kline_origin = (
@@ -71,11 +69,9 @@ async def Kline_base_merged(request: Request):
         )
     )
 
-
-
     mark_points = []
     for idx, kl in enumerate(merge_data_list):
-        kl : MergedKLine
+        kl: MergedKLine
 
         if kl.is_top_bottom == 0:
             continue
@@ -92,17 +88,17 @@ async def Kline_base_merged(request: Request):
             color = "#ff0000"
 
         mp = opts.MarkPointItem(
-                    coord=[kl.trade_date, y],  # 第i天的收盘价坐标
-                    name=f"收盘价 {idx+1}",
-                    symbol_size=5,
-                    itemstyle_opts=opts.ItemStyleOpts(color="#0000FF"), # 图钉颜色
-                    label_opts=opts.LabelOpts(
-                        position=position,  # 标签在标记点上方
-                        color=color,
-                        font_size=12,
-                        formatter=f"{text}"  # 显示收盘价数值
-                    )
-                )
+            coord=[kl.trade_date, y],  # 第i天的收盘价坐标
+            name=f"收盘价 {idx + 1}",
+            symbol_size=5,
+            itemstyle_opts=opts.ItemStyleOpts(color="#0000FF"),  # 图钉颜色
+            label_opts=opts.LabelOpts(
+                position=position,  # 标签在标记点上方
+                color=color,
+                font_size=12,
+                formatter=f"{text}"  # 显示收盘价数值
+            )
+        )
         mark_points.append(mp)
 
     kline_merged = (
@@ -110,7 +106,7 @@ async def Kline_base_merged(request: Request):
         .add_xaxis(trade_date_list)
         .add_yaxis("Merged_Price", merge_kline_data,
                    xaxis_index=1,
-                   markpoint_opts = opts.MarkPointOpts(data=mark_points)
+                   markpoint_opts=opts.MarkPointOpts(data=mark_points)
                    )
         .set_global_opts(
             xaxis_opts=opts.AxisOpts(is_scale=True,
@@ -132,7 +128,7 @@ async def Kline_base_merged(request: Request):
         .add_xaxis(xaxis_data=trade_date_list)
         .add_yaxis(
             series_name="MA5",
-            y_axis=calculate_ma(close,day_count=5),
+            y_axis=calculate_ma(close, day_count=5),
             is_smooth=True,
             linestyle_opts=opts.LineStyleOpts(opacity=0.5),
             label_opts=opts.LabelOpts(is_show=False),
@@ -270,7 +266,7 @@ async def Kline_base_merged(request: Request):
             label_opts=opts.LabelOpts(is_show=False),
             is_symbol_show=False,
             is_smooth=True,
-            linestyle_opts=opts.LineStyleOpts(opacity=1,color="#000000",),
+            linestyle_opts=opts.LineStyleOpts(opacity=1, color="#000000", ),
         )
         .add_yaxis(
             series_name="DEA",

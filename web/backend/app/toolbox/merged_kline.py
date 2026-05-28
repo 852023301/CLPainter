@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 from .origin_kline import OriginKLine, OriginKlineType
 
+
 @dataclass
 class MergedKLine:
     """合并后的K线数据类"""
@@ -38,9 +39,6 @@ class MergedKLine:
     # 分型最低价索引
     low_idx: int = field(init=False)
 
-
-
-
     def __post_init__(self):
         # 初始化合并后的高低点为当前K线的高低点
         self.merged_high = self.high
@@ -58,7 +56,6 @@ class MergedKLine:
         if value not in (0, 1):
             raise ValueError("is_contained must be 0 or 1")
         self._is_contained = value
-
 
 
 def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]:
@@ -102,13 +99,13 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
                 # 寻找极值点
                 if merged_kline.merged_trend == 1:
                     merged_kline.high_price = merged_kline.high_price if merged_kline.high_price > last_kline.high_price else last_kline.high_price
-                    merged_kline.high_idx =  idx if merged_kline.high_price > last_kline.high_price else (idx -1)
-                    merged_kline.low_price =  merged_kline.merged_low
+                    merged_kline.high_idx = idx if merged_kline.high_price > last_kline.high_price else (idx - 1)
+                    merged_kline.low_price = merged_kline.merged_low
                     merged_kline.low_idx = idx if merged_kline.low > last_kline.low else (idx - 1)
                 else:
                     merged_kline.low_price = merged_kline.low_price if merged_kline.low_price < last_kline.low_price else last_kline.low_price
                     merged_kline.low_idx = idx if merged_kline.low_price < last_kline.low_price else (idx - 1)
-                    merged_kline.high_price =  merged_kline.merged_high
+                    merged_kline.high_price = merged_kline.merged_high
                     merged_kline.high_idx = idx if merged_kline.high < last_kline.high else (idx - 1)
 
                 all_klines.append(merged_kline)
@@ -153,7 +150,6 @@ def _apply_containment(last_kline: MergedKLine, current_kline: MergedKLine) -> N
             current_kline.merged_low = last_kline.merged_low
     else:
         raise ValueError(f"异常的包含关系: {last_kline.trade_date} -> {current_kline.trade_date}")
-
 
 
 def find_top_bottom(all_klines: List[MergedKLine]) -> None:

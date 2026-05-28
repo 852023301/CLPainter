@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import List,Tuple
+from typing import List, Tuple
 
 from .fenxing import FenXing
 from .merged_kline import MergedKLine
@@ -23,7 +23,6 @@ class Bi:
     end_price: float  # 结束价格（顶/底分型的极值）
     bi_type: BiDirectionType  # 笔的方向
 
-
     real_origin_kline_count: int  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
     real_merged_kline_count: int  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
 
@@ -43,13 +42,10 @@ class Bi:
         """笔包含的原始 K 线数量（一端分型最高点到另一端最低点之间）+缺口数量"""
         return self.real_origin_kline_count + self.has_gap_count
 
-
     @property
     def merged_kline_count(self):
         """笔包含的合并 K 线数量（一端分型最高点到另一端最低点之间）+缺口数量"""
-        return self.real_merged_kline_count+ self.has_gap_count
-
-
+        return self.real_merged_kline_count + self.has_gap_count
 
     def to_dict(self) -> dict:
         """
@@ -91,7 +87,7 @@ class Bi:
         bi_real_merged_kline_count, bi_has_gap_count = calculate_bi_real_merged_kline_count_and_gap_count(
             left_fenxing.get_mid_idx(), right_fenxing.get_mid_idx(),
             all_klines)
-        bi  = Bi(
+        bi = Bi(
             start_idx=start_idx,
             end_idx=end_idx,
             start_time=all_klines[start_idx].trade_date,
@@ -106,7 +102,6 @@ class Bi:
 
         return bi
 
-
     def is_finished(self):
         """
         判断笔是否结束
@@ -116,8 +111,6 @@ class Bi:
         """
 
         return True
-
-
 
 
 def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine] = None) -> List[Bi]:
@@ -157,7 +150,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             # 创建 Bi 对象
             bi = Bi.from_fenxing(last_fx, fenxing, all_klines)
 
-            if bi.merged_kline_count<4 or bi.origin_kline_count <5:
+            if bi.merged_kline_count < 4 or bi.origin_kline_count < 5:
                 continue
 
             bi_list.append(bi)
@@ -166,7 +159,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     return bi_list
 
 
-def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int, all_klines: List[MergedKLine]) -> Tuple[int,int]:
+def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int,
+                                                       all_klines: List[MergedKLine]) -> Tuple[int, int]:
     """
         计算一笔中的真实合并K线数量和缺口数量
 
@@ -191,4 +185,3 @@ def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end
         bi_has_gap_count += 1
 
     return bi_real_merged_kline_count, bi_has_gap_count
-

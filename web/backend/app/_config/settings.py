@@ -11,16 +11,14 @@ load_dotenv(dotenv_path=env_path)  # 加载入 os.environ但 不覆写环境变�
 
 class Settings(BaseSettings):
     """应用配置管理"""
-    
+
     # 项目路径配置
     PRJ_DIR: str = os.getenv("PRJ_DIR", "/root/CLPainter")
     APP_DIR: str = os.getenv("APP_DIR", "/root/CLPainter/web/backend/app")
 
-    
     # 日志配置
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "DEBUG")
     LOG_FILE: str = os.getenv("LOG_FILE", "/app/logs/app.log")
-
 
     class Config:
         env_file = ".env"

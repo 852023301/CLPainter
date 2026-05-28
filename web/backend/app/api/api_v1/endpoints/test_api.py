@@ -21,7 +21,6 @@ router = APIRouter()
 # 调试：打印模板目录路径
 template_dir = f"{settings.APP_DIR}/templates"
 
-
 templates = Jinja2Templates(directory=template_dir)
 # 禁用模板缓存以避免 unhashable type 错误
 templates.env.cache = None
@@ -90,9 +89,6 @@ data = [
 ]
 
 
-
-
-
 @router.get("/Kline_base", response_class=HTMLResponse)
 async def Kline_base(request: Request):
     c = (
@@ -110,20 +106,21 @@ async def Kline_base(request: Request):
         {"request": request, "chart": c.render_embed()}
     )
 
+
 @router.get("/Kline_base_test", response_class=HTMLResponse)
 async def Kline_base_test(request: Request):
     dates = ["2017/7/{}".format(i + 1) for i in range(31)]
 
     c = (
-    Kline()
-    .add_xaxis(dates)
-    .add_yaxis(
-        "kline",
-        data,
-        markpoint_opts=opts.MarkPointOpts(data=[
+        Kline()
+        .add_xaxis(dates)
+        .add_yaxis(
+            "kline",
+            data,
+            markpoint_opts=opts.MarkPointOpts(data=[
                 opts.MarkPointItem(
                     coord=[dates[i], data[i][1]],  # 第i天的收盘价坐标
-                    name=f"收盘价 {i+1}",
+                    name=f"收盘价 {i + 1}",
                     symbol_size=10,
                     itemstyle_opts=opts.ItemStyleOpts(color="#0000FF"),
                     label_opts=opts.LabelOpts(
@@ -134,17 +131,17 @@ async def Kline_base_test(request: Request):
                     )
                 ) for i in range(10)  # 仅前十根
             ])
+        )
+        .set_global_opts(
+            title_opts=opts.TitleOpts(
+                title="股票K线图",
+                title_textstyle_opts=opts.TextStyleOpts(font_size=20)
+            ),
+            xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12)),
+            yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12)),
+            legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(font_size=14))
+        )
     )
-    .set_global_opts(
-        title_opts=opts.TitleOpts(
-            title="股票K线图",
-            title_textstyle_opts=opts.TextStyleOpts(font_size=20)
-        ),
-        xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12)),
-        yaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(font_size=12)),
-        legend_opts=opts.LegendOpts(textstyle_opts=opts.TextStyleOpts(font_size=14))
-    )
-)
     return templates.TemplateResponse(
         "index.html",
         {"request": request, "chart": c.render_embed()}
@@ -375,7 +372,7 @@ async def lightweight_charts_demo(request: Request):
             {
                 'time': kline.trade_date,
                 'value': kline.volume,
-                'color': '#ef5350'  if kline.type == 'up' else '#26a69a'
+                'color': '#ef5350' if kline.type == 'up' else '#26a69a'
             }
             for kline in sample_data
         ]

@@ -68,7 +68,6 @@ class _DataCache:
         # 加载原始数据
         self._raw_data = load_raw_data()
 
-
         # 生成原始K线数据类
         self._origin_kline_data, self._gaps_list = generate_origin_klines(self._raw_data)
 

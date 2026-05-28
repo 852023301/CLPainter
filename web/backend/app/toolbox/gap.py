@@ -3,10 +3,12 @@ from dataclasses import dataclass, field, asdict, fields
 from typing import List
 from enum import Enum
 
+
 class GapDirectionType(str, Enum):
     """笔的类型"""
     UP = 'up'  # 上升缺口
     DOWN = 'down'  # 下降缺口
+
 
 @dataclass
 class Gap:
