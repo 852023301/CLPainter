@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from .fenxing import FenXing
 from .merged_kline import MergedKLine
@@ -15,24 +15,38 @@ class BiDirectionType(str, Enum):
 @dataclass
 class Bi:
     """笔数据结构（优化版）"""
-    start_idx: int  # 笔起始位置索引（分型所在 K 线索引）
-    end_idx: int  # 笔结束位置索引（分型所在 K 线索引）
-    start_time: str  # 起始时间
-    end_time: str  # 结束时间
-    start_price: float  # 起始价格（顶/底分型的极值）
-    end_price: float  # 结束价格（顶/底分型的极值）
-    bi_type: BiDirectionType  # 笔的方向
-
-    real_origin_kline_count: int  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
-    real_merged_kline_count: int  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
+    start_idx: int = field(init=False)  # 笔起始位置索引（分型所在 K 线索引）
+    end_idx: int = field(init=False)  # 笔结束位置索引（分型所在 K 线索引）
+    start_time: str = field(init=False)  # 起始时间
+    end_time: str = field(init=False)  # 结束时间
+    start_price: float = field(init=False)  # 起始价格（顶/底分型的极值）
+    end_price: float = field(init=False)  # 结束价格（顶/底分型的极值）
+    bi_type: BiDirectionType = field(init=False)  # 笔的方向
 
     # 左右分型
-    left_fx : FenXing
-    right_fx : FenXing
+    left_fx: FenXing
+    right_fx: FenXing
+
+    real_origin_kline_count: Optional[int] = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
+    real_merged_kline_count: Optional[int] = None  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
 
     # 包含缺口数量
-    has_gap_count: int
+    has_gap_count: Optional[int] = None
 
+    def __post_init__(self):
+        self.bi_type = BiDirectionType.UP if self.right_fx.is_top_bottom == 1 else BiDirectionType.DOWN
+
+        # 确定起始和结束索引
+        self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
+        self.end_idx = self.right_fx.high_idx if self.bi_type == BiDirectionType.UP else self.right_fx.low_idx
+        if self.end_idx <= self.start_idx:
+            raise ValueError(f"结束索引不能小于起始索引:{self.end_idx=}<={self.start_idx=}")
+
+        self.start_time = self.left_fx.trade_date
+        self.end_time = self.right_fx.trade_date
+        self.start_price = self.left_fx.low_price if self.bi_type == BiDirectionType.UP else self.left_fx.high_price
+        self.end_price = self.right_fx.high_price if self.bi_type == BiDirectionType.UP else self.right_fx.low_price
+        self.real_origin_kline_count = self.end_idx - self.start_idx + 1
 
     @property
     def is_up(self) -> bool:
@@ -82,32 +96,18 @@ class Bi:
         """
         if left_fx.is_top_bottom == right_fx.is_top_bottom:
             raise ValueError(f"分型方向一致: {left_fx.is_top_bottom=}")
-        direction = "up" if right_fx.is_top_bottom == 1 else "down"
-        bi_type = BiDirectionType.UP if direction == "up" else BiDirectionType.DOWN
-
-        # 确定起始和结束索引
-        start_idx = left_fx.low_idx if direction == "up" else left_fx.high_idx
-        end_idx = right_fx.high_idx if direction == "up" else right_fx.low_idx
-        if end_idx <= start_idx:
-            raise ValueError(f"结束索引不能小于起始索引:{end_idx=}<={start_idx=}")
 
         bi_real_merged_kline_count, bi_has_gap_count = calculate_bi_real_merged_kline_count_and_gap_count(
             left_fx.get_mid_idx(), right_fx.get_mid_idx(),
             all_klines)
+
         bi = Bi(
-            start_idx=start_idx,
-            end_idx=end_idx,
-            start_time=left_fx.trade_date,
-            end_time=right_fx.trade_date,
-            start_price=left_fx.low_price if direction == "up" else left_fx.high_price,
-            end_price=right_fx.high_price if direction == "up" else right_fx.low_price,
-            bi_type=bi_type,
-            real_origin_kline_count=end_idx - start_idx + 1,
-            real_merged_kline_count=bi_real_merged_kline_count,
             left_fx=left_fx,
             right_fx=right_fx,
-            has_gap_count=bi_has_gap_count,
         )
+
+        bi.real_merged_kline_count = bi_real_merged_kline_count
+        bi.has_gap_count = bi_has_gap_count
 
         return bi
 
@@ -118,7 +118,6 @@ class Bi:
         Returns:
             bool: 笔是否结束
         """
-
 
         return True
 
