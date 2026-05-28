@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Tuple, Optional
+import numpy as np
 
 from .fenxing import FenXing
 from .merged_kline import MergedKLine
@@ -279,6 +280,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             last_fractal = (i, fenxing)
     # print(bi_list)
 
+    # TODO: 笔上下交替检查
+    assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
 
     # TODO：极值检查
     # for bi in bi_list:
