@@ -247,37 +247,84 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     Returns:
         List[Bi]: Bi 对象列表
     """
+
+    # 初始化
     bi_list = []
-    last_fractal = None
+    L_fractal = None
+    M_fractal = None
+    R_fractal = None
+    N_fractal = None
 
     for i, fenxing in enumerate(fenxing_list):
-        if last_fractal is None:
-            last_fractal = (i, fenxing)
+        if L_fractal is None:
+            L_fractal = (i, fenxing)
             continue
 
-        last_idx, last_fx = last_fractal
+        L_idx, L_fx = L_fractal
+
+        if L_fractal is not None and M_fractal is None and L_fx.is_top_bottom != fenxing.is_top_bottom:
+            M_fractal = (i, fenxing)
+            continue
+
+        M_idx, M_fx = M_fractal
+        if L_fractal is not None and M_fractal is not None and R_fractal is None:
+            if M_fx.is_top_bottom == fenxing.is_top_bottom:
+                M_fractal = (i, fenxing)
+            else:
+                R_fractal = (i, fenxing)
+
+            continue
+
+        R_idx, R_fx = R_fractal
+
+        """
+        ############
+        开始过滤中继分型
+        ############
+        """
+
+        """
+        若队列为空，LM或MR任一完成后LM Push到队列，然后重置LM和MR
+        """
+        if not bi_list:
+            # 若LM或MR任一完成
+            if (first_bi := Bi.from_fenxing(L_fx, M_fx, all_klines)).is_finished() or Bi.from_fenxing(M_fx,
+                                                                                                      R_fx,
+                                                                                                      all_klines).is_finished():
+                bi_list.append(first_bi)
+                L_fractal = M_fractal
+                M_fractal = R_fractal
+                R_fractal = None
+                continue
+
+        """
+        若队列非空 或 LM或MR无一完成
+        """
+
+        # # 若LM未完成
+        # if bi_list and  (not (first_bi := Bi.from_fenxing(L_fx, M_fx, all_klines)).is_finished()):
 
         # 规则：同向分型取极值（如果两个都是顶，取更高的那个；两个都是底，取更低的那个）
-        if last_fx.is_top_bottom == fenxing.is_top_bottom:
-            if fenxing.is_top_bottom == 1 and fenxing.high_price > last_fx.high_price:
-                last_fractal = (i, fenxing)
-            elif fenxing.is_top_bottom == -1 and fenxing.low_price < last_fx.low_price:
-                last_fractal = (i, fenxing)
+        if L_fx.is_top_bottom == fenxing.is_top_bottom:
+            if fenxing.is_top_bottom == 1 and fenxing.high_price > L_fx.high_price:
+                L_fractal = (i, fenxing)
+            elif fenxing.is_top_bottom == -1 and fenxing.low_price < L_fx.low_price:
+                L_fractal = (i, fenxing)
             continue
 
         # 规则：顶底之间至少要有1根独立K线 (索引差 >= 4，因为中间要隔一根)
         # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
         # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
         # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
-        if abs(fenxing.end_idx - last_fx.end_idx) >= 4:
+        if abs(fenxing.end_idx - L_fx.end_idx) >= 4:
             # 创建 Bi 对象
-            bi = Bi.from_fenxing(last_fx, fenxing, all_klines)
+            bi = Bi.from_fenxing(L_fx, fenxing, all_klines)
 
             if bi.merged_kline_count < 4 or bi.origin_kline_count < 5:
                 continue
 
             bi_list.append(bi)
-            last_fractal = (i, fenxing)
+            L_fractal = (i, fenxing)
     # print(bi_list)
 
     # TODO: 笔上下交替检查
