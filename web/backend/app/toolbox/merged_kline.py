@@ -87,9 +87,9 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
         last_kline = all_klines[-1]
 
         # 判断趋势方向
-        if last_kline.merged_high < merged_kline.high and last_kline.merged_low < merged_kline.low:
+        if last_kline.merged_high < merged_kline.merged_high and last_kline.merged_low < merged_kline.merged_low:
             merged_kline.merged_trend = 1  # 向上趋势
-        elif last_kline.merged_high > merged_kline.high and last_kline.merged_low > merged_kline.low:
+        elif last_kline.merged_high > merged_kline.merged_high and last_kline.merged_low > merged_kline.merged_low:
             merged_kline.merged_trend = 0  # 向下趋势
         else:
             # 存在包含关系，需要合并
@@ -107,20 +107,21 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
                     merged_kline.low_idx = idx if merged_kline.low_price < last_kline.low_price else (idx - 1)
                     merged_kline.high_price = merged_kline.merged_high
                     merged_kline.high_idx = idx if merged_kline.high < last_kline.high else (idx - 1)
-
-                all_klines.append(merged_kline)
-                continue
+            else:
+                raise ValueError(f"存在趋势或包含之外的关系: {last_kline.trade_date} -> {merged_kline.trade_date}")
 
         all_klines.append(merged_kline)
 
+    # 查找顶底分型
+    find_top_bottom(all_klines)
     return all_klines
 
 
 def _has_containment(k1: MergedKLine, k2: MergedKLine) -> bool:
     """判断两根K线是否存在包含关系"""
     return (
-        (k1.merged_high <= k2.high and k1.merged_low >= k2.low) or
-        (k1.high >= k2.high and k1.merged_low <= k2.low)
+        (k1.merged_high <= k2.merged_high and k1.merged_low >= k2.merged_low) or
+        (k1.merged_high >= k2.merged_high and k1.merged_low <= k2.merged_low)
     )
 
 
@@ -131,22 +132,18 @@ def _apply_containment(last_kline: MergedKLine, current_kline: MergedKLine) -> N
     current_kline.merged_length = last_kline.merged_length + 1
 
     # 根据趋势方向确定合并后的高低点
-    if last_kline.merged_high <= current_kline.high and last_kline.merged_low >= current_kline.low:
+    if last_kline.merged_high <= current_kline.merged_high and last_kline.merged_low >= current_kline.merged_low:
         # 情况1：当前K线被上一根包含
         if current_kline.merged_trend == 1:  # 向上趋势取高高
-            current_kline.merged_high = current_kline.high
-            current_kline.merged_low = last_kline.low
+            current_kline.merged_low = last_kline.merged_low
         else:  # 向下趋势取低低
             current_kline.merged_high = last_kline.merged_high
-            current_kline.merged_low = current_kline.low
 
-    elif last_kline.high >= current_kline.high and last_kline.merged_low <= current_kline.low:
+    elif last_kline.merged_high >= current_kline.merged_high and last_kline.merged_low <= current_kline.merged_low:
         # 情况2：上一根K线被当前包含
         if current_kline.merged_trend == 1:  # 向上趋势取高高
-            current_kline.merged_high = last_kline.high
-            current_kline.merged_low = current_kline.low
+            current_kline.merged_high = last_kline.merged_high
         else:  # 向下趋势取低低
-            current_kline.merged_high = current_kline.high
             current_kline.merged_low = last_kline.merged_low
     else:
         raise ValueError(f"异常的包含关系: {last_kline.trade_date} -> {current_kline.trade_date}")
@@ -185,3 +182,18 @@ def find_top_bottom(all_klines: List[MergedKLine]) -> None:
             current_kline.is_top_bottom = 1
         else:
             current_kline.is_top_bottom = 0
+
+    lst = [i for i in all_klines if i.is_top_bottom != 0]
+    # print(lst)
+
+    # for i in range(len(lst) - 1):
+    #     if not (lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0):
+    #         last = lst[i - 1].is_top_bottom
+    #         now = lst[i].is_top_bottom
+    #         nextd = lst[i + 1].is_top_bottom
+    #         print(f"{lst[i].trade_date=},{last=},{now=},{nextd=}")
+
+    # for i in all_klines:
+    #     if "2026-03-04" >= i.trade_date >="2026-02-24":
+    #         print(i)
+    assert all(lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0 for i in range(len(lst) - 1)), "K线的顶底分型标志不满足交替出现的要求"

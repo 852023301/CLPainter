@@ -53,7 +53,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
     Returns:
         分型对象列表
     """
-    fenxing_list = []
+    fenxing_list: List[FenXing] = []
 
     if len(all_klines) < 3:
         return fenxing_list
@@ -146,6 +146,7 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.trade_date = all_klines[fenxing.low_idx].trade_date
 
         fenxing_list.append(fenxing)
+    assert np.all(np.diff([fx.is_top_bottom == 1 for fx in fenxing_list]) != 0), "不满足分型交替的要求"
     # print(fenxing_list)
 
     return fenxing_list

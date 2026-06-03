@@ -75,9 +75,6 @@ class _DataCache:
         merged_klines = generate_merge_klines(self._origin_kline_data)
         self._merged_klines = merged_klines
 
-        # 查找顶底分型
-        find_top_bottom(merged_klines)
-
         # 提取分型列表
         self._fenxing_list = extract_fenxing_list(merged_klines)
 

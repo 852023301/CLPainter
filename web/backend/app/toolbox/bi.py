@@ -254,7 +254,16 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     M_fractal = None
     R_fractal = None
     N_fractal = None
-
+    lst = [i.is_top_bottom for i in fenxing_list]
+    # # print(lst)
+    #
+    # for i in range(len(fenxing_list) - 1):
+    #     if not (lst[i] + lst[i + 1] == 0):
+    #         last = fenxing_list[i-1].is_top_bottom
+    #         now = fenxing_list[i].is_top_bottom
+    #         nextd = fenxing_list[i+1].is_top_bottom
+    #         print(f"{fenxing_list[i].trade_date=},{last=},{now=},{nextd=}")
+    assert all(lst[i] + lst[i + 1] == 0 for i in range(len(lst) - 1)), "分型不满足交替出现"
     for i, fenxing in enumerate(fenxing_list):
         if L_fractal is None:
             L_fractal = (i, fenxing)
@@ -327,7 +336,11 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             L_fractal = (i, fenxing)
     # print(bi_list)
 
-    # TODO: 笔上下交替检查
+    # TODO:笔连续性检查
+    # for i in range(len(bi_list) - 1):
+    #     if bi_list[i].right_fx.trade_date != bi_list[i + 1].left_fx.trade_date:
+    #         print(bi_list[i])
+
     assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
 
     # TODO：极值检查
