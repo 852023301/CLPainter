@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Tuple, Optional
+from collections import deque
 import numpy as np
 
 from .fenxing import FenXing
@@ -119,8 +120,8 @@ class Bi:
         Returns:
             bool: 笔是否可以完成
         """
-        if not self.has_different_Fenxing():
-            return False
+        # if not self.has_different_Fenxing():
+        #     return False
 
         if not self.is_leaving_interval():
             return False
@@ -236,7 +237,7 @@ class Bi:
         return highest_price, lowest_price
 
 
-def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine] = None) -> List[Bi]:
+def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Bi]:
     """
     根据分型列表划分缠论笔
 
@@ -248,92 +249,102 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
         List[Bi]: Bi 对象列表
     """
 
+    # 将分型列表中的相邻元素两两组合
+    fenxing_deque = deque((fenxing_list[i], fenxing_list[i + 1]) for i in range(len(fenxing_list) - 1))
+    fenxing_deque_bk = deque([])
+
     # 初始化
     bi_list = []
-    L_fractal = None
-    M_fractal = None
-    R_fractal = None
-    N_fractal = None
-    lst = [i.is_top_bottom for i in fenxing_list]
-    # # print(lst)
-    #
-    # for i in range(len(fenxing_list) - 1):
-    #     if not (lst[i] + lst[i + 1] == 0):
-    #         last = fenxing_list[i-1].is_top_bottom
-    #         now = fenxing_list[i].is_top_bottom
-    #         nextd = fenxing_list[i+1].is_top_bottom
-    #         print(f"{fenxing_list[i].trade_date=},{last=},{now=},{nextd=}")
-    assert all(lst[i] + lst[i + 1] == 0 for i in range(len(lst) - 1)), "分型不满足交替出现"
-    for i, fenxing in enumerate(fenxing_list):
-        if L_fractal is None:
-            L_fractal = (i, fenxing)
-            continue
 
-        L_idx, L_fx = L_fractal
+    L_fx: Optional[FenXing] = None
+    M_fx: Optional[FenXing] = None
+    R_fx: Optional[FenXing] = None
+    N_fx: Optional[FenXing] = None
+    X_fx: Optional[FenXing] = None
 
-        if L_fractal is not None and M_fractal is None and L_fx.is_top_bottom != fenxing.is_top_bottom:
-            M_fractal = (i, fenxing)
-            continue
+    L_fx, M_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
+    M_fx, R_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
+    R_fx, N_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
 
-        M_idx, M_fx = M_fractal
-        if L_fractal is not None and M_fractal is not None and R_fractal is None:
-            if M_fx.is_top_bottom == fenxing.is_top_bottom:
-                M_fractal = (i, fenxing)
+    def adjust_front_2_bi_in_deque():
+        """调整deque中的前两笔，使其满足：在mr完成之前，尽可能延长lm"""
+
+        if len(fenxing_deque) < 2:
+            return False
+
+        l_fx, m_fx = fenxing_deque.popleft()
+        m_fx, r_fx = fenxing_deque.popleft()
+
+        bi_lm = Bi.from_fenxing(l_fx, m_fx, all_klines)
+        bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+
+        is_bi_mr_finish = bi_mr.is_finished()
+        if is_bi_mr_finish:
+            fenxing_deque.appendleft((m_fx, r_fx))
+            fenxing_deque.appendleft((l_fx, m_fx))
+            return True
+
+        while len(fenxing_deque) > 1:
+            # is_bi_lm_finish = bi_lm.is_finished()
+            is_bi_mr_finish = bi_mr.is_finished()
+            if is_bi_mr_finish:
+                fenxing_deque.appendleft((bi_mr.left_fx, bi_mr.right_fx))
+                fenxing_deque.appendleft((bi_lm.left_fx, bi_lm.right_fx))
+                return True
+
+            x_fx, y_fx = fenxing_deque.popleft()
+
+            bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines)
+
+            if bi_xy.bi_type == bi_lm.bi_type:
+                if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_lm.end_price) or (
+                    bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_lm.end_price):
+                    bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
+                    x_fx, y_fx = fenxing_deque.popleft()
+                    bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+
+            elif bi_xy.bi_type == bi_mr.bi_type:
+                if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_mr.end_price) or (
+                    bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_mr.end_price):
+                    bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
             else:
-                R_fractal = (i, fenxing)
+                raise ValueError("笔类型不一致")
 
+        return False
+
+    while len(fenxing_deque) > 0:
+
+        if not (L_fx and M_fx and R_fx):
+            break
+
+        bi_LM = Bi.from_fenxing(L_fx, M_fx, all_klines)
+        bi_MR = Bi.from_fenxing(M_fx, R_fx, all_klines)
+
+        is_bi_LM_finish = bi_LM.is_finished()
+        is_bi_MR_finish = bi_MR.is_finished()
+
+        if is_bi_LM_finish and is_bi_MR_finish:
+            bi_list.append(bi_LM)
+            L_fx, M_fx = M_fx, R_fx
+            ####
+
+            fenxing_deque.appendleft((M_fx, R_fx))
+
+            if not adjust_front_2_bi_in_deque():
+                break
+
+            M_fx, R_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
+            R_fx, N_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
             continue
+        elif is_bi_LM_finish and not is_bi_MR_finish:
+            pass
+        elif not is_bi_LM_finish and is_bi_MR_finish:
+            pass
+        elif not is_bi_LM_finish and not is_bi_MR_finish:
+            pass
+        else:
+            raise RuntimeError("意外情况")
 
-        R_idx, R_fx = R_fractal
-
-        """
-        ############
-        开始过滤中继分型
-        ############
-        """
-
-        """
-        若队列为空，LM或MR任一完成后LM Push到队列，然后重置LM和MR
-        """
-        if not bi_list:
-            # 若LM或MR任一完成
-            if (first_bi := Bi.from_fenxing(L_fx, M_fx, all_klines)).is_finished() or Bi.from_fenxing(M_fx,
-                                                                                                      R_fx,
-                                                                                                      all_klines).is_finished():
-                bi_list.append(first_bi)
-                L_fractal = M_fractal
-                M_fractal = R_fractal
-                R_fractal = None
-                continue
-
-        """
-        若队列非空 或 LM或MR无一完成
-        """
-
-        # # 若LM未完成
-        # if bi_list and  (not (first_bi := Bi.from_fenxing(L_fx, M_fx, all_klines)).is_finished()):
-
-        # 规则：同向分型取极值（如果两个都是顶，取更高的那个；两个都是底，取更低的那个）
-        if L_fx.is_top_bottom == fenxing.is_top_bottom:
-            if fenxing.is_top_bottom == 1 and fenxing.high_price > L_fx.high_price:
-                L_fractal = (i, fenxing)
-            elif fenxing.is_top_bottom == -1 and fenxing.low_price < L_fx.low_price:
-                L_fractal = (i, fenxing)
-            continue
-
-        # 规则：顶底之间至少要有1根独立K线 (索引差 >= 4，因为中间要隔一根)
-        # 缠论严格定义是顶底分型元素不共用，且中间至少有一根K线。
-        # 在合并K线序列中，索引差至少为 3 (例如: 0是底, 1是中间, 2是顶 -> 差2不行，至少要差3或4视具体实现)
-        # 通常要求：顶分型最高K线索引 - 底分型最低K线索引 >= 4
-        if abs(fenxing.end_idx - L_fx.end_idx) >= 4:
-            # 创建 Bi 对象
-            bi = Bi.from_fenxing(L_fx, fenxing, all_klines)
-
-            if bi.merged_kline_count < 4 or bi.origin_kline_count < 5:
-                continue
-
-            bi_list.append(bi)
-            L_fractal = (i, fenxing)
     # print(bi_list)
 
     # TODO:笔连续性检查
