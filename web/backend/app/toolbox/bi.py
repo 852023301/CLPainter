@@ -251,101 +251,73 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     # 将分型列表中的相邻元素两两组合
     fenxing_deque = deque((fenxing_list[i], fenxing_list[i + 1]) for i in range(len(fenxing_list) - 1))
-    fenxing_deque_bk = deque([])
+    bi_finish_deque = deque([])
 
     # 初始化
     bi_list = []
 
-    L_fx: Optional[FenXing] = None
-    M_fx: Optional[FenXing] = None
-    R_fx: Optional[FenXing] = None
-    N_fx: Optional[FenXing] = None
-    X_fx: Optional[FenXing] = None
-
-    L_fx, M_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
-    M_fx, R_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
-    R_fx, N_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
-
-    def adjust_front_2_bi_in_deque():
-        """调整deque中的前两笔，使其满足：在mr完成之前，尽可能延长lm"""
-
-        if len(fenxing_deque) < 2:
-            return False
-
-        l_fx, m_fx = fenxing_deque.popleft()
-        m_fx, r_fx = fenxing_deque.popleft()
-
-        bi_lm = Bi.from_fenxing(l_fx, m_fx, all_klines)
-        bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
-
-        is_bi_mr_finish = bi_mr.is_finished()
-        if is_bi_mr_finish:
-            fenxing_deque.appendleft((m_fx, r_fx))
-            fenxing_deque.appendleft((l_fx, m_fx))
-            return True
-
-        while len(fenxing_deque) > 1:
-            # is_bi_lm_finish = bi_lm.is_finished()
-            is_bi_mr_finish = bi_mr.is_finished()
-            if is_bi_mr_finish:
-                fenxing_deque.appendleft((bi_mr.left_fx, bi_mr.right_fx))
-                fenxing_deque.appendleft((bi_lm.left_fx, bi_lm.right_fx))
+    def find_in_finish_deque():
+        """在已完成的队列中寻找笔"""
+        nonlocal bi_lm
+        while len(bi_finish_deque) > 0:
+            last_bi_finish = bi_finish_deque.popleft()
+            if (last_bi_finish.bi_type == bi_lm.bi_type) and (
+                (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_lm.start_price) or (
+                last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_lm.start_price)):
+                bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines)
                 return True
-
-            x_fx, y_fx = fenxing_deque.popleft()
-
-            bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines)
-
-            if bi_xy.bi_type == bi_lm.bi_type:
-                if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_lm.end_price) or (
-                    bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_lm.end_price):
-                    bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
-                    x_fx, y_fx = fenxing_deque.popleft()
-                    bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
-
-            elif bi_xy.bi_type == bi_mr.bi_type:
-                if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_mr.end_price) or (
-                    bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_mr.end_price):
-                    bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
-            else:
-                raise ValueError("笔类型不一致")
-
         return False
 
+    """调整deque中的前两笔，使其满足：在mr完成之前，尽可能延长lm"""
+
+    if len(fenxing_deque) < 2:
+        return bi_list
+
+    l_fx, m_fx = fenxing_deque.popleft()
+    m_fx, r_fx = fenxing_deque.popleft()
+
+    bi_lm = Bi.from_fenxing(l_fx, m_fx, all_klines)
+    bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+
     while len(fenxing_deque) > 0:
+        is_bi_lm_finish = bi_lm.is_finished()
+        is_bi_mr_finish = bi_mr.is_finished()
 
-        if not (L_fx and M_fx and R_fx):
-            break
-
-        bi_LM = Bi.from_fenxing(L_fx, M_fx, all_klines)
-        bi_MR = Bi.from_fenxing(M_fx, R_fx, all_klines)
-
-        is_bi_LM_finish = bi_LM.is_finished()
-        is_bi_MR_finish = bi_MR.is_finished()
-
-        if is_bi_LM_finish and is_bi_MR_finish:
-            bi_list.append(bi_LM)
-            L_fx, M_fx = M_fx, R_fx
-            ####
-
-            fenxing_deque.appendleft((M_fx, R_fx))
-
-            if not adjust_front_2_bi_in_deque():
-                break
-
-            M_fx, R_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
-            R_fx, N_fx = fenxing_deque.popleft() if len(fenxing_deque) > 0 else (None, None)
+        if is_bi_lm_finish and is_bi_mr_finish:
+            bi_finish_deque.appendleft(bi_lm)
+            bi_lm = bi_mr
+            m_fx, r_fx = fenxing_deque.popleft()
+            bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
             continue
-        elif is_bi_LM_finish and not is_bi_MR_finish:
-            pass
-        elif not is_bi_LM_finish and is_bi_MR_finish:
-            pass
-        elif not is_bi_LM_finish and not is_bi_MR_finish:
-            pass
-        else:
-            raise RuntimeError("意外情况")
 
-    # print(bi_list)
+        if not is_bi_lm_finish and is_bi_mr_finish:
+            if not find_in_finish_deque():
+                bi_lm = bi_mr
+                m_fx, r_fx = fenxing_deque.popleft()
+                bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+            continue
+
+        x_fx, y_fx = fenxing_deque.popleft()
+
+        bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines)
+
+        if bi_xy.bi_type == bi_lm.bi_type:
+            if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_lm.end_price) or (
+                bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_lm.end_price):
+                bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
+                if len(fenxing_deque) == 0:
+                    break
+                x_fx, y_fx = fenxing_deque.popleft()
+                bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+
+        elif bi_xy.bi_type == bi_mr.bi_type:
+            if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_mr.end_price) or (
+                bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_mr.end_price):
+                bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
+        else:
+            raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
+
+    print(bi_list)
 
     # TODO:笔连续性检查
     # for i in range(len(bi_list) - 1):
