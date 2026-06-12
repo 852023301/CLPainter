@@ -255,20 +255,24 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     # 初始化
     bi_list = []
-    trade_d = "2026-01-14"
+    trade_s = "2015-01-06"
+    trade_e = "2015-01-23"
 
     def find_lm_in_finish_deque():
         """在已完成的队列中寻找笔"""
         nonlocal bi_lm
         while len(bi_finish_deque) > 0:
             last_bi_finish = bi_finish_deque.popleft()
-            if last_bi_finish.left_fx.trade_date >= trade_d:
-                print("#" * 50, "弹出")
+            if trade_e >= last_bi_finish.left_fx.trade_date >= trade_s:
+                print("#" * 50, "lm弹出")
                 print(last_bi_finish)
             if (last_bi_finish.bi_type == bi_lm.bi_type) and (
                 (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_lm.start_price) or (
                 last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_lm.start_price)):
                 bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines)
+                if trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                    print("#" * 50, "lm被替换")
+                    print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 return True
         return False
 
@@ -277,14 +281,19 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
         nonlocal bi_mr
         while len(bi_finish_deque) > 0:
             last_bi_finish = bi_finish_deque.popleft()
-            if last_bi_finish.left_fx.trade_date >= trade_d:
-                print("#" * 50, "弹出")
+            if trade_e >= last_bi_finish.left_fx.trade_date >= trade_s:
+                print("#" * 50, "mr弹出")
                 print(last_bi_finish)
             if (last_bi_finish.bi_type == bi_mr.bi_type) and (
                 (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
                 last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price)):
                 bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines)
+                if (trade_e >= bi_mr.left_fx.trade_date >= trade_s) or (trade_e >= bi_mr.right_fx.trade_date >= trade_s):
+                    print("#" * 50, "mr被替换")
+                    print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
                 return True
+
+
         return False
 
     """调整deque中的前两笔，使其满足：在mr完成之前，尽可能延长lm"""
@@ -303,7 +312,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
         is_bi_mr_finish = bi_mr.is_finished()
 
         if is_bi_lm_finish and is_bi_mr_finish:
-            if bi_lm.left_fx.trade_date >= trade_d:
+            if trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                 print("#" * 50, "加入")
                 print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
@@ -311,7 +320,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             bi_lm = bi_mr
             m_fx, r_fx = fenxing_deque.popleft()
             bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
-            if bi_lm.left_fx.trade_date >= trade_d:
+            if trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
+                print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
                 print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
             continue
 
@@ -329,12 +340,15 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
         if bi_xy.bi_type == bi_lm.bi_type:
             if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_lm.end_price) or (
                 bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_lm.end_price):
-                # if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.start_price < bi_lm.start_price) or (
-                #     bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.start_price > bi_lm.start_price):
-                #     find_mr_in_finish_deque()
-                #     bi_lm = bi_mr
-                #     bi_mr = bi_xy
-                #     continue
+                if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.start_price < bi_lm.start_price) or (
+                    bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.start_price > bi_lm.start_price):
+                    find_mr_in_finish_deque()
+                    bi_lm = bi_mr
+                    bi_mr = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
+                    continue
+
+                        
+
 
                 bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
 
@@ -342,7 +356,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                     break
                 x_fx, y_fx = fenxing_deque.popleft()
                 bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
-                if bi_lm.left_fx.trade_date >= trade_d:
+                if trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                     print("@" * 50, "和lm同趋势")
                     print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                     print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
@@ -352,7 +366,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_mr.end_price) or (
                 bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_mr.end_price):
                 bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
-                if bi_lm.left_fx.trade_date >= trade_d:
+                if trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                     print("$" * 50, "和mr同趋势")
                     print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                     print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
