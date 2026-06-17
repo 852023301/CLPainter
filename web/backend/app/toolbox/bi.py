@@ -278,21 +278,53 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     def find_mr_in_finish_deque():
         """在已完成的队列中寻找笔"""
+        nonlocal bi_lm
         nonlocal bi_mr
+        nonlocal bi_xy
         while len(bi_finish_deque) > 0:
             last_bi_finish = bi_finish_deque.popleft()
             if trade_e >= last_bi_finish.left_fx.trade_date >= trade_s:
                 print("#" * 50, "mr弹出")
                 print(last_bi_finish)
-            if (last_bi_finish.bi_type == bi_mr.bi_type) and (
-                (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
-                last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price)):
-                bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines)
-                if (trade_e >= bi_mr.left_fx.trade_date >= trade_s) or (trade_e >= bi_mr.right_fx.trade_date >= trade_s):
-                    print("#" * 50, "mr被替换")
-                    print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
-                return True
+            if (last_bi_finish.bi_type == bi_mr.bi_type):
+                if (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
+                last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price):
+                    bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines)
+                    return False
+            else:
+                if bi_mr.is_finished():
+                    if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_lm.start_price) or (bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_lm.start_price):
+                        bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines)
+                        if len(bi_finish_deque) > 0:
+                            bi_mr = bi_lm
+                            bi_lm = bi_finish_deque.popleft()
 
+                        elif len(fenxing_deque) > 0:
+                            x_fx, y_fx = fenxing_deque.popleft()
+                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+                        else:
+                            bi_mr = None
+                        return True
+
+
+                else:
+                    if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_mr.end_price) or (bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_mr.end_price):
+                        bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines)
+                        if len(bi_finish_deque) > 0:
+                            bi_lm = bi_finish_deque.popleft()
+
+                        elif len(fenxing_deque) > 0:
+                            bi_lm = bi_mr
+                            x_fx, y_fx = fenxing_deque.popleft()
+                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+                        else:
+                            bi_mr = None
+                        return True
+
+
+            if (trade_e >= bi_mr.left_fx.trade_date >= trade_s) or (trade_e >= bi_mr.right_fx.trade_date >= trade_s):
+                print("#" * 50, "mr被替换")
+                print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
 
         return False
 
@@ -308,6 +340,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
 
     while len(fenxing_deque) > 0:
+        if bi_lm is None or bi_mr is None:
+            break
         is_bi_lm_finish = bi_lm.is_finished()
         is_bi_mr_finish = bi_mr.is_finished()
 
@@ -342,12 +376,10 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                 bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_lm.end_price):
                 if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.start_price < bi_lm.start_price) or (
                     bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.start_price > bi_lm.start_price):
-                    find_mr_in_finish_deque()
-                    bi_lm = bi_mr
-                    bi_mr = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
+                    if not find_mr_in_finish_deque():
+                        bi_lm = bi_mr
+                        bi_mr = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
                     continue
-
-                        
 
 
                 bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
@@ -388,8 +420,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     for bi in bi_list:
         highest_price, lowest_price = bi.get_highest_lowest_price(bi.start_idx, bi.end_idx, all_klines)
         if highest_price > max(bi.left_fx.high_price, bi.right_fx.high_price):
-            print(f"顶分型最高价不是一笔中的最高价: {highest_price=},{bi.left_fx.trade_date=}")
+            print(f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}")
         if lowest_price < min(bi.left_fx.low_price, bi.right_fx.low_price):
-            print(f"底分型最低价不是一笔中的最低价: {lowest_price=},{bi.left_fx.trade_date=}")
+            print(f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}")
 
     return bi_list
