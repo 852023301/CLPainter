@@ -220,19 +220,28 @@ class Bi:
             last_kline = all_klines[last_idx]
 
             # 收集笔中的最高价和最低价
-            if last_kline.merged_high > highest_price:
-                highest_price = last_kline.merged_high
-            if last_kline.merged_low < lowest_price:
-                lowest_price = last_kline.merged_low
+            if last_kline.high_price > highest_price:
+                highest_price = last_kline.high_price
+                if "2015-11-09" <= last_kline.trade_date <= "2015-11-30":
+                    print(last_kline)
+                    print("%"*50)
+            if last_kline.low_price < lowest_price:
+                lowest_price = last_kline.low_price
+                if "2023-02-06" <= last_kline.trade_date <= "2023-03-07":
+                    print(last_kline)
+                    print("%"*50)
 
-        # 判断是否有缺口
-        last_kline = all_klines[last_idx]
 
-        # 收集笔中的最高价和最低价
-        if last_kline.merged_high > highest_price:
-            highest_price = last_kline.merged_high
-        if last_kline.merged_low < lowest_price:
-            lowest_price = last_kline.merged_low
+        # last_kline = all_klines[last_idx]
+        # if "2010-03-22" <= last_kline.trade_date <= "2010-04-22":
+        #     print(last_kline)
+        #     print("%" * 50)
+        #
+        # # 收集笔中的最高价和最低价
+        # if last_kline.high_price > highest_price:
+        #     highest_price = last_kline.high_price
+        # if last_kline.low_price < lowest_price:
+        #     lowest_price = last_kline.low_price
 
         return highest_price, lowest_price
 
@@ -421,7 +430,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
         highest_price, lowest_price = bi.get_highest_lowest_price(bi.start_idx, bi.end_idx, all_klines)
         if highest_price > max(bi.left_fx.high_price, bi.right_fx.high_price):
             print(f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}")
+            print(bi)
         if lowest_price < min(bi.left_fx.low_price, bi.right_fx.low_price):
             print(f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}")
+            print(bi)
 
     return bi_list

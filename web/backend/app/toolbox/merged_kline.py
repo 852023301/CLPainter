@@ -30,13 +30,13 @@ class MergedKLine:
     # 分型标记：1=顶分型，-1=底分型，0=无分型
     is_top_bottom: int = 0
 
-    # 分型最高价
+    # 合并后最高价
     high_price: float = field(init=False)
-    # 分型最低价
+    # 合并后最低价
     low_price: float = field(init=False)
-    # 分型最高价索引
+    # 合并后最高价索引
     high_idx: int = field(init=False)
-    # 分型最低价索引
+    # 合并后最低价索引
     low_idx: int = field(init=False)
 
     def __post_init__(self):
