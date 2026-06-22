@@ -23,7 +23,8 @@ def load_raw_data() -> List[List]:
     if not app_dir:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
-    data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
+    # data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
+    data_file = Path(app_dir) / "data_set/all_stocks/000001SZ.pkl"
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
@@ -67,6 +68,7 @@ class _DataCache:
 
         # 加载原始数据
         self._raw_data = load_raw_data()
+        # print(self._raw_data)
 
         # 生成原始K线数据类
         self._origin_kline_data, self._gaps_list = generate_origin_klines(self._raw_data)

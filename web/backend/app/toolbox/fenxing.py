@@ -42,6 +42,11 @@ class FenXing:
         """获取分型中间K线的索引"""
         return self.idx_list[1]
 
+    @property
+    def right_idx(self) -> int:
+        """获取分型中间K线的索引"""
+        return self.idx_list[2]
+
 
 def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
     """

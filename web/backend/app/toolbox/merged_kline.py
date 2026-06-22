@@ -101,13 +101,15 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
                     merged_kline.high_price = merged_kline.high_price if merged_kline.high_price > last_kline.high_price else last_kline.high_price
                     merged_kline.high_idx = idx if merged_kline.high_price > last_kline.high_price else (idx - 1)
                     merged_kline.low_price = merged_kline.merged_low
-                    merged_kline.low_idx = idx if merged_kline.low > last_kline.low else (idx - 1)
+                    merged_kline.low_idx = idx if merged_kline.low_price > last_kline.low_price else (idx - 1)
                 else:
                     merged_kline.low_price = merged_kline.low_price if merged_kline.low_price < last_kline.low_price else last_kline.low_price
                     merged_kline.low_idx = idx if merged_kline.low_price < last_kline.low_price else (idx - 1)
                     merged_kline.high_price = merged_kline.merged_high
-                    merged_kline.high_idx = idx if merged_kline.high < last_kline.high else (idx - 1)
+                    merged_kline.high_idx = idx if merged_kline.high_price < last_kline.high_price else (idx - 1)
             else:
+                print(f"{last_kline=}")
+                print(f"{merged_kline=}")
                 raise ValueError(f"存在趋势或包含之外的关系: {last_kline.trade_date} -> {merged_kline.trade_date}")
 
         all_klines.append(merged_kline)
