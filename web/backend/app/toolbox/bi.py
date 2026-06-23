@@ -174,24 +174,21 @@ class Bi:
 
         """
         if start_kline_idx >= end_kline_idx:
-            raise ValueError("起始索引不能大于等于结束索引")
-        bi_real_merged_kline_count = 1
+            raise ValueError(f"起始索引不能大于等于结束索引:{all_klines[start_kline_idx]=},{all_klines[end_kline_idx]=}")
+        bi_real_merged_kline_count = 0
         bi_has_gap_count = 0
         last_idx = start_kline_idx
-        last_kline = all_klines[start_kline_idx]
 
-        while (last_idx := last_idx + last_kline.merged_length) < end_kline_idx:
+        while last_idx < end_kline_idx:
             last_kline = all_klines[last_idx]
-            bi_real_merged_kline_count += 1
-            # 判断是否有缺口
-            if last_kline.has_gap:
-                bi_has_gap_count += 1
+            if last_kline.merged_length == 1:
+                bi_real_merged_kline_count += 1
+                # 检测是否有缺口
+                if last_kline.has_gap:
+                    bi_has_gap_count += 1
 
-        bi_real_merged_kline_count += 1
-        # 判断是否有缺口
-        last_kline = all_klines[last_idx]
-        if last_kline.has_gap:
-            bi_has_gap_count += 1
+            last_idx += 1
+
 
         return bi_real_merged_kline_count, bi_has_gap_count
 
@@ -209,7 +206,7 @@ class Bi:
             Tuple[float, float]: 笔中的最高价和最低价
         """
         if start_kline_idx >= end_kline_idx:
-            raise ValueError("起始索引不能大于等于结束索引")
+            raise ValueError(f"起始索引不能大于等于结束索引:{all_klines[start_kline_idx]=},{all_klines[end_kline_idx]=}")
         last_idx = start_kline_idx
 
         while last_idx < end_kline_idx:
@@ -261,9 +258,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     # 初始化
     bi_list = []
-    trade_s = "2023-01-30"
-    trade_e = "2023-03-14"
-    log_switch = False
+    trade_s = "2025-08-15"
+    trade_e = "2025-08-24"
+    log_switch = True
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -435,6 +432,16 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     # 检查笔的极值在两端
     for bi in bi_list:
+        # print(bi)
+        if log_switch and trade_e >= bi.left_fx.trade_date >= trade_s:
+            print(bi)
+            print("左分型的信息：")
+            print(bi.left_fx)
+            print("左分型内部所有K线信息：")
+            bi.left_fx.print_klines_info(all_klines = all_klines)
+
+
+
         init_highest_price = max(bi.left_fx.high_price, bi.right_fx.high_price)
         init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
         start_idx = bi.left_fx.right_idx
@@ -444,11 +451,11 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
             print(text)
             print(bi)
-            # raise RuntimeError(text)
+            raise RuntimeError(text)
         if lowest_price < min(bi.left_fx.low_price, bi.right_fx.low_price):
             text = f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
             print(text)
             print(bi)
-            # raise RuntimeError(text)
+            raise RuntimeError(text)
 
     return bi_list
