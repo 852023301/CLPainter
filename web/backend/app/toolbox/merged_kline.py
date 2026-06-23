@@ -38,6 +38,8 @@ class MergedKLine:
     high_idx: int = field(init=False)
     # 合并后最低价索引
     low_idx: int = field(init=False)
+    # 自身的索引
+    idx: int = field(init=False)
 
     def __post_init__(self):
         # 初始化合并后的高低点为当前K线的高低点
@@ -78,6 +80,7 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
 
         merged_kline.high_idx = idx
         merged_kline.low_idx = idx
+        merged_kline.idx = idx
 
         if not all_klines:
             # 第一根K线直接添加
@@ -97,16 +100,16 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
                 _apply_containment(last_kline, merged_kline)
 
                 # 寻找极值点
-                if merged_kline.merged_trend == 1:
+                if merged_kline.merged_trend == 1: # 向上
+                    merged_kline.high_idx = idx if merged_kline.high_price > last_kline.high_price else last_kline.high_idx
                     merged_kline.high_price = merged_kline.high_price if merged_kline.high_price > last_kline.high_price else last_kline.high_price
-                    merged_kline.high_idx = idx if merged_kline.high_price > last_kline.high_price else (idx - 1)
+                    merged_kline.low_idx = idx if merged_kline.low_price > last_kline.low_price else last_kline.low_idx
                     merged_kline.low_price = merged_kline.merged_low
-                    merged_kline.low_idx = idx if merged_kline.low_price > last_kline.low_price else (idx - 1)
                 else:
+                    merged_kline.low_idx = idx if merged_kline.low_price < last_kline.low_price else last_kline.low_idx
                     merged_kline.low_price = merged_kline.low_price if merged_kline.low_price < last_kline.low_price else last_kline.low_price
-                    merged_kline.low_idx = idx if merged_kline.low_price < last_kline.low_price else (idx - 1)
+                    merged_kline.high_idx = idx if merged_kline.high_price < last_kline.high_price else last_kline.high_idx
                     merged_kline.high_price = merged_kline.merged_high
-                    merged_kline.high_idx = idx if merged_kline.high_price < last_kline.high_price else (idx - 1)
             else:
                 print(f"{last_kline=}")
                 print(f"{merged_kline=}")
