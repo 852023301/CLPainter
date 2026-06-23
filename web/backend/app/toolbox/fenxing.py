@@ -20,7 +20,9 @@ class FenXing:
     # 三根合并后K线各自的长度
     length_list: List[int] = field(init=False)
     # 三根合并后K线各自的开始索引
-    idx_list: List[int] = field(init=False)
+    start_idx_list: List[int] = field(init=False)
+    # 三根合并后K线各自的结束索引
+    end_idx_list: List[int] = field(init=False)
     # 分型最高价
     high_price: float = field(init=False)
     # 分型最低价
@@ -35,17 +37,21 @@ class FenXing:
     @property
     def left_idx(self) -> int:
         """获取分型左边K线的索引"""
-        return self.idx_list[0]
+        return self.start_idx_list[0]
 
     @property
     def mid_idx(self) -> int:
         """获取分型中间K线的索引"""
-        return self.idx_list[1]
+        return self.start_idx_list[1]
 
     @property
     def right_idx(self) -> int:
         """获取分型中间K线的索引"""
-        return self.idx_list[2]
+        return self.start_idx_list[2]
+
+    def print_klines_info(self, all_klines):
+        for i in range(self.start_idx, self.end_idx+1):
+            print(all_klines[i])
 
 
 def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
@@ -72,9 +78,16 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
 
         # 创建分型对象
         fenxing = FenXing(is_top_bottom=kline.is_top_bottom)
+        
+        #  寻找分型右侧最边缘的k线
+        jdx = idx + 1
+        while jdx < (len(all_klines) -1) :
+            if all_klines[jdx].merged_length== 1:
+                break
+            jdx+=1
 
         # 设置分型结束索引
-        fenxing.end_idx = idx + kline.merged_length - 1
+        fenxing.end_idx = jdx - 1
 
         # 计算分型长度：包含左、中、右三根K线的总长度
         # 左K线
@@ -103,10 +116,17 @@ def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
         ]
 
         # 记录三根K线各自的开始索引
-        fenxing.idx_list = [
+        fenxing.start_idx_list = [
             left_idx - left_kline.merged_length + 1,
             left_idx + 1,
             mid_idx + 1
+        ]
+
+        # 记录三根K线各自的结束索引
+        fenxing.end_idx_list = [
+            fenxing.left_idx + fenxing.length_list[0] -1,
+            fenxing.mid_idx + fenxing.length_list[1] -1,
+            fenxing.right_idx + fenxing.length_list[2] -1,
         ]
 
         # 设置分型开始索引
