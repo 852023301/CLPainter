@@ -7,8 +7,10 @@ from ddp import MysqlConnection
 
 
 def change_data_type_and_save(columns, dates, N_D, info_dict,
-                              dsc_path="/home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_stocks",precision=2):
+                              dsc_path="/home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_stocks",
+                              precision=2):
     for idx, i in enumerate(columns):
+        is_write = True
         file_name = columns[idx].replace(".", "")
         final_list = []
         start_date = info_dict.get(columns[idx])
@@ -21,13 +23,15 @@ def change_data_type_and_save(columns, dates, N_D, info_dict,
 
             if any(np.isnan(_single[:-1])) or any(_single[:-1] == 0):
                 print(f"{i} {dates[jdx]}存在空值或0，不处理")
-                print(_single)
+                # print(_single)
+                is_write = False
+                break
 
             single = [dates[jdx], *[float(fl).__round__(precision) for fl in _single]]
             final_list.append(single)
-
-        with open(f"{dsc_path}/{file_name}.pkl", "wb") as f:
-            pickle.dump(final_list, f)
+        if is_write:
+            with open(f"{dsc_path}/{file_name}.pkl", "wb") as f:
+                pickle.dump(final_list, f)
 
 
 #########################################
@@ -110,7 +114,7 @@ index_map = {
     # "bz50": "899050.BJ",
     "kczz": "000680.SH",
 }
-for index_name,code in index_map.items():
+for index_name, code in index_map.items():
     start_date = index_info_dict.get(code)
     print(start_date)
     columns = ["open", "close", "low", "high", "volume"]
@@ -122,7 +126,8 @@ for index_name,code in index_map.items():
     concat_data.index = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
     final_list = concat_data.reset_index().values.tolist()
 
-    with open(f"/home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_index/{code.replace('.', '')}.pkl", "wb") as f:
+    with open(f"/home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_index/{code.replace('.', '')}.pkl",
+              "wb") as f:
         pickle.dump(final_list, f)
 
 #  docker cp /home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_index CLPainter:/root/CLPainter/web/backend/app/data_set
