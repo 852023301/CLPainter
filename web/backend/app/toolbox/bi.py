@@ -260,7 +260,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     bi_list = []
     trade_s = "2026-04-30"
     trade_e = "2026-06-22"
-    log_switch = True
+    log_switch = False
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -465,5 +465,5 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             print(text)
             print(bi)
             raise RuntimeError(text)
-
+    print(f"共{len(bi_list)}笔")
     return bi_list

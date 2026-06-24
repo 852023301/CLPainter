@@ -139,10 +139,40 @@ class _DataCache:
         self.ensure_loaded()
         return self._fenxing_list
 
+    @classmethod
+    def reset_instance(cls):
+        """重置单例实例，用于切换不同的数据源"""
+        if cls._instance is not None:
+            # 清理资源（如果需要）
+            cls._instance._raw_data = None
+            cls._instance._origin_kline_data = None
+            cls._instance._gaps_list = None
+            cls._instance._merged_klines = None
+            cls._instance._fenxing_list = None
+            cls._instance._trade_dates = None
+            cls._instance._merge_kline_data = None
+            cls._instance._bi_list = None
+            cls._instance._initialized = False
+            cls._instance.special_path = None
+            cls._instance = None
+
 
 # 创建全局数据缓存实例
-# all_stocks = sorted(Path("/root/CLPainter/web/backend/app/data_set/all_stocks").iterdir(), key=lambda p: p.name)
+
+
 _data_cache = _DataCache()
+
+
+# 以下代码用于集体测试
+# all_stocks = sorted(Path("/root/CLPainter/web/backend/app/data_set/all_stocks").iterdir(), key=lambda p: p.name)
+##_data_cache = _DataCache(all_stocks[3])
+# for i , stk_p in enumerate(all_stocks):
+#     print(f"{i}:{stk_p}")
+#     _data_cache = _DataCache(stk_p)
+#     # 强制加载数据以验证
+#     _ = _data_cache.raw_data
+#     # 重置单例以便下一个股票使用
+#     _DataCache.reset_instance()
 
 
 # 保持向后兼容的接口

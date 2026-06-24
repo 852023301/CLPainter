@@ -1,5 +1,3 @@
-from factory.factors.archive.FactorDataSys_BK.Script.HistoryUpdateFactorScript import start_date
-from scripts.error_check.check_meta_mark import stock_info
 from tdata import fetch_data
 import numpy as np
 import pandas as pd
@@ -34,9 +32,8 @@ for idx,i in enumerate(columns):
     with open(f"/home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_stocks/{file_name}.pkl", "wb") as f:
         pickle.dump(final_list, f)
 
-
-
-# docker cp /home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_stocks CLPainter:/root/CLPainter/web/backend/app/data_set/
+#容器内执行 rm -r  /root/CLPainter/web/backend/app/data_set/all_stocks
+#容器外执行 docker cp /home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_stocks CLPainter:/root/CLPainter/web/backend/app/data_set/
 
 #  指数
 
