@@ -11,7 +11,7 @@ from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
-def load_raw_data() -> List[List]:
+def load_raw_data(data_file=None) -> List[List]:
     """
     加载原始K线数据
 
@@ -23,8 +23,9 @@ def load_raw_data() -> List[List]:
     if not app_dir:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
-    # data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
-    data_file = Path(app_dir) / "data_set/all_stocks/000001SZ.pkl"
+    if data_file is None:
+        data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
+        # data_file = Path(app_dir) / "data_set/all_stocks/000001SZ.pkl"
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
@@ -41,13 +42,14 @@ class _DataCache:
     """数据缓存类，实现懒加载"""
     _instance = None
 
-    def __new__(cls):
+    def __new__(cls, special_path=None):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
+            cls.special_path = special_path
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, special_path=None):
         if self._initialized:
             return
 
@@ -67,7 +69,7 @@ class _DataCache:
             return
 
         # 加载原始数据
-        self._raw_data = load_raw_data()
+        self._raw_data = load_raw_data(self.special_path)
         # print(self._raw_data)
 
         # 生成原始K线数据类
@@ -139,6 +141,7 @@ class _DataCache:
 
 
 # 创建全局数据缓存实例
+# all_stocks = sorted(Path("/root/CLPainter/web/backend/app/data_set/all_stocks").iterdir(), key=lambda p: p.name)
 _data_cache = _DataCache()
 
 

@@ -30,3 +30,6 @@ pyecharts
 gunicorn
 uvicorn
 loguru
+
+# test
+ipython
