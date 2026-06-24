@@ -258,8 +258,8 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     # 初始化
     bi_list = []
-    trade_s = "2025-08-15"
-    trade_e = "2025-08-24"
+    trade_s = "2026-04-30"
+    trade_e = "2026-06-22"
     log_switch = True
 
     def find_first_bi_in_finish_deque():
@@ -363,6 +363,10 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                 print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
             continue
 
+        if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+            print("lm和mr任一未完成")
+            print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
+            print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
         if not is_bi_lm_finish and is_bi_mr_finish:
             if not find_first_bi_in_finish_deque():
                 bi_lm = bi_mr
@@ -400,25 +404,29 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                     break
                 x_fx, y_fx = fenxing_deque.popleft()
                 bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
-                if log_switch and  trade_e >= bi_lm.left_fx.trade_date >= trade_s:
-                    print("@" * 50, "和lm同趋势，变更后")
-                    print(f"new bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
-                    print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
-                    print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
+            if log_switch and  trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                print("@" * 50, "和lm同趋势，变更后")
+                print(f"new bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
+                print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
+                print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
 
 
         elif bi_xy.bi_type == bi_mr.bi_type:
             if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_mr.end_price) or (
                 bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_mr.end_price):
                 bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
-                if log_switch and  trade_e >= bi_lm.left_fx.trade_date >= trade_s:
-                    print("$" * 50, "和mr同趋势")
-                    print(f"bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
-                    print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
-                    print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
+            if log_switch and  trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                print("$" * 50, "和mr同趋势")
+                print(f"bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
+                print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
+                print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
         else:
             raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
 
+
+    if bi_lm.is_finished():
+        bi_finish_deque.appendleft(bi_lm)
+        bi_lm = None
     bi_list = list(bi_finish_deque)[::-1]
 
     # 检查笔连续性
@@ -433,12 +441,12 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     # 检查笔的极值在两端
     for bi in bi_list:
         # print(bi)
-        if log_switch and trade_e >= bi.left_fx.trade_date >= trade_s:
-            print(bi)
-            print("左分型的信息：")
-            print(bi.left_fx)
-            print("左分型内部所有K线信息：")
-            bi.left_fx.print_klines_info(all_klines = all_klines)
+        # if log_switch and trade_e >= bi.left_fx.trade_date >= trade_s:
+        #     print(bi)
+        #     print("左分型的信息：")
+        #     print(bi.left_fx)
+        #     print("左分型内部所有K线信息：")
+        #     bi.left_fx.print_klines_info(all_klines = all_klines)
 
 
 
