@@ -179,12 +179,12 @@ class Bi:
         bi_has_gap_count = 0
         last_idx = start_kline_idx
 
-        while last_idx < end_kline_idx:
+        while last_idx <= end_kline_idx:
             last_kline = all_klines[last_idx]
             if last_kline.merged_length == 1:
                 bi_real_merged_kline_count += 1
-                # 检测是否有缺口
-                if last_kline.has_gap:
+                # 检测是否有缺口(排除第一根)
+                if last_idx!=start_kline_idx and last_kline.has_gap:
                     bi_has_gap_count += 1
 
             last_idx += 1
@@ -209,7 +209,7 @@ class Bi:
             raise ValueError(f"起始索引不能大于等于结束索引:{all_klines[start_kline_idx]=},{all_klines[end_kline_idx]=}")
         last_idx = start_kline_idx
 
-        while last_idx < end_kline_idx:
+        while last_idx <= end_kline_idx:
             last_kline = all_klines[last_idx]
 
             # 收集笔中的最高价和最低价
@@ -239,6 +239,9 @@ class Bi:
 
         return highest_price, lowest_price
 
+    def print_klines_info(self, all_klines):
+        for i in range(self.start_idx, self.end_idx+1):
+            print(all_klines[i])
 
 def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Bi]:
     """
@@ -258,9 +261,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
 
     # 初始化
     bi_list = []
-    trade_s = "2026-04-30"
-    trade_e = "2026-06-22"
-    log_switch = False
+    trade_s = "2025-10-17"
+    trade_e = "2025-11-24"
+    log_switch = True
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -348,6 +351,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             break
         is_bi_lm_finish = bi_lm.is_finished()
         is_bi_mr_finish = bi_mr.is_finished()
+        if bi_mr.left_fx.trade_date == '2025-10-27' and bi_mr.right_fx.trade_date == '2025-11-03':
+            print(bi_mr)
+            bi_mr.print_klines_info(all_klines)
 
         if is_bi_lm_finish and is_bi_mr_finish:
             if log_switch and  trade_e >= bi_lm.left_fx.trade_date >= trade_s:
@@ -367,6 +373,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             print("lm和mr任一未完成")
             print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
             print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
+
         if not is_bi_lm_finish and is_bi_mr_finish:
             if not find_first_bi_in_finish_deque():
                 bi_lm = bi_mr
@@ -427,6 +434,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     if bi_lm.is_finished():
         bi_finish_deque.appendleft(bi_lm)
         bi_lm = None
+        if bi_mr.is_finished():
+            bi_finish_deque.appendleft(bi_mr)
+            bi_mr = None
     bi_list = list(bi_finish_deque)[::-1]
 
     # 检查笔连续性
