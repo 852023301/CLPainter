@@ -329,10 +329,16 @@ async def Kline_markline(request: Request):
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
-async def lightweight_charts_demo(request: Request):
+async def lightweight_charts_demo(request: Request, precision: int = 2):
     """
     Lightweight Charts 优化版：显示K线与缠论笔
+    
+    Args:
+        request: FastAPI 请求对象
+        precision: 价格显示精度（小数位数），默认2位，范围0-6
     """
+    # 限制精度范围
+    precision = max(0, min(6, precision))
     try:
         # 1. 准备 K 线数据
         sample_dates = trade_date_list
@@ -392,7 +398,7 @@ async def lightweight_charts_demo(request: Request):
                 candle_count=len(candle_data),
                 gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
                 volume_data=json.dumps(volume_data, ensure_ascii=False),
-
+                precision=precision,  # 传递精度参数到模板
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:

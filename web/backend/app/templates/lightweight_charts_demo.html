@@ -97,11 +97,13 @@
             z-index: 1000;
             display: none;
         }
+
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📊 Lightweight Charts 简单示例</h1>
+
         <div id="chart">
             <div class="ohlc-tooltip" id="ohlcTooltip"></div>
         </div>
@@ -110,16 +112,20 @@
         </div>
     </div>
 
-    <script>        // 从后端传入的数据
+    <script>
+        // 从后端传入的数据
         const candleData = {{ candle_data | safe }};
         const biData = {{ bi_data | safe }};
         const gapsData = {{ gaps_data | safe }};
         const volumeData = {{ volume_data | safe }};
+        const currentPrecision = {{ precision }};  // 当前精度
 
         console.log('收到的K线数据:', candleData.length);
         console.log('收到的笔数据:', biData.length);
         console.log('收到的缺口数据:', gapsData.length);
         console.log('收到的成交量数据:', volumeData.length);
+        console.log('当前精度:', currentPrecision);
+
 
         if (!candleData || !Array.isArray(candleData) || candleData.length === 0) {
             document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
@@ -370,10 +376,10 @@
                     return;
                 }
 
-                const open = data.open.toFixed(2);
-                const high = data.high.toFixed(2);
-                const low = data.low.toFixed(2);
-                const close = data.close.toFixed(2);
+                const open = data.open.toFixed(currentPrecision);
+                const high = data.high.toFixed(currentPrecision);
+                const low = data.low.toFixed(currentPrecision);
+                const close = data.close.toFixed(currentPrecision);
                 const isUp = close >= open;
                 const priceClass = isUp ? 'up' : 'down';
                 const arrow = isUp ? '↑' : '↓';
