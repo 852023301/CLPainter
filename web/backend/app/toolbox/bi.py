@@ -263,7 +263,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     bi_list = []
     trade_s = "2025-10-17"
     trade_e = "2025-11-24"
-    log_switch = True
+    log_switch = False
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -351,9 +351,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
             break
         is_bi_lm_finish = bi_lm.is_finished()
         is_bi_mr_finish = bi_mr.is_finished()
-        if bi_mr.left_fx.trade_date == '2025-10-27' and bi_mr.right_fx.trade_date == '2025-11-03':
-            print(bi_mr)
-            bi_mr.print_klines_info(all_klines)
+        # if log_switch and bi_mr.left_fx.trade_date == '2025-10-27' and bi_mr.right_fx.trade_date == '2025-11-03':
+        #     print(bi_mr)
+        #     bi_mr.print_klines_info(all_klines)
 
         if is_bi_lm_finish and is_bi_mr_finish:
             if log_switch and  trade_e >= bi_lm.left_fx.trade_date >= trade_s:
@@ -434,9 +434,9 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     if bi_lm.is_finished():
         bi_finish_deque.appendleft(bi_lm)
         bi_lm = None
-        if bi_mr.is_finished():
-            bi_finish_deque.appendleft(bi_mr)
-            bi_mr = None
+        # if bi_mr.is_finished():
+        #     bi_finish_deque.appendleft(bi_mr)
+        #     bi_mr = None
     bi_list = list(bi_finish_deque)[::-1]
 
     # 检查笔连续性

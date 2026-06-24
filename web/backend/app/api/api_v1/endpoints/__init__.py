@@ -24,7 +24,8 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
+        # data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
+        data_file = Path(app_dir) / "data_set/all_etf/561980SH.pkl"
         # data_file = Path(app_dir) / "data_set/all_stocks/000001SZ.pkl"
 
     if not data_file.exists():
@@ -164,8 +165,10 @@ _data_cache = _DataCache()
 
 
 # 以下代码用于集体测试
-# all_stocks = sorted(Path("/root/CLPainter/web/backend/app/data_set/all_stocks").iterdir(), key=lambda p: p.name)
-##_data_cache = _DataCache(all_stocks[3])
+all_stocks = sorted(Path("/root/CLPainter/web/backend/app/data_set/all_stocks").iterdir(), key=lambda p: p.name)
+all_etf= sorted(Path("/root/CLPainter/web/backend/app/data_set/all_etf").iterdir(), key=lambda p: p.name)
+all_index= sorted(Path("/root/CLPainter/web/backend/app/data_set/all_index").iterdir(), key=lambda p: p.name)
+# _data_cache = _DataCache(all_stocks[3])
 # for i , stk_p in enumerate(all_stocks):
 #     print(f"{i}:{stk_p}")
 #     _data_cache = _DataCache(stk_p)
