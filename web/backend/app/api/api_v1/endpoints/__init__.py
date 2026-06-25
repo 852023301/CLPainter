@@ -24,8 +24,8 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        # data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
-        data_file = Path(app_dir) / "data_set/all_etf/561980SH.pkl"
+        data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
+        # data_file = Path(app_dir) / "data_set/all_etf/561980SH.pkl"
         # data_file = Path(app_dir) / "data_set/all_stocks/000001SZ.pkl"
 
     if not data_file.exists():

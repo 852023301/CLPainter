@@ -162,8 +162,10 @@
                 timeScale: {
                     timeVisible: true,
                     rightOffset: 12,
-                    barSpacing: 10,
-                    minBarSpacing: 0.5,
+                    barSpacing: 6,        // K线间距,增大此值会让K线显示更稀疏
+                    minBarSpacing: 0.3,    // 最小K线间距,减小此值允许更多K线同时显示
+                    fixLeftEdge: false,    // 不固定左边缘,允许滚动查看更多历史数据
+                    fixRightEdge: false,   // 不固定右边缘
                 },
                 rightPriceScale: {
                     visible: true,
@@ -223,9 +225,11 @@
                 timeScale: {
                     visible: true,
                     timeVisible: true,
-                    rightOffset: 12, // 与主图表保持一致
-                    barSpacing: 10, // 与主图表保持一致
-                    minBarSpacing: 0.5, // 与主图表保持一致
+                    rightOffset: 12,        // 与主图表保持一致
+                    barSpacing: 6,          // K线间距,与主图表保持一致
+                    minBarSpacing: 0.3,     // 最小K线间距,与主图表保持一致
+                    fixLeftEdge: false,     // 不固定左边缘
+                    fixRightEdge: false,    // 不固定右边缘
                 },
                 rightPriceScale: {
                     visible: true, // 显示右侧价格刻度，保持与主图表一致
