@@ -163,11 +163,11 @@ class _DataCache:
 
 _data_cache = _DataCache()
 
-
+settings.DATA_DIR
 # 以下代码用于集体测试
-all_stocks = sorted(Path("/root/CLPainter/web/backend/app/data_set/all_stocks").iterdir(), key=lambda p: p.name)
-all_etf= sorted(Path("/root/CLPainter/web/backend/app/data_set/all_etf").iterdir(), key=lambda p: p.name)
-all_index= sorted(Path("/root/CLPainter/web/backend/app/data_set/all_index").iterdir(), key=lambda p: p.name)
+all_stocks = sorted(Path(settings.DATA_DIR, "all_stocks").iterdir(), key=lambda p: p.name)
+all_etf= sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.name)
+all_index= sorted(Path(settings.DATA_DIR, "all_index").iterdir(), key=lambda p: p.name)
 # _data_cache = _DataCache(all_stocks[3])
 # for i , stk_p in enumerate(all_stocks):
 #     print(f"{i}:{stk_p}")

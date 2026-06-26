@@ -22,6 +22,7 @@ services:
       - "15000:8001"
     volumes:
       - /DataDepartment:/DataDepartment:ro
+      - /DataDepartmentTest:/DataDepartmentTest:ro
     restart: always
     privileged: true
     #    command: ["sh", "-c", "tail -f /dev/null"]

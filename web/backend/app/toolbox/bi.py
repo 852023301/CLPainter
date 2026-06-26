@@ -268,6 +268,7 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
         nonlocal bi_lm
+        nonlocal bi_mr
         while len(bi_finish_deque) > 0:
             last_bi_finish = bi_finish_deque.popleft()
             if log_switch and trade_e >= last_bi_finish.left_fx.trade_date >= trade_s:
@@ -281,6 +282,16 @@ def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[Merge
                     print("#" * 50, "lm被替换")
                     print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 return True
+
+            #  这行代码按理来说会触发，但从来没有遇到过触发的情况
+            if (last_bi_finish.bi_type == bi_mr.bi_type) and (
+                (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
+                last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price)):
+                bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines)
+                # if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                print("#" * 50, "find_first_bi_in_finish_deque中的mr被替换")
+                raise ValueError(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
+                return False
         return False
 
     def find_second_bi_in_finish_deque():
