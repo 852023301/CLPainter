@@ -4,8 +4,9 @@ from pathlib import Path
 from typing import List
 
 from CLPainter.web.backend.app._config.settings import settings
-from CLPainter.web.backend.app.toolbox.bi import identify_bi_from_fenxing, Bi
-from CLPainter.web.backend.app.toolbox.fenxing import extract_fenxing_list, FenXing
+from CLPainter.web.backend.app.toolbox.bi import generate_bi, Bi
+from CLPainter.web.backend.app.toolbox.fenxing import generate_fenxing, FenXing
+from CLPainter.web.backend.app.toolbox.tezhengxulie import generate_te_zheng_xu_lie, TeZhengXuLie
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 from CLPainter.web.backend.app.toolbox.gap import Gap
@@ -24,9 +25,9 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(app_dir) / "data_set/data_set_000001SH.pkl"
-        # data_file = Path(app_dir) / "data_set/all_etf/561980SH.pkl"
-        # data_file = Path(app_dir) / "data_set/all_stocks/000001SZ.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
@@ -60,7 +61,6 @@ class _DataCache:
         self._merged_klines = None
         self._fenxing_list = None
         self._trade_dates = None
-        self._merge_kline_data = None
         self._bi_list = None
         self._initialized = True
 
@@ -81,21 +81,14 @@ class _DataCache:
         self._merged_klines = merged_klines
 
         # 提取分型列表
-        self._fenxing_list = extract_fenxing_list(merged_klines)
+        self._fenxing_list = generate_fenxing(merged_klines)
 
         # 基于分型列表划分笔
-        self._bi_list = identify_bi_from_fenxing(self._fenxing_list, merged_klines)
+        self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
-        # 生成高开低收都为merged_low或merged_high合并后的数据（主要用于指标显示）
-        self._merge_kline_data = [
-            [
-                data.merged_low if data.close > data.open else data.merged_high,
-                data.merged_high if data.close > data.open else data.merged_low,
-                data.merged_low,
-                data.merged_high
-            ]
-            for data in merged_klines
-        ]
+        self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
+
+
 
         self._trade_dates = [data.trade_date for data in merged_klines]
 
@@ -124,15 +117,16 @@ class _DataCache:
         self.ensure_loaded()
         return self._trade_dates
 
-    @property
-    def merge_kline_data(self) -> List[List[float]]:
-        self.ensure_loaded()
-        return self._merge_kline_data
 
     @property
     def bi_list(self) -> List[Bi]:
         self.ensure_loaded()
         return self._bi_list
+
+    @property
+    def te_zheng_xu_lie_list(self) -> List[TeZhengXuLie]:
+        self.ensure_loaded()
+        return self._te_zheng_xu_lie
 
     @property
     def fenxing_list(self) -> List[FenXing]:
@@ -151,8 +145,8 @@ class _DataCache:
             cls._instance._merged_klines = None
             cls._instance._fenxing_list = None
             cls._instance._trade_dates = None
-            cls._instance._merge_kline_data = None
             cls._instance._bi_list = None
+            cls._instance._te_zheng_xu_lie= None
             cls._instance._initialized = False
             cls._instance.special_path = None
             cls._instance = None
@@ -163,7 +157,7 @@ class _DataCache:
 
 _data_cache = _DataCache()
 
-settings.DATA_DIR
+
 # 以下代码用于集体测试
 all_stocks = sorted(Path(settings.DATA_DIR, "all_stocks").iterdir(), key=lambda p: p.name)
 all_etf= sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.name)
@@ -200,8 +194,7 @@ merge_data_list = _data_cache.merged_klines
 fenxing_data_list = _data_cache.fenxing_list
 trade_date_list = _data_cache.trade_dates
 origin_kline_data = _data_cache.origin_kline_data
-merge_kline_data = _data_cache.merge_kline_data  # 高开低收用merge_high和merge_low表示
 bi_data_list = _data_cache.bi_list
+te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 gaps_list = _data_cache.gaps_list
-# print(fenxing_data_list)
-# print(trade_date_list.index('2014-08-26'))
+

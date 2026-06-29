@@ -54,7 +54,7 @@ class FenXing:
             print(all_klines[i])
 
 
-def extract_fenxing_list(all_klines: List[MergedKLine]) -> List[FenXing]:
+def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
     """
     从合并后的K线列表中提取分型集合
 

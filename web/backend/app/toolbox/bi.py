@@ -243,7 +243,7 @@ class Bi:
         for i in range(self.start_idx, self.end_idx+1):
             print(all_klines[i])
 
-def identify_bi_from_fenxing(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Bi]:
+def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Bi]:
     """
     根据分型列表划分缠论笔
 
