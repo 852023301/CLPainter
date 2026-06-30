@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional,Union
 from collections import deque
 import numpy as np
 
@@ -13,6 +13,84 @@ class BiDirectionType(str, Enum):
     UP = 'up'  # 上升笔：底→顶
     DOWN = 'down'  # 下降笔：顶→底
 
+
+@dataclass
+class FakeBi:
+    """笔数据结构（优化版）"""
+    start_idx: int  # 笔起始位置索引（分型所在 K 线索引）
+    end_idx: int  # 笔结束位置索引（分型所在 K 线索引）
+
+    start_price: float  # 起始价格（顶/底分型的极值）
+    end_price: float  # 结束价格（顶/底分型的极值）
+    bi_type: BiDirectionType   # 笔的方向
+
+
+    def to_dict(self) -> dict:
+        """
+        将 Bi 对象转换为字典格式（兼容原有 identify_bi 的输出格式）
+
+        Returns:
+            dict: 包含 start, end, direction, start_price, end_price 的字典
+        """
+        return {
+            "start_idx": self.start_idx,
+            "end_idx": self.end_idx,
+            "direction": self.bi_type.value,
+            "start_price": self.start_price,
+            "end_price": self.end_price
+        }
+
+    # def is_finished(self) -> bool:
+    #     """
+    #     判断笔是否可以完成
+    #
+    #     Returns:
+    #         bool: 笔是否可以完成
+    #     """
+    #     # if not self.has_different_Fenxing():
+    #     #     return False
+    #
+    #     if not self.is_leaving_interval():
+    #         return False
+    #
+    #     if not self.is_kline_count_enough():
+    #         return False
+    #
+    #     return True
+    #
+    # def has_different_Fenxing(self) -> bool:
+    #     """
+    #     判断笔是否包含不同的分型
+    #
+    #     Returns:
+    #         bool: 笔是否包含不同的分型
+    #     """
+    #     if self.left_fx.is_top_bottom == self.right_fx.is_top_bottom:
+    #         raise ValueError(f"分型方向一致: {self.left_fx.is_top_bottom=}")
+    #     return True
+    #
+    # def is_leaving_interval(self) -> bool:
+    #     """
+    #     判断底分型最低点低于顶分型中间K线的最低点+顶分型最高点高于底分型中间K线的最高点
+    #
+    #     Returns:
+    #         bool: 笔是否满足底分型和顶分型拉开距离
+    #     """
+    #     if self.bi_type == BiDirectionType.UP:
+    #         return self.left_fx.low_price < self.right_fx.low_price and self.left_fx.high_price < self.right_fx.high_price
+    #     else:
+    #         return self.left_fx.high_price > self.right_fx.high_price and self.left_fx.low_price > self.right_fx.low_price
+    #
+    # def is_kline_count_enough(self) -> bool:
+    #     """
+    #     一笔中有效K线至少四根，并且顶分型最高点到底分型最低点最低点之间共有五根原始K线，跳空一次算一根
+    #
+    #
+    #     Returns:
+    #         bool: 笔是否包含指定数量的K线
+    #
+    #     """
+    #     return self.origin_kline_count >= 5 and self.merged_kline_count >= 4
 
 @dataclass
 class Bi:
@@ -194,7 +272,7 @@ class Bi:
 
     @staticmethod
     def get_highest_lowest_price(highest_price, lowest_price,start_kline_idx: int, end_kline_idx: int,
-                                 all_klines: List[MergedKLine]) -> Tuple[float, float]:
+                                 all_klines: List[MergedKLine]) -> Tuple[float, float, int, int]:
         """
         获取笔中的最高价和最低价
 
@@ -208,6 +286,7 @@ class Bi:
         if start_kline_idx >= end_kline_idx:
             raise ValueError(f"起始索引不能大于等于结束索引:{all_klines[start_kline_idx]=},{all_klines[end_kline_idx]=}")
         last_idx = start_kline_idx
+        highest_idx, lowest_idx = last_idx, last_idx
 
         while last_idx <= end_kline_idx:
             last_kline = all_klines[last_idx]
@@ -215,11 +294,13 @@ class Bi:
             # 收集笔中的最高价和最低价
             if last_kline.high_price > highest_price:
                 highest_price = last_kline.merged_high
+                highest_idx = last_idx
                 # if "2015-11-09" <= last_kline.trade_date <= "2015-11-30":
                 #     print(last_kline)
                 #     print("%"*50)
             if last_kline.low_price < lowest_price:
                 lowest_price = last_kline.merged_low
+                lowest_idx = last_idx
                 # if "2023-02-06" <= last_kline.trade_date <= "2023-03-07":
                 #     print(last_kline)
                 #     print("%"*50)
@@ -237,7 +318,7 @@ class Bi:
         # if last_kline.low_price < lowest_price:
         #     lowest_price = last_kline.low_price
 
-        return highest_price, lowest_price
+        return highest_price, lowest_price, highest_idx, lowest_idx
 
     def print_klines_info(self, all_klines):
         for i in range(self.start_idx, self.end_idx+1):
@@ -441,13 +522,10 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         else:
             raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
 
-
+    # 最后一笔lm
     if bi_lm.is_finished():
         bi_finish_deque.appendleft(bi_lm)
-        bi_lm = None
-        # if bi_mr.is_finished():
-        #     bi_finish_deque.appendleft(bi_mr)
-        #     bi_mr = None
+
     bi_list = list(bi_finish_deque)[::-1]
 
     # 检查笔连续性
@@ -475,7 +553,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
         start_idx = bi.left_fx.right_idx
         end_idx = bi.end_idx
-        highest_price, lowest_price = bi.get_highest_lowest_price(init_highest_price, init_lowest_price, start_idx, end_idx, all_klines)
+        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price, init_lowest_price, start_idx, end_idx, all_klines)
         if highest_price > max(bi.left_fx.high_price, bi.right_fx.high_price):
             text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price,bi.right_fx.low_price)},{max(bi.left_fx.high_price,bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
             print(text)
@@ -486,5 +564,25 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             print(text)
             print(bi)
             raise RuntimeError(text)
+
+    # 最后一笔mr
+
+    if bi_lm.is_finished():
+        # mr拉长
+        init_highest_price = max(bi_mr.left_fx.high_price, bi_mr.right_fx.high_price)
+        init_lowest_price = min(bi_mr.left_fx.low_price, bi_mr.right_fx.low_price)
+        start_idx = bi_mr.left_fx.right_idx
+        end_idx = len(all_klines) - 1  # 到最后的位置
+        # print(init_highest_price, init_lowest_price, start_idx, end_idx)
+        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price, init_lowest_price, start_idx, end_idx, all_klines)
+        # print(highest_price, lowest_price, highest_idx, lowest_idx)
+        if bi_mr.bi_type == BiDirectionType.UP:
+            new_bi_mr = FakeBi(start_idx=bi_mr.left_fx.low_idx, end_idx=highest_idx, start_price=bi_mr.start_price, end_price=highest_price, bi_type=BiDirectionType.UP)
+        else:
+            new_bi_mr = FakeBi(start_idx=bi_mr.left_fx.high_idx, end_idx=lowest_idx, start_price=bi_mr.start_price, end_price=lowest_price, bi_type=BiDirectionType.DOWN)
+        print(new_bi_mr)
+        bi_list.append(new_bi_mr)
+
+
     print(f"共{len(bi_list)}笔")
     return bi_list

@@ -8,7 +8,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Grid, Line
 from pyecharts.commons.utils import JsCode
 
-from ..endpoints import MergedKLine, trade_date_list, merge_data_list, merge_kline_data, origin_kline_data
+from ..endpoints import MergedKLine, trade_date_list, merge_data_list, origin_kline_data
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 from ....toolbox.calculate import calculate_macd, calculate_ma

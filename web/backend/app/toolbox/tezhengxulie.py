@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 from enum import Enum
-from bi import Bi
+from .bi import Bi
 
 
 class TeZhengXuLieType(int, Enum):
@@ -27,7 +27,7 @@ class TeZhengXuLie:
 def generate_te_zheng_xu_lie(bi_list: List[Bi]) -> List[TeZhengXuLie]:
     """生成特征序列"""
     te_zheng_xu_lie_list = []
-    for i in range(len(bi_list)):
-        if i == 0:
-            te_zheng_xu_lie = TeZhengXuLie(type=TeZhengXuLieType.DING)
-            te_zheng_xu_lie.bi_list.append(bi_list[i])
+    # for i in range(len(bi_list)):
+    #     if i == 0:
+    #         te_zheng_xu_lie = TeZhengXuLie(type=TeZhengXuLieType.DING)
+    #         te_zheng_xu_lie.bi_list.append(bi_list[i])
