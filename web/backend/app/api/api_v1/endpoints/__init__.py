@@ -75,6 +75,7 @@ class _DataCache:
 
         # 生成原始K线数据类
         self._origin_kline_data, self._gaps_list = generate_origin_klines(self._raw_data)
+        # self._origin_kline_data = self._origin_kline_data[:-1]
 
         # 合并K线
         merged_klines = generate_merge_klines(self._origin_kline_data)
