@@ -28,7 +28,7 @@ class FakeBi:
     # 左右分型
     left_fx: FenXing
     end_idx: int # 笔结束位置索引（分型所在 K 线索引）
-    all_klines: List[MergedKLine]
+    all_klines: List[MergedKLine] = field(repr=False)
 
     real_origin_kline_count: int = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
     real_merged_kline_count: int = field(init=False)    # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
@@ -406,8 +406,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     # 初始化
     bi_list = []
-    trade_s = "2025-10-17"
-    trade_e = "2025-11-24"
+    trade_s = "2026-05-14"
+    trade_e = "2026-06-22"
     log_switch = False
 
     def find_first_bi_in_finish_deque():
@@ -559,11 +559,19 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                     if not find_second_bi_in_finish_deque():
                         bi_lm = bi_mr
                         bi_mr = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
+                        if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                            print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")
+                            print(f"new bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
+                            print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
+                            print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
                     continue
 
                 bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
 
                 if len(fenxing_deque) == 0:
+                    # 这里可能会导致lm和mr重叠，后续fake逻辑会处理
+                    if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
+                        print("@" * 50, "和lm同趋势，fenxing_deque为空，退出")
                     break
                 x_fx, y_fx = fenxing_deque.popleft()
                 bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
@@ -630,29 +638,32 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             raise RuntimeError(text)
 
     # 最后一笔mr
-    print(bi_lm)
-    print(bi_mr)
+    # print(bi_lm)
+    # print(bi_mr)
 
     if bi_lm.is_finished():
         # mr拉长
-        init_highest_price = max(bi_mr.left_fx.high_price, bi_mr.right_fx.high_price)
-        init_lowest_price = min(bi_mr.left_fx.low_price, bi_mr.right_fx.low_price)
-        start_idx = bi_mr.left_fx.right_idx
+        start_idx = bi_lm.right_fx.right_idx
         end_idx = len(all_klines) - 1  # 到最后的位置
-        # print(init_highest_price, init_lowest_price, start_idx, end_idx)
+        last_kline = all_klines[end_idx]
+        init_highest_price = max(bi_lm.right_fx.high_price, bi_lm.right_fx.high_price)
+        init_lowest_price = min(bi_lm.right_fx.low_price, bi_lm.right_fx.low_price)
+
+        print(init_highest_price, init_lowest_price, start_idx, end_idx)
         highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
                                                                                            init_lowest_price, start_idx,
                                                                                            end_idx, all_klines)
-        # print(highest_price, lowest_price, highest_idx, lowest_idx)
+        print(highest_price, lowest_price, lowest_idx, highest_idx, )
+        print(bi_lm.right_fx, highest_idx, lowest_idx, bi_lm.end_price, highest_price)
         if bi_mr.bi_type == BiDirectionType.UP:
-            fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_mr.left_fx, right_fx_mid_idx=highest_idx,
-                                            start_price=bi_mr.start_price, end_price=highest_price,
+            fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=highest_idx,
+                                            start_price=bi_lm.end_price, end_price=highest_price,
                                             bi_type=BiDirectionType.UP, all_klines=all_klines)
         else:
-            fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_mr.left_fx, right_fx_mid_idx=lowest_idx,
-                                            start_price=bi_mr.start_price, end_price=lowest_price,
+            fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=lowest_idx,
+                                            start_price=bi_lm.end_price, end_price=lowest_price,
                                             bi_type=BiDirectionType.DOWN, all_klines=all_klines)
-        # print(fake_bi_mr)
+        print(fake_bi_mr)
         if fake_bi_mr.is_finished():
             bi_list.append(fake_bi_mr)
 

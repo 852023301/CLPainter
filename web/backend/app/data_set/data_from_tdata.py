@@ -12,6 +12,7 @@ from CLPainter.web.backend.app._config.settings import settings
 def change_data_type_and_save(columns, dates, N_D, info_dict,
                               dsc_path,
                               precision=2):
+    file_names = {}
     for idx, i in enumerate(columns):
         is_write = True
         file_name = columns[idx].replace(".", "")
@@ -32,16 +33,16 @@ def change_data_type_and_save(columns, dates, N_D, info_dict,
 
             single = [dates[jdx], *[float(fl).__round__(precision) for fl in _single]]
             final_list.append(single)
-        file_names = {}
 
         if is_write:
             file_name = f"{file_name}.pkl"
-            with open(f"{dsc_path}/{file_name}", "wb") as f:
-                pickle.dump(final_list, f)
+            with open(f"{dsc_path}/{file_name}", "wb") as fi:
+                pickle.dump(final_list, fi)
                 file_names[file_name] = 1
-            for f in os.listdir(dsc_path):
-                if file_names.get(f) is None:
-                    os.remove(os.path.join(dsc_path, f))
+
+    for f in os.listdir(dsc_path):
+        if file_names.get(f) is None:
+            os.remove(os.path.join(dsc_path, f))
 
 if __name__ == "__main__":
     #########################################
