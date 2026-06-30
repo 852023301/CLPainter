@@ -630,6 +630,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             raise RuntimeError(text)
 
     # 最后一笔mr
+    print(bi_lm)
+    print(bi_mr)
 
     if bi_lm.is_finished():
         # mr拉长

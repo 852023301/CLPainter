@@ -25,9 +25,10 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
@@ -62,6 +63,7 @@ class _DataCache:
         self._fenxing_list = None
         self._trade_dates = None
         self._bi_list = None
+        self._te_zheng_xu_lie = None
         self._initialized = True
 
     def ensure_loaded(self):
@@ -88,6 +90,7 @@ class _DataCache:
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
+        print(len(self._te_zheng_xu_lie))
 
 
 
