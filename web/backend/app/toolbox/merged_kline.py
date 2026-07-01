@@ -35,7 +35,7 @@ class MergedKLine:
     merged_low: float = field(init=False)  # 合并后的最低价
 
     # 分型标记：1=顶分型，-1=底分型，0=无分型
-    is_top_bottom: int = 0
+    is_top_bottom: MergedKLineType = MergedKLineType.NONE
 
     # 合并后最高价
     high_price: float = field(init=False)
@@ -188,24 +188,13 @@ def find_top_bottom(all_klines: List[MergedKLine]) -> None:
 
         # 判断底分型：左中右形成V型
         if left_kline.merged_low > mid_kline.merged_low < current_kline.merged_low:
-            current_kline.is_top_bottom = -1
+            current_kline.is_top_bottom = MergedKLineType.BOTTOM
         # 判断顶分型：左中右形成倒V型
         elif left_kline.merged_high < mid_kline.merged_high > current_kline.merged_high:
-            current_kline.is_top_bottom = 1
+            current_kline.is_top_bottom = MergedKLineType.TOP
         else:
-            current_kline.is_top_bottom = 0
+            current_kline.is_top_bottom = MergedKLineType.NONE
 
-    lst = [i for i in all_klines if i.is_top_bottom != 0]
-    # print(lst)
+    lst = [i for i in all_klines if i.is_top_bottom != MergedKLineType.NONE]
 
-    # for i in range(len(lst) - 1):
-    #     if not (lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0):
-    #         last = lst[i - 1].is_top_bottom
-    #         now = lst[i].is_top_bottom
-    #         nextd = lst[i + 1].is_top_bottom
-    #         print(f"{lst[i].trade_date=},{last=},{now=},{nextd=}")
-
-    # for i in all_klines:
-    #     if "2026-03-04" >= i.trade_date >="2026-02-24":
-    #         print(i)
     assert all(lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0 for i in range(len(lst) - 1)), "K线的顶底分型标志不满足交替出现的要求"

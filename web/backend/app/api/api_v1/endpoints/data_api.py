@@ -12,6 +12,7 @@ from ..endpoints import MergedKLine, trade_date_list, merge_data_list, origin_kl
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 from ....toolbox.calculate import calculate_macd, calculate_ma
+from ....toolbox.merged_kline import MergedKLineType
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -73,10 +74,10 @@ async def Kline_base_merged(request: Request):
     for idx, kl in enumerate(merge_data_list):
         kl: MergedKLine
 
-        if kl.is_top_bottom == 0:
+        if kl.is_top_bottom == MergedKLineType.NONE:
             continue
 
-        if kl.is_top_bottom == 1:
+        if kl.is_top_bottom == MergedKLineType.TOP:
             y = kl.merged_high
             position = 'top'
             text = "顶"

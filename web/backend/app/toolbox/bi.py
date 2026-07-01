@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional, Union
 from collections import deque
 import numpy as np
 
-from .fenxing import FenXing
+from .fenxing import FenXing, FenXingType
 from .merged_kline import MergedKLine
 
 
@@ -177,7 +177,7 @@ class Bi:
     has_gap_count: int = field(init=False)
 
     def __post_init__(self):
-        self.bi_type = BiDirectionType.UP if self.right_fx.is_top_bottom == 1 else BiDirectionType.DOWN
+        self.bi_type = BiDirectionType.UP if self.right_fx.fenxing_type == FenXingType.TOP else BiDirectionType.DOWN
 
         # 确定起始和结束索引
         self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
@@ -237,8 +237,8 @@ class Bi:
         Returns:
             Bi: 笔对象
         """
-        if left_fx.is_top_bottom == right_fx.is_top_bottom:
-            raise ValueError(f"分型方向一致: {left_fx.is_top_bottom=}")
+        if left_fx.fenxing_type == right_fx.fenxing_type:
+            raise ValueError(f"分型方向一致: {left_fx.fenxing_type=}")
 
         bi_real_merged_kline_count, bi_has_gap_count = Bi.calculate_bi_real_merged_kline_count_and_gap_count(
             left_fx.mid_idx, right_fx.mid_idx,
@@ -279,8 +279,8 @@ class Bi:
         Returns:
             bool: 笔是否包含不同的分型
         """
-        if self.left_fx.is_top_bottom == self.right_fx.is_top_bottom:
-            raise ValueError(f"分型方向一致: {self.left_fx.is_top_bottom=}")
+        if self.left_fx.fenxing_type == self.right_fx.fenxing_type:
+            raise ValueError(f"分型方向一致: {self.left_fx.fenxing_type=}")
         return True
 
     def is_leaving_interval(self) -> bool:

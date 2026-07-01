@@ -3,7 +3,8 @@ from typing import List
 from enum import Enum
 import numpy as np
 
-from .merged_kline import MergedKLine
+from .merged_kline import MergedKLine, MergedKLineType
+
 
 class FenXingType(int, Enum):
     """分型类型"""
@@ -14,7 +15,7 @@ class FenXingType(int, Enum):
 class FenXing:
     """分型数据结构"""
     # 分型标记：1=顶分型，-1=底分型
-    is_top_bottom: FenXingType
+    fenxing_type: FenXingType
     # 分型结束位置索引
     start_idx: int = field(init=False)
     # 分型结束位置索引
@@ -77,11 +78,11 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
         kline = all_klines[idx]
 
         # 只处理有分型标记的K线
-        if kline.is_top_bottom == 0:
+        if kline.is_top_bottom == MergedKLineType.NONE:
             continue
 
         # 创建分型对象
-        fenxing = FenXing(is_top_bottom=kline.is_top_bottom)
+        fenxing = FenXing(fenxing_type= FenXingType.TOP  if kline.is_top_bottom == MergedKLineType.TOP else FenXingType.BOTTOM)
         
         #  寻找分型右侧最边缘的k线
         jdx = idx + 1
@@ -157,7 +158,7 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
         # 确定分型的最高价和最低价及其索引
         # 顶分型：取中间K线的最高价
         # 底分型：取中间K线的最低价
-        if kline.is_top_bottom == 1:  # 顶分型
+        if kline.is_top_bottom == MergedKLineType.TOP:  # 顶分型
             fenxing.high_price = mid_kline.merged_high
             fenxing.high_idx = mid_kline.high_idx
             # 底价为三根K线中的最低价
@@ -175,7 +176,7 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.trade_date = all_klines[fenxing.low_idx].trade_date
 
         fenxing_list.append(fenxing)
-    assert np.all(np.diff([fx.is_top_bottom == 1 for fx in fenxing_list]) != 0), "不满足分型交替的要求"
+    assert np.all(np.diff([fx.fenxing_type == FenXingType.TOP for fx in fenxing_list]) != 0), "不满足分型交替的要求"
     # print(fenxing_list)
 
     return fenxing_list
