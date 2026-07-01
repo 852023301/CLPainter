@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 from enum import Enum
 from collections import deque
-from .bi import Bi
+from .bi import Bi, FakeBi
 
 
 class TeZhengXuLieType(int, Enum):
@@ -22,18 +22,18 @@ class TeZhengXuLie:
     """笔的特征序列"""
     type: TeZhengXuLieType = field(default=TeZhengXuLieType.DING)
     category: TeZhengXuLieCategory = field(default_factory=TeZhengXuLieCategory.First)
-    bi_list: List[Bi] = field(default_factory=list)
+    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list)
 
     @property
-    def left_bi(self) -> Bi:
+    def left_bi(self) -> Union[Bi, FakeBi]:
         return self.bi_list[0]
 
     @property
-    def mid_bi(self) -> Bi:
+    def mid_bi(self) -> Union[Bi, FakeBi]:
         return self.bi_list[1]
 
     @property
-    def right_bi(self) -> Bi:
+    def right_bi(self) -> Union[Bi, FakeBi]:
         return self.bi_list[2]
 
     @property
@@ -41,9 +41,9 @@ class TeZhengXuLie:
         return self.mid_bi.start_idx
 
 
-def generate_te_zheng_xu_lie(bi_list: List[Bi]) -> List[TeZhengXuLie]:
+def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXuLie]:
     """生成特征序列"""
-    te_zheng_xu_lie_list = []
+    te_zheng_xu_lie_list: List[TeZhengXuLie] = []
 
     for idx in range(2, len(bi_list) - 2):
         # 相邻bi是相反方向，

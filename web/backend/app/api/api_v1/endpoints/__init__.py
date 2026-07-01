@@ -90,7 +90,6 @@ class _DataCache:
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
-        print(len(self._te_zheng_xu_lie))
 
 
 

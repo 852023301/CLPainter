@@ -1,16 +1,20 @@
 from dataclasses import dataclass, field
 from typing import List
-
+from enum import Enum
 import numpy as np
 
 from .merged_kline import MergedKLine
 
+class FenXingType(int, Enum):
+    """分型类型"""
+    TOP = 1  # 顶分型
+    BOTTOM = -1  # 底分型
 
 @dataclass
 class FenXing:
     """分型数据结构"""
     # 分型标记：1=顶分型，-1=底分型
-    is_top_bottom: int
+    is_top_bottom: FenXingType
     # 分型结束位置索引
     start_idx: int = field(init=False)
     # 分型结束位置索引

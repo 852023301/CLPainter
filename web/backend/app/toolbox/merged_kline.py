@@ -1,6 +1,13 @@
 from dataclasses import dataclass, field
 from typing import List
+from enum import Enum
 from .origin_kline import OriginKLine, OriginKlineType
+
+class MergedKLineType(int, Enum):
+    """分型类型"""
+    NONE = 0 # 无分型
+    TOP = 1  # 顶分型
+    BOTTOM = -1  # 底分型
 
 
 @dataclass

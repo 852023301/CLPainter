@@ -16,22 +16,22 @@ class BiDirectionType(str, Enum):
 
 @dataclass
 class FakeBi:
-    """Fake笔数据结构（优化版）"""
+    """Fake笔数据结构"""
     start_idx: int = field(init=False)  # 笔起始位置索引（分型所在 K 线索引）
 
     start_time: str = field(init=False)  # 起始时间
     end_time: str = field(init=False)  # 结束时间
-    start_price: float # 起始价格（顶/底分型的极值）
-    end_price: float # 结束价格（顶/底分型的极值）
-    bi_type: BiDirectionType # 笔的方向
+    start_price: float  # 起始价格（顶/底分型的极值）
+    end_price: float  # 结束价格（顶/底分型的极值）
+    bi_type: BiDirectionType  # 笔的方向
 
     # 左右分型
     left_fx: FenXing
-    end_idx: int # 笔结束位置索引（分型所在 K 线索引）
+    end_idx: int  # 笔结束位置索引（分型所在 K 线索引）
     all_klines: List[MergedKLine] = field(repr=False)
 
     real_origin_kline_count: int = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
-    real_merged_kline_count: int = field(init=False)    # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
+    real_merged_kline_count: int = field(init=False)  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
 
     # 包含缺口数量
     has_gap_count: int = field(init=False)
@@ -103,8 +103,8 @@ class FakeBi:
         bi = FakeBi(
             left_fx=left_fx,
             end_idx=right_fx_mid_idx,
-            bi_type = bi_type,
-            all_klines = all_klines,
+            bi_type=bi_type,
+            all_klines=all_klines,
             start_price=start_price,
             end_price=end_price,
         )
@@ -157,7 +157,7 @@ class FakeBi:
 
 @dataclass
 class Bi:
-    """笔数据结构（优化版）"""
+    """笔数据结构"""
     start_idx: int = field(init=False)  # 笔起始位置索引（分型所在 K 线索引）
     end_idx: int = field(init=False)  # 笔结束位置索引（分型所在 K 线索引）
     start_time: str = field(init=False)  # 起始时间
@@ -171,7 +171,7 @@ class Bi:
     right_fx: FenXing
 
     real_origin_kline_count: int = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
-    real_merged_kline_count: int = field(init=False)   # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
+    real_merged_kline_count: int = field(init=False)  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
 
     # 包含缺口数量
     has_gap_count: int = field(init=False)
@@ -388,7 +388,7 @@ class Bi:
             print(all_klines[i])
 
 
-def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Bi]:
+def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBi]]:
     """
     根据分型列表划分缠论笔
 
@@ -645,25 +645,24 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         # mr拉长
         start_idx = bi_lm.right_fx.right_idx
         end_idx = len(all_klines) - 1  # 到最后的位置
-        last_kline = all_klines[end_idx]
         init_highest_price = max(bi_lm.right_fx.high_price, bi_lm.right_fx.high_price)
         init_lowest_price = min(bi_lm.right_fx.low_price, bi_lm.right_fx.low_price)
 
-        print(init_highest_price, init_lowest_price, start_idx, end_idx)
+        # print(init_highest_price, init_lowest_price, start_idx, end_idx)
         highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
                                                                                            init_lowest_price, start_idx,
                                                                                            end_idx, all_klines)
-        print(highest_price, lowest_price, lowest_idx, highest_idx, )
-        print(bi_lm.right_fx, highest_idx, lowest_idx, bi_lm.end_price, highest_price)
+        # print(highest_price, lowest_price, lowest_idx, highest_idx, )
+        # print(bi_lm.right_fx, highest_idx, lowest_idx, bi_lm.end_price, highest_price)
         if bi_mr.bi_type == BiDirectionType.UP:
             fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=highest_idx,
-                                            start_price=bi_lm.end_price, end_price=highest_price,
-                                            bi_type=BiDirectionType.UP, all_klines=all_klines)
+                                             start_price=bi_lm.end_price, end_price=highest_price,
+                                             bi_type=BiDirectionType.UP, all_klines=all_klines)
         else:
             fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=lowest_idx,
-                                            start_price=bi_lm.end_price, end_price=lowest_price,
-                                            bi_type=BiDirectionType.DOWN, all_klines=all_klines)
-        print(fake_bi_mr)
+                                             start_price=bi_lm.end_price, end_price=lowest_price,
+                                             bi_type=BiDirectionType.DOWN, all_klines=all_klines)
+        # print(fake_bi_mr)
         if fake_bi_mr.is_finished():
             bi_list.append(fake_bi_mr)
 

@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
+from CLPainter.web.backend.app.toolbox.origin_kline import OriginKlineType
 from ..endpoints import bi_data_list
 from ..endpoints import origin_kline_data, trade_date_list, gaps_list
 from ...._config.logging_config import setup_logger
@@ -378,7 +379,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             {
                 'time': kline.trade_date,
                 'value': kline.volume,
-                'color': '#ef5350' if kline.type == 'up' else '#26a69a'
+                'color': '#ef5350' if kline.type == OriginKlineType.UP else '#26a69a'
             }
             for kline in sample_data
         ]
