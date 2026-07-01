@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional, Union
 from collections import deque
 import numpy as np
 
-from .fenxing import FenXing, FenXingType
+from .fenxing import FenXing
 from .merged_kline import MergedKLine
 
 
@@ -177,7 +177,7 @@ class Bi:
     has_gap_count: int = field(init=False)
 
     def __post_init__(self):
-        self.bi_type = BiDirectionType.UP if self.right_fx.fenxing_type == FenXingType.TOP else BiDirectionType.DOWN
+        self.bi_type = BiDirectionType.UP if self.right_fx.is_top() else BiDirectionType.DOWN
 
         # 确定起始和结束索引
         self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx

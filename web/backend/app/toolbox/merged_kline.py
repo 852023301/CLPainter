@@ -5,7 +5,7 @@ from .origin_kline import OriginKLine, OriginKlineType
 
 class MergedKLineType(int, Enum):
     """分型类型"""
-    NONE = 0 # 无分型
+    NORMAL = 0 # 无分型
     TOP = 1  # 顶分型
     BOTTOM = -1  # 底分型
 
@@ -35,7 +35,7 @@ class MergedKLine:
     merged_low: float = field(init=False)  # 合并后的最低价
 
     # 分型标记：1=顶分型，-1=底分型，0=无分型
-    is_top_bottom: MergedKLineType = MergedKLineType.NONE
+    is_top_bottom: MergedKLineType = MergedKLineType.NORMAL
 
     # 合并后最高价
     high_price: float = field(init=False)
@@ -65,6 +65,21 @@ class MergedKLine:
         if value not in (0, 1):
             raise ValueError("is_contained must be 0 or 1")
         self._is_contained = value
+
+    @property
+    def is_top(self) -> bool:
+        """判断是否为顶分型"""
+        return self.is_top_bottom == MergedKLineType.TOP
+
+    @property
+    def is_bottom(self) -> bool:
+        """判断是否为底分型"""
+        return self.is_top_bottom == MergedKLineType.BOTTOM
+
+    @property
+    def is_normal(self) -> bool:
+        """判断是否为正常K线"""
+        return self.is_top_bottom == MergedKLineType.NORMAL
 
 
 def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]:
@@ -193,8 +208,8 @@ def find_top_bottom(all_klines: List[MergedKLine]) -> None:
         elif left_kline.merged_high < mid_kline.merged_high > current_kline.merged_high:
             current_kline.is_top_bottom = MergedKLineType.TOP
         else:
-            current_kline.is_top_bottom = MergedKLineType.NONE
+            current_kline.is_top_bottom = MergedKLineType.NORMAL
 
-    lst = [i for i in all_klines if i.is_top_bottom != MergedKLineType.NONE]
+    lst = [i for i in all_klines if i.is_top_bottom != MergedKLineType.NORMAL]
 
     assert all(lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0 for i in range(len(lst) - 1)), "K线的顶底分型标志不满足交替出现的要求"
