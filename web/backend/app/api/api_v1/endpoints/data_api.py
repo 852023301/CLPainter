@@ -74,10 +74,10 @@ async def Kline_base_merged(request: Request):
     for idx, kl in enumerate(merge_data_list):
         kl: MergedKLine
 
-        if kl.is_normal:
+        if kl.is_normal():
             continue
 
-        if kl.is_top:
+        if kl.is_top():
             y = kl.merged_high
             position = 'top'
             text = "顶"

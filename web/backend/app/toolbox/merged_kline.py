@@ -3,9 +3,10 @@ from typing import List
 from enum import Enum
 from .origin_kline import OriginKLine, OriginKlineType
 
+
 class MergedKLineType(int, Enum):
     """分型类型"""
-    NORMAL = 0 # 无分型
+    NORMAL = 0  # 无分型
     TOP = 1  # 顶分型
     BOTTOM = -1  # 底分型
 
@@ -66,17 +67,14 @@ class MergedKLine:
             raise ValueError("is_contained must be 0 or 1")
         self._is_contained = value
 
-    @property
     def is_top(self) -> bool:
         """判断是否为顶分型"""
         return self.is_top_bottom == MergedKLineType.TOP
 
-    @property
     def is_bottom(self) -> bool:
         """判断是否为底分型"""
         return self.is_top_bottom == MergedKLineType.BOTTOM
 
-    @property
     def is_normal(self) -> bool:
         """判断是否为正常K线"""
         return self.is_top_bottom == MergedKLineType.NORMAL
@@ -122,7 +120,7 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
                 _apply_containment(last_kline, merged_kline)
 
                 # 寻找极值点
-                if merged_kline.merged_trend == 1: # 向上
+                if merged_kline.merged_trend == 1:  # 向上
                     merged_kline.high_idx = idx if merged_kline.high_price > last_kline.high_price else last_kline.high_idx
                     merged_kline.high_price = merged_kline.high_price if merged_kline.high_price > last_kline.high_price else last_kline.high_price
                     merged_kline.low_idx = idx if merged_kline.low_price > last_kline.low_price else last_kline.low_idx

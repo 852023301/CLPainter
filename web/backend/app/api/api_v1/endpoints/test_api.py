@@ -379,7 +379,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             {
                 'time': kline.trade_date,
                 'value': kline.volume,
-                'color': '#ef5350' if kline.type == OriginKlineType.UP else '#26a69a'
+                'color': '#ef5350' if kline.is_up() else '#26a69a'
             }
             for kline in sample_data
         ]

@@ -34,6 +34,12 @@ class OriginKLine:
     def __iter__(self):
         return (getattr(self, f.name) for f in fields(self))
 
+    def is_up(self):
+        return self.type == OriginKlineType.UP
+
+    def is_down(self):
+        return self.type == OriginKlineType.DOWN
+
 
 def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], List[Gap]]:
     """

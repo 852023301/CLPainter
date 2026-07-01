@@ -81,11 +81,11 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
         kline = all_klines[idx]
 
         # 只处理有分型标记的K线
-        if kline.is_normal:
+        if kline.is_normal():
             continue
 
         # 创建分型对象
-        fenxing = FenXing(fenxing_type= FenXingType.TOP  if kline.is_top else FenXingType.BOTTOM)
+        fenxing = FenXing(fenxing_type= FenXingType.TOP  if kline.is_top() else FenXingType.BOTTOM)
         
         #  寻找分型右侧最边缘的k线
         jdx = idx + 1
@@ -161,7 +161,7 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
         # 确定分型的最高价和最低价及其索引
         # 顶分型：取中间K线的最高价
         # 底分型：取中间K线的最低价
-        if kline.is_top:  # 顶分型
+        if kline.is_top():  # 顶分型
             fenxing.high_price = mid_kline.merged_high
             fenxing.high_idx = mid_kline.high_idx
             # 底价为三根K线中的最低价

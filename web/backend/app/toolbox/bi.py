@@ -48,11 +48,11 @@ class FakeBi:
 
         self.real_origin_kline_count = self.end_idx - self.start_idx + 1
 
-    @property
+
     def is_up(self) -> bool:
         return self.bi_type == BiDirectionType.UP
 
-    @property
+
     def is_down(self) -> bool:
         return self.bi_type == BiDirectionType.DOWN
 
@@ -191,11 +191,11 @@ class Bi:
         self.end_price = self.right_fx.high_price if self.bi_type == BiDirectionType.UP else self.right_fx.low_price
         self.real_origin_kline_count = self.end_idx - self.start_idx + 1
 
-    @property
+
     def is_up(self) -> bool:
         return self.bi_type == BiDirectionType.UP
 
-    @property
+
     def is_down(self) -> bool:
         return self.bi_type == BiDirectionType.DOWN
 

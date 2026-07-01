@@ -23,3 +23,9 @@ class Gap:
 
     def to_kwargs(self):
         return dataclasses.asdict(self)
+
+    def is_up(self):
+        return self.type == GapDirectionType.UP
+
+    def is_down(self):
+        return self.type == GapDirectionType.DOWN
