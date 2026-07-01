@@ -29,11 +29,12 @@ class XianDuan:
     right_fx_tzxl: TeZhengXuLie
 
     def __post_init__(self):
+        """根据左右两个特征序列分型初始化线段端点、方向和价格。"""
         if self.left_fx_tzxl.type == self.right_fx_tzxl.type:
             raise ValueError(f"特征序列分型方向一致: {self.left_fx_tzxl.type=}")
 
         self.xianduan_type = (
-            XianDuanDirectionType.UP if self.right_fx_tzxl.is_ding else XianDuanDirectionType.DOWN
+            XianDuanDirectionType.UP if self.right_fx_tzxl.is_top() else XianDuanDirectionType.DOWN
         )
 
         self.start_idx = self.left_fx_tzxl.start_idx
@@ -48,19 +49,21 @@ class XianDuan:
         self.start_price = self.left_fx_tzxl.start_price
         self.end_price = self.right_fx_tzxl.start_price
 
-
     def is_up(self) -> bool:
+        """判断当前线段是否为上升线段。"""
         return self.xianduan_type == XianDuanDirectionType.UP
 
-
     def is_down(self) -> bool:
+        """判断当前线段是否为下降线段。"""
         return self.xianduan_type == XianDuanDirectionType.DOWN
 
     @property
     def bi_count(self) -> int:
+        """返回线段覆盖的笔数量。"""
         return self.end_bi_idx - self.start_bi_idx + 1
 
     def to_dict(self) -> dict:
+        """转换成前端画线更容易消费的字典结构。"""
         return {
             "start_idx": self.start_idx,
             "end_idx": self.end_idx,
@@ -73,9 +76,11 @@ class XianDuan:
 
     @classmethod
     def from_tzxl(cls, left_fx_tzxl: TeZhengXuLie, right_fx_tzxl: TeZhengXuLie) -> "XianDuan":
+        """从一左一右两个特征序列分型构造候选线段。"""
         return cls(left_fx_tzxl=left_fx_tzxl, right_fx_tzxl=right_fx_tzxl)
 
     def is_finished(self) -> bool:
+        """判断候选线段是否满足线段成立条件。"""
         if not self.has_enough_bi():
             return False
 
@@ -90,11 +95,11 @@ class XianDuan:
         return True
 
     def has_enough_bi(self) -> bool:
-        # 缠论线段至少由三笔构成；这里用特征序列中间笔索引差表达。
+        """缠论线段至少由三笔构成。"""
         return self.bi_count >= 3
 
     def is_leaving_interval(self) -> bool:
-        """线段离开区间条件"""
+        """判断右侧特征序列是否相对左侧特征序列完成区间离开。"""
         if self.is_up():
             return (
                 self.left_fx_tzxl.low_price < self.right_fx_tzxl.low_price
@@ -116,16 +121,18 @@ class XianDuan:
 
 
 def _is_better_same_type(candidate: TeZhengXuLie, current: TeZhengXuLie) -> bool:
+    """同类特征序列里，判断 candidate 是否比 current 更适合做端点。"""
     if candidate.type != current.type:
         return False
 
-    if candidate.is_ding:
+    if candidate.is_top():
         return candidate.start_price >= current.start_price
 
     return candidate.start_price <= current.start_price
 
 
 def _is_stronger_end(candidate: XianDuan, current: XianDuan) -> bool:
+    """同方向候选线段里，判断 candidate 的右端是否更极端。"""
     if candidate.xianduan_type != current.xianduan_type:
         return False
 
@@ -136,6 +143,7 @@ def _is_stronger_end(candidate: XianDuan, current: XianDuan) -> bool:
 
 
 def _has_tzxl_gap(tzxl: TeZhengXuLie) -> bool:
+    """判断特征序列是否为第二种类型，即是否存在特征序列缺口。"""
     return tzxl.is_second_category()
 
 
@@ -175,6 +183,7 @@ def _can_build_xianduan(
     tzxl_list: List[TeZhengXuLie],
     right_idx: int,
 ) -> bool:
+    """综合缺口确认和线段成立条件，判断两个特征序列能否形成线段。"""
     if not _confirm_break(left_tzxl, right_tzxl, tzxl_list, right_idx):
         return False
 
@@ -185,6 +194,7 @@ def _find_next_opposite(
     left_idx: int,
     tzxl_list: List[TeZhengXuLie],
 ) -> Optional[tuple[int, int]]:
+    """从左端点之后寻找可确认线段的第一个异类特征序列端点。"""
     left_tzxl = tzxl_list[left_idx]
     best_idx: Optional[int] = None
 
@@ -269,5 +279,3 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
     assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
     return xianduan_list
-
-

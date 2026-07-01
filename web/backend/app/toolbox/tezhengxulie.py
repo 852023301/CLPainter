@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional, Union
 from enum import Enum
 from collections import deque
+import numpy as np
 from .bi import Bi, FakeBi
 
 
@@ -61,12 +62,10 @@ class TeZhengXuLie:
     def right_bi_idx(self) -> int:
         return self.bi_idx_list[2]
 
-    @property
-    def is_ding(self) -> bool:
+    def is_top(self) -> bool:
         return self.type == TeZhengXuLieType.DING
 
-    @property
-    def is_di(self) -> bool:
+    def is_bottom(self) -> bool:
         return self.type == TeZhengXuLieType.DI
 
     @property
@@ -103,17 +102,23 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
 
         # 底部特征序列
         if left_bi.is_up():
-            if mid_bi.start_price < left_bi.start_price and mid_bi.start_price < right_bi.start_price:
+            if mid_bi.start_price < left_bi.start_price and mid_bi.start_price < right_bi.start_price and mid_bi.end_price < right_bi.end_price:
                 category = TeZhengXuLieCategory.Second if mid_bi.end_price < left_bi.start_price else TeZhengXuLieCategory.First
                 te_zheng_xu_lie_list.append(
                     TeZhengXuLie(type=TeZhengXuLieType.DI, category=category, bi_list=[left_bi, mid_bi, right_bi],
                                  bi_idx_list=bi_idx_list))
         # 顶部特征序列
         else:
-            if mid_bi.start_price > left_bi.start_price and mid_bi.start_price > right_bi.start_price:
+            if mid_bi.start_price > left_bi.start_price and mid_bi.start_price > right_bi.start_price and mid_bi.end_price > right_bi.end_price:
                 category = TeZhengXuLieCategory.Second if mid_bi.end_price > left_bi.start_price else TeZhengXuLieCategory.First
                 te_zheng_xu_lie_list.append(
                     TeZhengXuLie(type=TeZhengXuLieType.DING, category=category, bi_list=[left_bi, mid_bi, right_bi],
                                  bi_idx_list=bi_idx_list))
 
+    for i in te_zheng_xu_lie_list:
+        if i.is_top():
+            print(i.mid_bi.left_fx.trade_date ,i.is_top())
+        else:
+            print(i.mid_bi.left_fx.trade_date ,i.is_top())
+    # assert np.all(np.diff([tzxl.is_top() for tzxl in te_zheng_xu_lie_list]) != 0), "不满足特征序列交替的要求"
     return te_zheng_xu_lie_list

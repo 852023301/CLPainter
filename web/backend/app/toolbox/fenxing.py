@@ -179,7 +179,7 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.trade_date = all_klines[fenxing.low_idx].trade_date
 
         fenxing_list.append(fenxing)
-    assert np.all(np.diff([fx.fenxing_type == FenXingType.TOP for fx in fenxing_list]) != 0), "不满足分型交替的要求"
+    assert np.all(np.diff([fx.is_top() for fx in fenxing_list]) != 0), "不满足分型交替的要求"
     # print(fenxing_list)
 
     return fenxing_list
