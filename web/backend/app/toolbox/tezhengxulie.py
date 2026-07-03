@@ -3,6 +3,8 @@ from typing import List, Tuple, Optional, Union
 from enum import Enum
 from collections import deque
 import numpy as np
+from zmq.ssh import forward
+
 from .bi import Bi, FakeBi
 
 
@@ -92,28 +94,50 @@ class TeZhengXuLie:
 def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXuLie]:
     """生成特征序列"""
     te_zheng_xu_lie_list: List[TeZhengXuLie] = []
-
-    for idx in range(2, len(bi_list) - 2):
+    bi_idx_length = len(bi_list)
+    _end_idx  = bi_idx_length - 2
+    for idx in range(2, _end_idx):
         # 相邻bi是相反方向，
         left_bi = bi_list[idx - 2]
         mid_bi = bi_list[idx]
-        right_bi = bi_list[idx + 2]
-        bi_idx_list = [idx - 2, idx, idx + 2]
+
 
         # 底部特征序列
-        if left_bi.is_up():
-            if mid_bi.start_price < left_bi.start_price and mid_bi.start_price < right_bi.start_price and mid_bi.end_price < right_bi.end_price:
-                category = TeZhengXuLieCategory.Second if mid_bi.end_price < left_bi.start_price else TeZhengXuLieCategory.First
-                te_zheng_xu_lie_list.append(
-                    TeZhengXuLie(type=TeZhengXuLieType.DI, category=category, bi_list=[left_bi, mid_bi, right_bi],
-                                 bi_idx_list=bi_idx_list))
+        if mid_bi.is_up():
+            if mid_bi.start_price < left_bi.start_price:
+                find = False
+                right_idx = idx + 2
+                merged_low = mid_bi.start_price
+                merged_high = mid_bi.end_price
+                while right_idx < bi_idx_length:
+                    right_bi = bi_list[right_idx]
+                    # 合并
+                    if (right_bi.start_price>=merged_low and right_bi.end_price <= merged_high) or (right_bi.start_price<=merged_low and right_bi.end_price >= merged_high):
+                        merged_high = min(merged_high, right_bi.end_price)
+                        merged_low = min(merged_low, right_bi.start_price)
+                    else:
+                        if right_bi.start_price > merged_low and right_bi.end_price > merged_high:
+                            find = True
+                        elif right_bi.start_price < merged_low and right_bi.end_price < merged_high:
+                            break
+                        else:
+                            raise ValueError("意外的笔")
+                    right_idx += 2
+
+                if find:
+                    bi_idx_list = [idx - 2, idx, right_idx]
+
+                    category = TeZhengXuLieCategory.Second if mid_bi.end_price < left_bi.start_price else TeZhengXuLieCategory.First
+                    te_zheng_xu_lie_list.append(
+                        TeZhengXuLie(type=TeZhengXuLieType.DI, category=category, bi_list=[left_bi, mid_bi, bi_list[right_idx]],
+                                     bi_idx_list=bi_idx_list))
         # 顶部特征序列
         else:
-            if mid_bi.start_price > left_bi.start_price and mid_bi.start_price > right_bi.start_price and mid_bi.end_price > right_bi.end_price:
+            if mid_bi.start_price > left_bi.start_price:
                 category = TeZhengXuLieCategory.Second if mid_bi.end_price > left_bi.start_price else TeZhengXuLieCategory.First
-                te_zheng_xu_lie_list.append(
-                    TeZhengXuLie(type=TeZhengXuLieType.DING, category=category, bi_list=[left_bi, mid_bi, right_bi],
-                                 bi_idx_list=bi_idx_list))
+                # te_zheng_xu_lie_list.append(
+                #     TeZhengXuLie(type=TeZhengXuLieType.DING, category=category, bi_list=[left_bi, mid_bi, right_bi],
+                #                  bi_idx_list=bi_idx_list))
 
     for i in te_zheng_xu_lie_list:
         if i.is_top():
