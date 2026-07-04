@@ -110,18 +110,22 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
                 merged_high = mid_bi.end_price
                 while right_idx < bi_idx_length:
                     right_bi = bi_list[right_idx]
-                    # 向下合并
-                    if (right_bi.start_price>=merged_low and right_bi.end_price <= merged_high) or (right_bi.start_price<=merged_low and right_bi.end_price >= merged_high):
+
+                    if right_bi.start_price < merged_low:
+                        break
+                    elif right_bi.start_price > merged_low and right_bi.end_price > merged_high:
+                        find = True
+                        break
+                    elif (right_bi.start_price>=merged_low and right_bi.end_price <= merged_high) or (right_bi.start_price<=merged_low and right_bi.end_price >= merged_high):
+                        # 向下合并
                         merged_high = min(merged_high, right_bi.end_price)
                         merged_low = min(merged_low, right_bi.start_price)
                     else:
-                        if right_bi.start_price > merged_low and right_bi.end_price > merged_high:
-                            find = True
-                            break
-                        elif right_bi.start_price < merged_low and right_bi.end_price < merged_high:
-                            break
-                        else:
-                            raise ValueError(f"意外的笔{right_bi=}")
+                        print(f"{merged_low=}")
+                        print(f"{merged_high=}")
+                        print(f"{mid_bi=}")
+                        print(f"{right_bi=}")
+                        raise ValueError(f"意外的笔")
                     right_idx += 2
 
                 if find:
@@ -140,22 +144,22 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
                 merged_low = mid_bi.end_price
                 while right_idx < bi_idx_length:
                     right_bi = bi_list[right_idx]
-                    # 向上合并
-                    if (right_bi.start_price>=merged_low and right_bi.end_price <= merged_high) or (right_bi.start_price<=merged_low and right_bi.end_price >= merged_high):
+
+                    if right_bi.start_price > merged_high:
+                        break
+                    elif right_bi.start_price < merged_high and right_bi.end_price < merged_low:
+                        find = True
+                        break
+                    elif (right_bi.start_price>=merged_low and right_bi.end_price <= merged_high) or (right_bi.start_price<=merged_low and right_bi.end_price >= merged_high):
+                        # 向上合并
                         merged_high = max(merged_high, right_bi.start_price)
                         merged_low = max(merged_low, right_bi.end_price)
                     else:
-                        if right_bi.start_price < merged_high and right_bi.end_price < merged_low:
-                            find = True
-                            break
-                        elif right_bi.start_price > merged_high and right_bi.end_price > merged_low:
-                            break
-                        else:
-                            print(f"{merged_low=}")
-                            print(f"{merged_high=}")
-                            print(f"{mid_bi=}")
-                            print(f"{right_bi=}")
-                            raise ValueError(f"意外的笔")
+                        print(f"{merged_low=}")
+                        print(f"{merged_high=}")
+                        print(f"{mid_bi=}")
+                        print(f"{right_bi=}")
+                        raise ValueError(f"意外的笔")
                     right_idx += 2
 
 
@@ -166,7 +170,8 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
                         TeZhengXuLie(type=TeZhengXuLieType.DING, category=category, bi_list=[left_bi, mid_bi, bi_list[right_idx]],
                                      bi_idx_list=bi_idx_list))
 
-    for i in te_zheng_xu_lie_list:
-        print(i.mid_bi.left_fx.trade_date ,i.is_top())
+    # for i in te_zheng_xu_lie_list:
+    #     print(i.mid_bi.left_fx.trade_date ,i.is_top())
+    # print(f"{len(te_zheng_xu_lie_list)=}")
     # assert np.all(np.diff([tzxl.is_top() for tzxl in te_zheng_xu_lie_list]) != 0), "不满足特征序列交替的要求"
     return te_zheng_xu_lie_list
