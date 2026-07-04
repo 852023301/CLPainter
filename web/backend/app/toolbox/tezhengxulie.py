@@ -136,14 +136,14 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
             if mid_bi.start_price > left_bi.start_price:
                 find = False
                 right_idx = idx + 2
-                merged_low = mid_bi.start_price
-                merged_high = mid_bi.end_price
+                merged_high = mid_bi.start_price
+                merged_low = mid_bi.end_price
                 while right_idx < bi_idx_length:
                     right_bi = bi_list[right_idx]
                     # 向上合并
                     if (right_bi.start_price>=merged_low and right_bi.end_price <= merged_high) or (right_bi.start_price<=merged_low and right_bi.end_price >= merged_high):
-                        merged_high = max(merged_high, right_bi.end_price)
-                        merged_low = max(merged_low, right_bi.start_price)
+                        merged_high = max(merged_high, right_bi.start_price)
+                        merged_low = max(merged_low, right_bi.end_price)
                     else:
                         if right_bi.start_price < merged_high and right_bi.end_price < merged_low:
                             find = True
@@ -151,7 +151,11 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
                         elif right_bi.start_price > merged_high and right_bi.end_price > merged_low:
                             break
                         else:
-                            raise ValueError(f"意外的笔{right_bi=}")
+                            print(f"{merged_low=}")
+                            print(f"{merged_high=}")
+                            print(f"{mid_bi=}")
+                            print(f"{right_bi=}")
+                            raise ValueError(f"意外的笔")
                     right_idx += 2
 
 
