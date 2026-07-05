@@ -80,7 +80,7 @@ class FakeBi:
         }
 
     @classmethod
-    def from_fenxing(self, left_fx: FenXing, right_fx_mid_idx: int, start_price, end_price, bi_type: BiDirectionType,
+    def from_fenxing(cls, left_fx: FenXing, right_fx_mid_idx: int, start_price, end_price, bi_type: BiDirectionType,
                      all_klines: List[MergedKLine]):
         """
         从两个分型对象中创建一个笔对象
@@ -221,7 +221,7 @@ class Bi:
         }
 
     @classmethod
-    def from_fenxing(self, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine]):
+    def from_fenxing(cls, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine]):
         """
         从两个分型对象中创建一个笔对象
 
@@ -301,6 +301,26 @@ class Bi:
 
         """
         return self.origin_kline_count >= 5 and self.merged_kline_count >= 4
+
+    def extends_beyond_end(self, price: float) -> bool:
+        """判断给定价格是否在本笔方向上超越了本笔终点价格
+
+        UP笔: price > end_price (向上超越顶分型)
+        DOWN笔: price < end_price (向下超越底分型)
+        """
+        if self.bi_type == BiDirectionType.UP:
+            return price > self.end_price
+        return price < self.end_price
+
+    def extends_beyond_start(self, price: float) -> bool:
+        """判断给定价格是否在本笔反方向上超越了本笔起点价格
+
+        UP笔: price < start_price (向下超越底分型)
+        DOWN笔: price > start_price (向上超越顶分型)
+        """
+        if self.bi_type == BiDirectionType.UP:
+            return price < self.start_price
+        return price > self.start_price
 
     @staticmethod
     def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int,
@@ -405,6 +425,13 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     trade_s = "2026-05-14"
     trade_e = "2026-06-22"
     log_switch = False
+
+    def _advance_both():
+        """推进 lm 和 mr：lm=mr，从 fenxing_deque 取下一对创建新 mr"""
+        nonlocal bi_lm, bi_mr
+        bi_lm = bi_mr
+        m_fx, r_fx = fenxing_deque.popleft()
+        bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -516,9 +543,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
             bi_finish_deque.appendleft(bi_lm)
-            bi_lm = bi_mr
-            m_fx, r_fx = fenxing_deque.popleft()
-            bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+            _advance_both()
             if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                 print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
@@ -531,9 +556,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
         if not is_bi_lm_finish and is_bi_mr_finish:
             if not find_first_bi_in_finish_deque():
-                bi_lm = bi_mr
-                m_fx, r_fx = fenxing_deque.popleft()
-                bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+                _advance_both()
             continue
 
         x_fx, y_fx = fenxing_deque.popleft()
@@ -547,10 +570,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
             bi_xy = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
-            if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_lm.end_price) or (
-                bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_lm.end_price):
-                if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.start_price < bi_lm.start_price) or (
-                    bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.start_price > bi_lm.start_price):
+            if bi_lm.extends_beyond_end(bi_xy.end_price):
+                if bi_lm.extends_beyond_start(bi_xy.start_price):
 
                     if not find_second_bi_in_finish_deque():
                         bi_lm = bi_mr
@@ -579,8 +600,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
 
         elif bi_xy.bi_type == bi_mr.bi_type:
-            if (bi_xy.bi_type == BiDirectionType.UP and bi_xy.end_price > bi_mr.end_price) or (
-                bi_xy.bi_type == BiDirectionType.DOWN and bi_xy.end_price < bi_mr.end_price):
+            if bi_mr.extends_beyond_end(bi_xy.end_price):
                 bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
             if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                 print("$" * 50, "和mr同趋势")
