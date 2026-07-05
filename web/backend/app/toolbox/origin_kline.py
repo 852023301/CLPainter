@@ -26,7 +26,7 @@ class OriginKLine:
     has_gap: bool = False
 
     # 涨或跌
-    type: OriginKlineType = OriginKlineType.UP   # close< open则为跌，其他情况视为涨
+    type: OriginKlineType = OriginKlineType.UP  # close< open则为跌，其他情况视为涨
 
     def to_kwargs(self):
         return dataclasses.asdict(self)

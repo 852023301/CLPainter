@@ -2,7 +2,7 @@ from tdata import fetch_data
 import numpy as np
 import pandas as pd
 import pickle
-from pathlib import  Path
+from pathlib import Path
 import datetime
 import os
 from ddp import MysqlConnection
@@ -44,6 +44,7 @@ def change_data_type_and_save(columns, dates, N_D, info_dict,
         if file_names.get(f) is None:
             os.remove(os.path.join(dsc_path, f))
 
+
 if __name__ == "__main__":
     #########################################
     # 个股
@@ -51,7 +52,8 @@ if __name__ == "__main__":
         stock_info = sql.query_pandas(
             f"select stock_code,start_date from stock_info where end_date > '{datetime.datetime.now().date()}' ")
 
-    stock_info_dict = dict(zip(stock_info['stock_code'], pd.DatetimeIndex(stock_info['start_date']).strftime("%Y-%m-%d")))
+    stock_info_dict = dict(
+        zip(stock_info['stock_code'], pd.DatetimeIndex(stock_info['start_date']).strftime("%Y-%m-%d")))
 
     d = fetch_data(["open", "close", "low", "high", "volume"])
     dates = pd.DatetimeIndex(d['open'].index).strftime("%Y-%m-%d").tolist()
@@ -84,7 +86,6 @@ if __name__ == "__main__":
     # 容器内执行 rm -r  /root/CLPainter/web/backend/app/data_set/all_stocks
     # 容器外执行 docker cp /home/wjl/TechFinWorkSpace/CLPainter/web/backend/app/data_set/all_stocks CLPainter:/root/CLPainter/web/backend/app/data_set/
 
-
     #########################################
     # # 旧版取指数
     # index_name = "szzs"
@@ -105,7 +106,8 @@ if __name__ == "__main__":
     with MysqlConnection() as sql:
         index_info = sql.query_pandas(
             f"select index_code,start_date from index_info where end_date > '{datetime.datetime.now().date()}' ")
-    index_info_dict = dict(zip(index_info['index_code'], pd.DatetimeIndex(index_info['start_date']).strftime("%Y-%m-%d")))
+    index_info_dict = dict(
+        zip(index_info['index_code'], pd.DatetimeIndex(index_info['start_date']).strftime("%Y-%m-%d")))
 
     index_map = {
 
@@ -139,7 +141,7 @@ if __name__ == "__main__":
         concat_data.index = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
         final_list = concat_data.reset_index().values.tolist()
 
-        file_name  = f"{code.replace('.', '')}.pkl"
+        file_name = f"{code.replace('.', '')}.pkl"
 
         with open(f"{dsc_path}/{file_name}",
                   "wb") as fi:

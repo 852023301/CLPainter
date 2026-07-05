@@ -48,10 +48,8 @@ class FakeBi:
 
         self.real_origin_kline_count = self.end_idx - self.start_idx + 1
 
-
     def is_up(self) -> bool:
         return self.bi_type == BiDirectionType.UP
-
 
     def is_down(self) -> bool:
         return self.bi_type == BiDirectionType.DOWN
@@ -191,10 +189,8 @@ class Bi:
         self.end_price = self.right_fx.high_price if self.bi_type == BiDirectionType.UP else self.right_fx.low_price
         self.real_origin_kline_count = self.end_idx - self.start_idx + 1
 
-
     def is_up(self) -> bool:
         return self.bi_type == BiDirectionType.UP
-
 
     def is_down(self) -> bool:
         return self.bi_type == BiDirectionType.DOWN
@@ -654,7 +650,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                                                                                            end_idx, all_klines)
         # print(highest_price, lowest_price, lowest_idx, highest_idx, )
         # print(bi_lm.right_fx, highest_idx, lowest_idx, bi_lm.end_price, highest_price)
-        if bi_mr.bi_type == BiDirectionType.UP:
+        if bi_mr is not None and bi_mr.bi_type == BiDirectionType.UP:
             fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=highest_idx,
                                              start_price=bi_lm.end_price, end_price=highest_price,
                                              bi_type=BiDirectionType.UP, all_klines=all_klines)

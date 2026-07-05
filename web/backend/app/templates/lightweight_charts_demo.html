@@ -28,7 +28,7 @@
             height: 600px;
             background-color: white;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             position: relative;
         }
 
@@ -37,7 +37,7 @@
             height: 150px;
             background-color: white;
             border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             margin-top: 10px;
             position: relative;
         }
@@ -101,294 +101,319 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📊 Lightweight Charts 简单示例</h1>
+<div class="container">
+    <h1>📊 Lightweight Charts 简单示例</h1>
 
-        <div id="chart">
-            <div class="ohlc-tooltip" id="ohlcTooltip"></div>
-        </div>
-        <div id="volume-chart" class="volume-container">
-            <div class="volume-label" id="volumeLabel">成交量: --</div>
-        </div>
+    <div id="chart">
+        <div class="ohlc-tooltip" id="ohlcTooltip"></div>
     </div>
+    <div id="volume-chart" class="volume-container">
+        <div class="volume-label" id="volumeLabel">成交量: --</div>
+    </div>
+</div>
 
-    <script>
-        // 从后端传入的数据
-        const candleData = {{ candle_data | safe }};
-        const biData = {{ bi_data | safe }};
-        const gapsData = {{ gaps_data | safe }};
-        const volumeData = {{ volume_data | safe }};
-        const currentPrecision = {{ precision }};  // 当前精度
+<script>
+    // 从后端传入的数据
+    const candleData = {
+    {
+        candle_data | safe
+    }
+    }
+    ;
+    const biData = {
+    {
+        bi_data | safe
+    }
+    }
+    ;
+    const gapsData = {
+    {
+        gaps_data | safe
+    }
+    }
+    ;
+    const volumeData = {
+    {
+        volume_data | safe
+    }
+    }
+    ;
+    const currentPrecision = {
+    {
+        precision
+    }
+    }
+    ;  // 当前精度
 
-        console.log('收到的K线数据:', candleData.length);
-        console.log('收到的笔数据:', biData.length);
-        console.log('收到的缺口数据:', gapsData.length);
-        console.log('收到的成交量数据:', volumeData.length);
-        console.log('当前精度:', currentPrecision);
+    console.log('收到的K线数据:', candleData.length);
+    console.log('收到的笔数据:', biData.length);
+    console.log('收到的缺口数据:', gapsData.length);
+    console.log('收到的成交量数据:', volumeData.length);
+    console.log('当前精度:', currentPrecision);
 
 
-        if (!candleData || !Array.isArray(candleData) || candleData.length === 0) {
-            document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
-        } else {
-            const chartContainer = document.getElementById('chart');
-            const volumeContainer = document.getElementById('volume-chart');
-            const tooltip = document.getElementById('ohlcTooltip');
-            const volumeLabel = document.getElementById('volumeLabel');
+    if (!candleData || !Array.isArray(candleData) || candleData.length === 0) {
+        document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
+    } else {
+        const chartContainer = document.getElementById('chart');
+        const volumeContainer = document.getElementById('volume-chart');
+        const tooltip = document.getElementById('ohlcTooltip');
+        const volumeLabel = document.getElementById('volumeLabel');
 
-            const chart = LightweightCharts.createChart(chartContainer, {
-                width: chartContainer.clientWidth,
-                height: 600,
-                layout: {
-                    background: { color: '#ffffff' },
-                    textColor: '#333',
+        const chart = LightweightCharts.createChart(chartContainer, {
+            width: chartContainer.clientWidth,
+            height: 600,
+            layout: {
+                background: {color: '#ffffff'},
+                textColor: '#333',
+            },
+            grid: {
+                vertLines: {color: '#e0e0e0'},
+                horzLines: {color: '#e0e0e0'},
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: {
+                    width: 1,
+                    color: '#758694',
+                    style: 2, // 虚线
                 },
-                grid: {
-                    vertLines: { color: '#e0e0e0' },
-                    horzLines: { color: '#e0e0e0' },
+                horzLine: {
+                    width: 1,
+                    color: '#758694',
+                    style: 2, // 虚线
                 },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                    vertLine: {
-                        width: 1,
-                        color: '#758694',
-                        style: 2, // 虚线
-                    },
-                    horzLine: {
-                        width: 1,
-                        color: '#758694',
-                        style: 2, // 虚线
-                    },
+            },
+            timeScale: { // 调整缩放时显示的k线数量，下方还有一个关于成交量缩放的部分也要修改
+                timeVisible: true,
+                rightOffset: 12,
+                barSpacing: 4,        // K线间距,增大此值会让K线显示更稀疏
+                minBarSpacing: 0.2,    // 最小K线间距,减小此值允许更多K线同时显示
+                fixLeftEdge: false,    // 不固定左边缘,允许滚动查看更多历史数据
+                fixRightEdge: false,   // 不固定右边缘
+            },
+            rightPriceScale: {
+                visible: true,
+                autoScale: true,
+            },
+            leftPriceScale: {
+                visible: false,
+            },
+        });
+
+        // 1. 创建K线系列
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#ef5350',
+            downColor: '#26a69a',
+            borderVisible: false,
+            wickUpColor: '#ef5350',
+            wickDownColor: '#26a69a',
+        });
+        candlestickSeries.setData(candleData);
+
+        // 2. 创建笔的折线系列
+        const biSeries = chart.addLineSeries({
+            color: '#2962FF', // 蓝色线条表示笔
+            lineWidth: 2,
+            title: '笔',
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
+
+        // 对笔数据进行排序，确保时间顺序正确（Lightweight Charts 要求严格的时间递增）
+        biData.sort((a, b) => new Date(a.time) - new Date(b.time));
+        biSeries.setData(biData);
+
+        // 3.创建成交量图表
+        const volumeChart = LightweightCharts.createChart(volumeContainer, {
+            width: volumeContainer.clientWidth,
+            height: 150,
+            layout: {
+                background: {color: '#ffffff'},
+                textColor: '#333',
+            },
+            grid: {
+                vertLines: {visible: false},
+                horzLines: {visible: false},
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: {
+                    width: 1,
+                    color: '#758694',
+                    style: 2, // 虚线
                 },
-                timeScale: { // 调整缩放时显示的k线数量，下方还有一个关于成交量缩放的部分也要修改
-                    timeVisible: true,
-                    rightOffset: 12,
-                    barSpacing: 4,        // K线间距,增大此值会让K线显示更稀疏
-                    minBarSpacing: 0.2,    // 最小K线间距,减小此值允许更多K线同时显示
-                    fixLeftEdge: false,    // 不固定左边缘,允许滚动查看更多历史数据
-                    fixRightEdge: false,   // 不固定右边缘
+                horzLine: {
+                    visible: false, // 隐藏水平线
                 },
-                rightPriceScale: {
-                    visible: true,
-                    autoScale: true,
-                },
-                leftPriceScale: {
-                    visible: false,
-                },
-            });
+            },
+            timeScale: {
+                visible: true,
+                timeVisible: true,
+                rightOffset: 12,        // 与主图表保持一致
+                barSpacing: 4,          // K线间距,与主图表保持一致
+                minBarSpacing: 0.2,     // 最小K线间距,与主图表保持一致
+                fixLeftEdge: false,     // 不固定左边缘
+                fixRightEdge: false,    // 不固定右边缘
+            },
+            rightPriceScale: {
+                visible: true, // 显示右侧价格刻度，保持与主图表一致
+                autoScale: true,
+            },
+            leftPriceScale: {
+                visible: false,
+            },
+            handleScroll: {
+                vertTouchDrag: false, // 禁止垂直拖动
+            },
+        });
 
-            // 1. 创建K线系列
-            const candlestickSeries = chart.addCandlestickSeries({
-                upColor: '#ef5350',
-                downColor: '#26a69a',
-                borderVisible: false,
-                wickUpColor: '#ef5350',
-                wickDownColor: '#26a69a',
-            });
-            candlestickSeries.setData(candleData);
+        // 创建成交量系列
+        const volumeSeries = volumeChart.addHistogramSeries({
+            color: '#26a69a',
+            priceFormat: {
+                type: 'volume',
+            },
+        });
 
-            // 2. 创建笔的折线系列
-            const biSeries = chart.addLineSeries({
-                color: '#2962FF', // 蓝色线条表示笔
-                lineWidth: 2,
-                title: '笔',
-                lastValueVisible: false,
-                priceLineVisible: false,
-            });
+        volumeSeries.setData(volumeData);
 
-            // 对笔数据进行排序，确保时间顺序正确（Lightweight Charts 要求严格的时间递增）
-            biData.sort((a, b) => new Date(a.time) - new Date(b.time));
-            biSeries.setData(biData);
+        // ========== 时间轴和滚动同步 ==========
+        let isSyncingTimeRange = false;
 
-            // 3.创建成交量图表
-            const volumeChart = LightweightCharts.createChart(volumeContainer, {
-                width: volumeContainer.clientWidth,
-                height: 150,
-                layout: {
-                    background: { color: '#ffffff' },
-                    textColor: '#333',
-                },
-                grid: {
-                    vertLines: { visible: false },
-                    horzLines: { visible: false },
-                },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                    vertLine: {
-                        width: 1,
-                        color: '#758694',
-                        style: 2, // 虚线
-                    },
-                    horzLine: {
-                        visible: false, // 隐藏水平线
-                    },
-                },
-                timeScale: {
-                    visible: true,
-                    timeVisible: true,
-                    rightOffset: 12,        // 与主图表保持一致
-                    barSpacing: 4,          // K线间距,与主图表保持一致
-                    minBarSpacing: 0.2,     // 最小K线间距,与主图表保持一致
-                    fixLeftEdge: false,     // 不固定左边缘
-                    fixRightEdge: false,    // 不固定右边缘
-                },
-                rightPriceScale: {
-                    visible: true, // 显示右侧价格刻度，保持与主图表一致
-                    autoScale: true,
-                },
-                leftPriceScale: {
-                    visible: false,
-                },
-                handleScroll: {
-                    vertTouchDrag: false, // 禁止垂直拖动
-                },
-            });
+        // 同步两个图表的时间轴范围
+        chart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+            if (isSyncingTimeRange) return;
+            isSyncingTimeRange = true;
+            volumeChart.timeScale().setVisibleRange(timeRange);
+            isSyncingTimeRange = false;
+        });
 
-            // 创建成交量系列
-            const volumeSeries = volumeChart.addHistogramSeries({
-                color: '#26a69a',
-                priceFormat: {
-                    type: 'volume',
-                },
-            });
+        volumeChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
+            if (isSyncingTimeRange) return;
+            isSyncingTimeRange = true;
+            chart.timeScale().setVisibleRange(timeRange);
+            isSyncingTimeRange = false;
+        });
 
-            volumeSeries.setData(volumeData);
+        // 同步滚动位置（确保完全对齐）
+        chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+            if (isSyncingTimeRange) return;
+            isSyncingTimeRange = true;
+            volumeChart.timeScale().setVisibleLogicalRange(logicalRange);
+            isSyncingTimeRange = false;
+        });
 
-            // ========== 时间轴和滚动同步 ==========
-            let isSyncingTimeRange = false;
-
-            // 同步两个图表的时间轴范围
-            chart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
-                if (isSyncingTimeRange) return;
-                isSyncingTimeRange = true;
-                volumeChart.timeScale().setVisibleRange(timeRange);
-                isSyncingTimeRange = false;
-            });
-
-            volumeChart.timeScale().subscribeVisibleTimeRangeChange((timeRange) => {
-                if (isSyncingTimeRange) return;
-                isSyncingTimeRange = true;
-                chart.timeScale().setVisibleRange(timeRange);
-                isSyncingTimeRange = false;
-            });
-
-            // 同步滚动位置（确保完全对齐）
-            chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
-                if (isSyncingTimeRange) return;
-                isSyncingTimeRange = true;
-                volumeChart.timeScale().setVisibleLogicalRange(logicalRange);
-                isSyncingTimeRange = false;
-            });
-
-            volumeChart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
-                if (isSyncingTimeRange) return;
-                isSyncingTimeRange = true;
-                chart.timeScale().setVisibleLogicalRange(logicalRange);
-                isSyncingTimeRange = false;
-            });
+        volumeChart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+            if (isSyncingTimeRange) return;
+            isSyncingTimeRange = true;
+            chart.timeScale().setVisibleLogicalRange(logicalRange);
+            isSyncingTimeRange = false;
+        });
 
 
-            // 自动调整显示范围
-            chart.timeScale().fitContent();
-            volumeChart.timeScale().fitContent();
+        // 自动调整显示范围
+        chart.timeScale().fitContent();
+        volumeChart.timeScale().fitContent();
 
-            // 响应式调整
-            window.addEventListener('resize', () => {
-                chart.applyOptions({ width: chartContainer.clientWidth });
-                volumeChart.applyOptions({ width: volumeContainer.clientWidth });
-            });
+        // 响应式调整
+        window.addEventListener('resize', () => {
+            chart.applyOptions({width: chartContainer.clientWidth});
+            volumeChart.applyOptions({width: volumeContainer.clientWidth});
+        });
 
-            // ========== 跨图表十字光标同步 ==========
-            let isSyncingCrosshair = false;
+        // ========== 跨图表十字光标同步 ==========
+        let isSyncingCrosshair = false;
 
-            // 主图表十字光标移动时同步到成交量图表
-            chart.subscribeCrosshairMove((param) => {
-                if (isSyncingCrosshair) return;
-                isSyncingCrosshair = true;
+        // 主图表十字光标移动时同步到成交量图表
+        chart.subscribeCrosshairMove((param) => {
+            if (isSyncingCrosshair) return;
+            isSyncingCrosshair = true;
 
-                if (param.time) {
-                    // 同步成交量图表的十字光标位置
-                    const volumeDataAtTime = volumeData.find(d => d.time === param.time);
-                    if (volumeDataAtTime) {
-                        volumeChart.setCrosshairPosition(
-                            volumeDataAtTime.value,
-                            param.time,
-                            volumeSeries
-                        );
-                        // 更新成交量标签
-                        updateVolumeLabel(volumeDataAtTime.value);
-                    }
-                } else {
-                    volumeChart.clearCrosshairPosition();
-                    volumeLabel.style.display = 'none';
-                }
-
-                // 更新 Tooltip
-                updateTooltip(param, candlestickSeries);
-
-                isSyncingCrosshair = false;
-
-            });
-
-            // 成交量图表十字光标移动时同步到主图表
-            volumeChart.subscribeCrosshairMove((param) => {
-                if (isSyncingCrosshair) return;
-                isSyncingCrosshair = true;
-
-                if (param.time) {
-                    // 同步主图表的十字光标位置
-                    const candleDataAtTime = candleData.find(d => d.time === param.time);
-                    if (candleDataAtTime) {
-                        chart.setCrosshairPosition(
-                            candleDataAtTime.close,
-                            param.time,
-                            candlestickSeries
-                        );
-                    }
-                    
+            if (param.time) {
+                // 同步成交量图表的十字光标位置
+                const volumeDataAtTime = volumeData.find(d => d.time === param.time);
+                if (volumeDataAtTime) {
+                    volumeChart.setCrosshairPosition(
+                        volumeDataAtTime.value,
+                        param.time,
+                        volumeSeries
+                    );
                     // 更新成交量标签
-                    const volumeDataAtTime = volumeData.find(d => d.time === param.time);
-                    if (volumeDataAtTime) {
-                        updateVolumeLabel(volumeDataAtTime.value);
-                    }
-                } else {
-                    chart.clearCrosshairPosition();
-                    volumeLabel.style.display = 'none';
+                    updateVolumeLabel(volumeDataAtTime.value);
+                }
+            } else {
+                volumeChart.clearCrosshairPosition();
+                volumeLabel.style.display = 'none';
+            }
+
+            // 更新 Tooltip
+            updateTooltip(param, candlestickSeries);
+
+            isSyncingCrosshair = false;
+
+        });
+
+        // 成交量图表十字光标移动时同步到主图表
+        volumeChart.subscribeCrosshairMove((param) => {
+            if (isSyncingCrosshair) return;
+            isSyncingCrosshair = true;
+
+            if (param.time) {
+                // 同步主图表的十字光标位置
+                const candleDataAtTime = candleData.find(d => d.time === param.time);
+                if (candleDataAtTime) {
+                    chart.setCrosshairPosition(
+                        candleDataAtTime.close,
+                        param.time,
+                        candlestickSeries
+                    );
                 }
 
-                // 更新 Tooltip（显示主图表数据）
-                const mainParam = {
-                    ...param,
-                    seriesData: new Map([
-                        [candlestickSeries, candleData.find(d => d.time === param.time)]
-                    ])
-                };
-                updateTooltip(mainParam, candlestickSeries);
-
-                isSyncingCrosshair = false;
-            });
-
-            // Tooltip 更新函数
-            function updateTooltip(param, series) {
-                if (param.point === undefined || !param.time) {
-                    tooltip.style.display = 'none';
-                    return;
+                // 更新成交量标签
+                const volumeDataAtTime = volumeData.find(d => d.time === param.time);
+                if (volumeDataAtTime) {
+                    updateVolumeLabel(volumeDataAtTime.value);
                 }
+            } else {
+                chart.clearCrosshairPosition();
+                volumeLabel.style.display = 'none';
+            }
 
-                const data = param.seriesData.get(series);
-                if (!data) {
-                    tooltip.style.display = 'none';
-                    return;
-                }
+            // 更新 Tooltip（显示主图表数据）
+            const mainParam = {
+                ...param,
+                seriesData: new Map([
+                    [candlestickSeries, candleData.find(d => d.time === param.time)]
+                ])
+            };
+            updateTooltip(mainParam, candlestickSeries);
 
-                const open = data.open.toFixed(currentPrecision);
-                const high = data.high.toFixed(currentPrecision);
-                const low = data.low.toFixed(currentPrecision);
-                const close = data.close.toFixed(currentPrecision);
-                const isUp = close >= open;
-                const priceClass = isUp ? 'up' : 'down';
-                const arrow = isUp ? '↑' : '↓';
+            isSyncingCrosshair = false;
+        });
 
-                tooltip.innerHTML = `
+        // Tooltip 更新函数
+        function updateTooltip(param, series) {
+            if (param.point === undefined || !param.time) {
+                tooltip.style.display = 'none';
+                return;
+            }
+
+            const data = param.seriesData.get(series);
+            if (!data) {
+                tooltip.style.display = 'none';
+                return;
+            }
+
+            const open = data.open.toFixed(currentPrecision);
+            const high = data.high.toFixed(currentPrecision);
+            const low = data.low.toFixed(currentPrecision);
+            const close = data.close.toFixed(currentPrecision);
+            const isUp = close >= open;
+            const priceClass = isUp ? 'up' : 'down';
+            const arrow = isUp ? '↑' : '↓';
+
+            tooltip.innerHTML = `
                     <div><span class="label">日期:</span><span class="value">${param.time}</span></div>
                     <div><span class="label">开盘:</span><span class="value ${priceClass}">${open}</span></div>
                     <div><span class="label">最高:</span><span class="value ${priceClass}">${high}</span></div>
@@ -396,48 +421,47 @@
                     <div><span class="label">收盘:</span><span class="value ${priceClass}">${close} ${arrow}</span></div>
                 `;
 
-                const x = param.point.x + 15;
-                const y = param.point.y + 15;
-                tooltip.style.left = x + 'px';
-                tooltip.style.top = y + 'px';
-                tooltip.style.display = 'block';
+            const x = param.point.x + 15;
+            const y = param.point.y + 15;
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = y + 'px';
+            tooltip.style.display = 'block';
+        }
+
+        // 成交量标签更新函数
+        function updateVolumeLabel(volume) {
+            // 格式化成交量数值
+            let formattedVolume;
+            if (volume >= 100000000) {
+                formattedVolume = (volume / 100000000).toFixed(2) + '亿';
+            } else if (volume >= 10000) {
+                formattedVolume = (volume / 10000).toFixed(2) + '万';
+            } else {
+                formattedVolume = volume.toLocaleString();
             }
 
-            // 成交量标签更新函数
-            function updateVolumeLabel(volume) {
-                // 格式化成交量数值
-                let formattedVolume;
-                if (volume >= 100000000) {
-                    formattedVolume = (volume / 100000000).toFixed(2) + '亿';
-                } else if (volume >= 10000) {
-                    formattedVolume = (volume / 10000).toFixed(2) + '万';
-                } else {
-                    formattedVolume = volume.toLocaleString();
-                }
-                
-                volumeLabel.textContent = `成交量: ${formattedVolume}`;
-                volumeLabel.style.display = 'block';
-            }
+            volumeLabel.textContent = `成交量: ${formattedVolume}`;
+            volumeLabel.style.display = 'block';
+        }
 
 
-            // ========== 方法1：使用标记（Markers）显示缺口 ==========
+        // ========== 方法1：使用标记（Markers）显示缺口 ==========
 
         function displayGapsWithMarkers(gaps) {
             const markers = gaps.map(gap => ({
-                            time: gap.trade_date,
-                            position: gap.position,
-                            color: gap.color,
-                            shape: gap.shape,
-                            text: gap.text
-                        }));
+                time: gap.trade_date,
+                position: gap.position,
+                color: gap.color,
+                shape: gap.shape,
+                text: gap.text
+            }));
             candlestickSeries.setMarkers(markers);
         }
 
 
-
         displayGapsWithMarkers(gapsData);
 
-        }
-    </script>
+    }
+</script>
 </body>
 </html>

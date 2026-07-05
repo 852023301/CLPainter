@@ -11,6 +11,7 @@ class FenXingType(int, Enum):
     TOP = 1  # 顶分型
     BOTTOM = -1  # 底分型
 
+
 @dataclass
 class FenXing:
     """分型数据结构"""
@@ -55,7 +56,7 @@ class FenXing:
         return self.start_idx_list[2]
 
     def print_klines_info(self, all_klines):
-        for i in range(self.start_idx, self.end_idx+1):
+        for i in range(self.start_idx, self.end_idx + 1):
             print(all_klines[i])
 
     def is_top(self):
@@ -85,14 +86,14 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
             continue
 
         # 创建分型对象
-        fenxing = FenXing(fenxing_type= FenXingType.TOP  if kline.is_top() else FenXingType.BOTTOM)
-        
+        fenxing = FenXing(fenxing_type=FenXingType.TOP if kline.is_top() else FenXingType.BOTTOM)
+
         #  寻找分型右侧最边缘的k线
         jdx = idx + 1
-        while jdx < (len(all_klines) -1) :
-            if all_klines[jdx].merged_length== 1:
+        while jdx < (len(all_klines) - 1):
+            if all_klines[jdx].merged_length == 1:
                 break
-            jdx+=1
+            jdx += 1
 
         # 设置分型结束索引
         fenxing.end_idx = jdx - 1
@@ -132,9 +133,9 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
 
         # 记录三根K线各自的结束索引
         fenxing.end_idx_list = [
-            fenxing.left_idx + fenxing.length_list[0] -1,
-            fenxing.mid_idx + fenxing.length_list[1] -1,
-            fenxing.right_idx + fenxing.length_list[2] -1,
+            fenxing.left_idx + fenxing.length_list[0] - 1,
+            fenxing.mid_idx + fenxing.length_list[1] - 1,
+            fenxing.right_idx + fenxing.length_list[2] - 1,
         ]
 
         # 设置分型开始索引

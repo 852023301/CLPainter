@@ -91,8 +91,6 @@ class _DataCache:
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
-
-
         self._trade_dates = [data.trade_date for data in merged_klines]
 
     @property
@@ -119,7 +117,6 @@ class _DataCache:
     def trade_dates(self) -> List[str]:
         self.ensure_loaded()
         return self._trade_dates
-
 
     @property
     def bi_list(self) -> List[Bi]:
@@ -149,7 +146,7 @@ class _DataCache:
             cls._instance._fenxing_list = None
             cls._instance._trade_dates = None
             cls._instance._bi_list = None
-            cls._instance._te_zheng_xu_lie= None
+            cls._instance._te_zheng_xu_lie = None
             cls._instance._initialized = False
             cls._instance.special_path = None
             cls._instance = None
@@ -160,11 +157,12 @@ class _DataCache:
 
 _data_cache = _DataCache()
 
-
 # 以下代码用于集体测试
 all_stocks = sorted(Path(settings.DATA_DIR, "all_stocks").iterdir(), key=lambda p: p.name)
-all_etf= sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.name)
-all_index= sorted(Path(settings.DATA_DIR, "all_index").iterdir(), key=lambda p: p.name)
+all_etf = sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.name)
+all_index = sorted(Path(settings.DATA_DIR, "all_index").iterdir(), key=lambda p: p.name)
+
+
 # _data_cache = _DataCache(all_stocks[3])
 # for i , stk_p in enumerate(all_stocks):
 #     print(f"{i}:{stk_p}")
@@ -200,4 +198,3 @@ origin_kline_data = _data_cache.origin_kline_data
 bi_data_list = _data_cache.bi_list
 te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 gaps_list = _data_cache.gaps_list
-
