@@ -17,9 +17,9 @@ class FenXing:
     """分型数据结构"""
     # 分型标记：1=顶分型，-1=底分型
     fenxing_type: FenXingType
-    # 分型结束位置索引
+    # 分型结束位置的K线索引
     start_idx: int = field(init=False)
-    # 分型结束位置索引
+    # 分型结束位置的K线索引
     end_idx: int = field(init=False)
     # 分型长度
     length: int = field(init=False)
@@ -39,6 +39,8 @@ class FenXing:
     low_idx: int = field(init=False)
     # 极值的交易日
     trade_date: str = field(init=False)
+    # fenxing索引
+    idx: int = field(init=False)
 
     @property
     def left_idx(self) -> int:
@@ -180,7 +182,10 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.trade_date = all_klines[fenxing.low_idx].trade_date
 
         fenxing_list.append(fenxing)
+
     assert np.all(np.diff([fx.is_top() for fx in fenxing_list]) != 0), "不满足分型交替的要求"
+    for i in range(len(fenxing_list)):
+        fenxing_list[i].idx = i
     # print(fenxing_list)
 
     return fenxing_list

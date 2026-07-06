@@ -36,6 +36,9 @@ class FakeBi:
     # 包含缺口数量
     has_gap_count: int = field(init=False)
 
+    # bi索引
+    idx: int = field(init=False)
+
     def __post_init__(self):
         # 确定起始和结束索引
         self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
@@ -174,6 +177,9 @@ class Bi:
 
     # 包含缺口数量
     has_gap_count: int = field(init=False)
+
+    # bi索引
+    idx: int = field(init=False)
 
     def __post_init__(self):
         self.bi_type = BiDirectionType.UP if self.right_fx.is_top() else BiDirectionType.DOWN
@@ -676,32 +682,60 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             raise RuntimeError(text)
 
     # 最后一笔mr
-    # print(bi_lm)
-    # print(bi_mr)
+    if not bi_lm.is_finished():
+        for i in range(len(bi_list)):
+            bi_list[i].idx = i
+        return bi_list
 
-    if bi_lm.is_finished():
-        # mr拉长
-        start_idx = bi_lm.right_fx.right_idx
-        end_idx = len(all_klines) - 1  # 到最后的位置
-        init_highest_price = max(bi_lm.left_fx.high_price, bi_lm.right_fx.high_price)
-        init_lowest_price = min(bi_lm.left_fx.low_price, bi_lm.right_fx.low_price)
+    # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔 ===
+    start_idx = bi_lm.right_fx.right_idx
+    end_idx = len(all_klines) - 1
+    init_highest_price = bi_lm.right_fx.high_price
+    init_lowest_price = bi_lm.right_fx.low_price
 
-        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
-                                                                                           init_lowest_price, start_idx,
-                                                                                           end_idx, all_klines,
-                                                                                           high_prices, low_prices)
-        if bi_mr is not None and bi_mr.bi_type == BiDirectionType.UP:
-            fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=highest_idx,
-                                             start_price=bi_lm.end_price, end_price=highest_price,
-                                             bi_type=BiDirectionType.UP, all_klines=all_klines,
-                                             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-        else:
-            fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=lowest_idx,
-                                             start_price=bi_lm.end_price, end_price=lowest_price,
-                                             bi_type=BiDirectionType.DOWN, all_klines=all_klines,
-                                             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-        if fake_bi_mr.is_finished():
-            bi_list.append(fake_bi_mr)
+    highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(
+        init_highest_price, init_lowest_price, start_idx, end_idx, all_klines, high_prices, low_prices)
+
+    # 遍历后续分型（避免列表切片拷贝），找到 mid_idx 命中极值点的第一个分型
+    new_bi_mr = None
+    for i in range(bi_lm.right_fx.idx + 1, len(fenxing_list)):
+        fx = fenxing_list[i]
+        if fx.mid_idx == highest_idx or fx.mid_idx == lowest_idx:
+            new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
+            break
+
+    if new_bi_mr is not None and new_bi_mr.is_finished():
+        bi_list.append(new_bi_mr)
+
+    if new_bi_mr is None:
+        new_bi_mr = bi_lm
+
+    # === 漏网之鱼2号：在1号笔之后创建反向 FakeBi ===
+    # 只需计算反方向极值（UP笔→找最低，DOWN笔→找最高），避免冗余双向扫描
+    is_up = new_bi_mr.bi_type == BiDirectionType.UP
+    scan_start = new_bi_mr.right_fx.right_idx
+    sl = slice(scan_start, end_idx + 1)
+
+    if is_up:
+        local_idx = int(np.argmin(low_prices[sl]))
+        extreme_idx = scan_start + local_idx
+        extreme_price = float(low_prices[extreme_idx])
+        fake_type = BiDirectionType.DOWN
+    else:
+        local_idx = int(np.argmax(high_prices[sl]))
+        extreme_idx = scan_start + local_idx
+        extreme_price = float(high_prices[extreme_idx])
+        fake_type = BiDirectionType.UP
+
+    fake_bi_mr = FakeBi.from_fenxing(
+        left_fx=new_bi_mr.right_fx, right_fx_mid_idx=extreme_idx,
+        start_price=new_bi_mr.end_price, end_price=extreme_price,
+        bi_type=fake_type, all_klines=all_klines,
+        prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+    if fake_bi_mr.is_finished():
+        bi_list.append(fake_bi_mr)
 
     print(f"共{len(bi_list)}笔")
+    for i in range(len(bi_list)):
+        bi_list[i].idx = i
     return bi_list
