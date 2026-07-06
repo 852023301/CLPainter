@@ -81,7 +81,8 @@ class FakeBi:
 
     @classmethod
     def from_fenxing(cls, left_fx: FenXing, right_fx_mid_idx: int, start_price, end_price, bi_type: BiDirectionType,
-                     all_klines: List[MergedKLine]):
+                     all_klines: List[MergedKLine], prefix_merged: Union[List[int], None] = None,
+                     prefix_gap: Union[List[int], None] = None):
         """
         从两个分型对象中创建一个笔对象
 
@@ -96,7 +97,7 @@ class FakeBi:
 
         bi_real_merged_kline_count, bi_has_gap_count = Bi.calculate_bi_real_merged_kline_count_and_gap_count(
             left_fx.mid_idx, right_fx_mid_idx,
-            all_klines)
+            all_klines, prefix_merged, prefix_gap)
 
         bi = FakeBi(
             left_fx=left_fx,
@@ -221,7 +222,8 @@ class Bi:
         }
 
     @classmethod
-    def from_fenxing(cls, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine]):
+    def from_fenxing(cls, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine],
+                     prefix_merged=None, prefix_gap=None):
         """
         从两个分型对象中创建一个笔对象
 
@@ -238,7 +240,7 @@ class Bi:
 
         bi_real_merged_kline_count, bi_has_gap_count = Bi.calculate_bi_real_merged_kline_count_and_gap_count(
             left_fx.mid_idx, right_fx.mid_idx,
-            all_klines)
+            all_klines, prefix_merged, prefix_gap)
 
         bi = Bi(
             left_fx=left_fx,
@@ -324,7 +326,9 @@ class Bi:
 
     @staticmethod
     def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int,
-                                                           all_klines: List[MergedKLine]) -> Tuple[
+                                                           all_klines: List[MergedKLine],
+                                                           prefix_merged: Union[List[int], None] = None,
+                                                           prefix_gap: Union[List[int], None] = None) -> Tuple[
         int, int]:
         """
             计算一笔中的真实合并K线数量和缺口数量
@@ -333,69 +337,80 @@ class Bi:
         if start_kline_idx >= end_kline_idx:
             raise ValueError(
                 f"起始索引不能大于等于结束索引:{all_klines[start_kline_idx]=},{all_klines[end_kline_idx]=}")
-        bi_real_merged_kline_count = 0
-        bi_has_gap_count = 0
-        last_idx = start_kline_idx
+        if prefix_merged is not None and prefix_gap is not None:
+            bi_real_merged_kline_count = prefix_merged[end_kline_idx + 1] - prefix_merged[start_kline_idx]
+            bi_has_gap_count = prefix_gap[end_kline_idx + 1] - prefix_gap[start_kline_idx + 1]
+        else:
+            bi_real_merged_kline_count = 0
+            bi_has_gap_count = 0
+            last_idx = start_kline_idx
 
-        while last_idx <= end_kline_idx:
-            last_kline = all_klines[last_idx]
-            if last_kline.merged_length == 1:
-                bi_real_merged_kline_count += 1
-                # 检测是否有缺口(排除第一根)
-                if last_idx != start_kline_idx and last_kline.has_gap:
-                    bi_has_gap_count += 1
+            while last_idx <= end_kline_idx:
+                last_kline = all_klines[last_idx]
+                if last_kline.merged_length == 1:
+                    bi_real_merged_kline_count += 1
+                    # 检测是否有缺口(排除第一根)
+                    if last_idx != start_kline_idx and last_kline.has_gap:
+                        bi_has_gap_count += 1
 
-            last_idx += 1
+                last_idx += 1
 
         return bi_real_merged_kline_count, bi_has_gap_count
 
     @staticmethod
     def get_highest_lowest_price(highest_price, lowest_price, start_kline_idx: int, end_kline_idx: int,
-                                 all_klines: List[MergedKLine]) -> Tuple[float, float, int, int]:
+                                 all_klines: List[MergedKLine],
+                                 high_arr: Union['np.ndarray', None] = None,
+                                 low_arr: Union['np.ndarray', None] = None) -> Tuple[float, float, int, int]:
         """
         获取笔中的最高价和最低价
 
         Args:
-            left_fx: 左侧分型对象
-            right_fx: 右侧分型对象
+            highest_price: 初始最高价
+            lowest_price: 初始最低价
+            start_kline_idx: 起始K线索引
+            end_kline_idx: 结束K线索引
+            all_klines: 合并后的K线列表
+            high_arr: 预计算的high价格numpy数组（O(1)区间查询）
+            low_arr: 预计算的low价格numpy数组（O(1)区间查询）
 
         Returns:
-            Tuple[float, float]: 笔中的最高价和最低价
+            Tuple[float, float, int, int]: 最高价, 最低价, 最高价索引, 最低价索引
         """
         if start_kline_idx >= end_kline_idx:
             raise ValueError(
                 f"起始索引不能大于等于结束索引:{all_klines[start_kline_idx]=},{all_klines[end_kline_idx]=}")
-        last_idx = start_kline_idx
-        highest_idx, lowest_idx = last_idx, last_idx
+        if high_arr is not None and low_arr is not None:
+            sl = slice(start_kline_idx, end_kline_idx + 1)
+            local_high_idx = int(np.argmax(high_arr[sl]))
+            local_low_idx = int(np.argmin(low_arr[sl]))
+            h_price = float(high_arr[start_kline_idx + local_high_idx])
+            l_price = float(low_arr[start_kline_idx + local_low_idx])
+            if h_price > highest_price:
+                highest_price = h_price
+                highest_idx = start_kline_idx + local_high_idx
+            else:
+                highest_idx = start_kline_idx
+            if l_price < lowest_price:
+                lowest_price = l_price
+                lowest_idx = start_kline_idx + local_low_idx
+            else:
+                lowest_idx = start_kline_idx
+        else:
+            last_idx = start_kline_idx
+            highest_idx, lowest_idx = last_idx, last_idx
 
-        while last_idx <= end_kline_idx:
-            last_kline = all_klines[last_idx]
+            while last_idx <= end_kline_idx:
+                last_kline = all_klines[last_idx]
 
-            # 收集笔中的最高价和最低价
-            if last_kline.high_price > highest_price:
-                highest_price = last_kline.merged_high
-                highest_idx = last_idx
-                # if "2015-11-09" <= last_kline.trade_date <= "2015-11-30":
-                #     print(last_kline)
-                #     print("%"*50)
-            if last_kline.low_price < lowest_price:
-                lowest_price = last_kline.merged_low
-                lowest_idx = last_idx
-                # if "2023-02-06" <= last_kline.trade_date <= "2023-03-07":
-                #     print(last_kline)
-                #     print("%"*50)
-            last_idx += 1
-
-        # last_kline = all_klines[last_idx]
-        # if "2010-03-22" <= last_kline.trade_date <= "2010-04-22":
-        #     print(last_kline)
-        #     print("%" * 50)
-        #
-        # # 收集笔中的最高价和最低价
-        # if last_kline.high_price > highest_price:
-        #     highest_price = last_kline.high_price
-        # if last_kline.low_price < lowest_price:
-        #     lowest_price = last_kline.low_price
+                # 收集笔中的最高价和最低价
+                if last_kline.high_price > highest_price:
+                    highest_price = last_kline.merged_high
+                    highest_idx = last_idx
+                if last_kline.low_price < lowest_price:
+                    lowest_price = last_kline.merged_low
+                    lowest_idx = last_idx
+                last_idx += 1
 
         return highest_price, lowest_price, highest_idx, lowest_idx
 
@@ -426,12 +441,25 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     trade_e = "2026-06-22"
     log_switch = False
 
+    # 预计算：合并K线数量和缺口数量的前缀和（O(1) 查询）
+    n_klines = len(all_klines)
+    prefix_merged = [0] * (n_klines + 1)
+    prefix_gap = [0] * (n_klines + 1)
+    for _i in range(n_klines):
+        _kl = all_klines[_i]
+        prefix_merged[_i + 1] = prefix_merged[_i] + (1 if _kl.merged_length == 1 else 0)
+        prefix_gap[_i + 1] = prefix_gap[_i] + (1 if _kl.has_gap else 0)
+
+    # 预计算：high/low 价格数组（用于 O(1) 区间极值查询）
+    high_prices = np.array([kl.merged_high for kl in all_klines])
+    low_prices = np.array([kl.merged_low for kl in all_klines])
+
     def _advance_both():
         """推进 lm 和 mr：lm=mr，从 fenxing_deque 取下一对创建新 mr"""
         nonlocal bi_lm, bi_mr
         bi_lm = bi_mr
         m_fx, r_fx = fenxing_deque.popleft()
-        bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+        bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines, prefix_merged, prefix_gap)
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -445,7 +473,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             if (last_bi_finish.bi_type == bi_lm.bi_type) and (
                 (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_lm.start_price) or (
                 last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_lm.start_price)):
-                bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines)
+                bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines, prefix_merged, prefix_gap)
                 if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                     print("#" * 50, "lm被替换")
                     print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
@@ -455,11 +483,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             if (last_bi_finish.bi_type == bi_mr.bi_type) and (
                 (last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
                 last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price)):
-                bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines)
-                # if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
-                print("#" * 50, "find_first_bi_in_finish_deque中的mr被替换")
+                bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines, prefix_merged, prefix_gap)
                 raise ValueError(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
-                return False
         return False
 
     def find_second_bi_in_finish_deque():
@@ -476,20 +501,22 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 if (
                     last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
                     last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price):
-                    bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines)
+                    bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines, prefix_merged,
+                                            prefix_gap)
                     return False
             else:
                 if bi_mr.is_finished():
                     if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_lm.start_price) or (
                         bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_lm.start_price):
-                        bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines)
+                        bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines, prefix_merged,
+                                                prefix_gap)
                         if len(bi_finish_deque) > 0:
                             bi_mr = bi_lm
                             bi_lm = bi_finish_deque.popleft()
 
                         elif len(fenxing_deque) > 0:
                             x_fx, y_fx = fenxing_deque.popleft()
-                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
                         else:
                             bi_mr = None
                         return True
@@ -498,14 +525,15 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 else:
                     if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_mr.end_price) or (
                         bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_mr.end_price):
-                        bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines)
+                        bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines, prefix_merged,
+                                                prefix_gap)
                         if len(bi_finish_deque) > 0:
                             bi_lm = bi_finish_deque.popleft()
 
                         elif len(fenxing_deque) > 0:
                             bi_lm = bi_mr
                             x_fx, y_fx = fenxing_deque.popleft()
-                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
                         else:
                             bi_mr = None
                         return True
@@ -525,8 +553,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     l_fx, m_fx = fenxing_deque.popleft()
     m_fx, r_fx = fenxing_deque.popleft()
 
-    bi_lm = Bi.from_fenxing(l_fx, m_fx, all_klines)
-    bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines)
+    bi_lm = Bi.from_fenxing(l_fx, m_fx, all_klines, prefix_merged, prefix_gap)
+    bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines, prefix_merged, prefix_gap)
 
     while len(fenxing_deque) > 0:
         if bi_lm is None or bi_mr is None:
@@ -561,7 +589,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
         x_fx, y_fx = fenxing_deque.popleft()
 
-        bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines)
+        bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
 
         if bi_xy.bi_type == bi_lm.bi_type:
             if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
@@ -569,21 +597,23 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 print(f"bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
                 print(f"bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 print(f"bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
-            bi_xy = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
-            if bi_lm.extends_beyond_end(bi_xy.end_price):
-                if bi_lm.extends_beyond_start(bi_xy.start_price):
+            # 轻量级价格判断，避免创建完整 Bi 对象（O(n) → O(1)）
+            xy_bi_type = BiDirectionType.UP if y_fx.is_top() else BiDirectionType.DOWN
+            xy_end_price = y_fx.high_price if xy_bi_type == BiDirectionType.UP else y_fx.low_price
+            xy_start_price = bi_mr.right_fx.low_price if xy_bi_type == BiDirectionType.UP else bi_mr.right_fx.high_price
+            if bi_lm.extends_beyond_end(xy_end_price):
+                if bi_lm.extends_beyond_start(xy_start_price):
 
                     if not find_second_bi_in_finish_deque():
                         bi_lm = bi_mr
-                        bi_mr = Bi.from_fenxing(bi_mr.right_fx, bi_xy.right_fx, all_klines)
+                        bi_mr = Bi.from_fenxing(bi_mr.right_fx, y_fx, all_klines, prefix_merged, prefix_gap)
                         if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                             print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")
-                            print(f"new bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
                             print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                             print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
                     continue
 
-                bi_lm = Bi.from_fenxing(bi_lm.left_fx, bi_xy.right_fx, all_klines)
+                bi_lm = Bi.from_fenxing(bi_lm.left_fx, y_fx, all_klines, prefix_merged, prefix_gap)
 
                 if len(fenxing_deque) == 0:
                     # 这里可能会导致lm和mr重叠，后续fake逻辑会处理
@@ -591,17 +621,16 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                         print("@" * 50, "和lm同趋势，fenxing_deque为空，退出")
                     break
                 x_fx, y_fx = fenxing_deque.popleft()
-                bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines)
+                bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
             if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                 print("@" * 50, "和lm同趋势，变更后")
-                print(f"new bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
                 print(f"new bi_lm:{bi_lm.left_fx.trade_date}~{bi_lm.right_fx.trade_date}")
                 print(f"new bi_mr:{bi_mr.left_fx.trade_date}~{bi_mr.right_fx.trade_date}")
 
 
         elif bi_xy.bi_type == bi_mr.bi_type:
             if bi_mr.extends_beyond_end(bi_xy.end_price):
-                bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines)
+                bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines, prefix_merged, prefix_gap)
             if log_switch and trade_e >= bi_lm.left_fx.trade_date >= trade_s:
                 print("$" * 50, "和mr同趋势")
                 print(f"bi_xy:{bi_xy.left_fx.trade_date}~{bi_xy.right_fx.trade_date}")
@@ -627,28 +656,21 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     # 检查笔的极值在两端
     for bi in bi_list:
-        # print(bi)
-        # if log_switch and trade_e >= bi.left_fx.trade_date >= trade_s:
-        #     print(bi)
-        #     print("左分型的信息：")
-        #     print(bi.left_fx)
-        #     print("左分型内部所有K线信息：")
-        #     bi.left_fx.print_klines_info(all_klines = all_klines)
-
         init_highest_price = max(bi.left_fx.high_price, bi.right_fx.high_price)
         init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
         start_idx = bi.left_fx.right_idx
         end_idx = bi.end_idx
         highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
                                                                                            init_lowest_price, start_idx,
-                                                                                           end_idx, all_klines)
-        if highest_price > max(bi.left_fx.high_price, bi.right_fx.high_price):
-            text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{max(bi.left_fx.high_price, bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
+                                                                                           end_idx, all_klines,
+                                                                                           high_prices, low_prices)
+        if highest_price > init_highest_price:
+            text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{init_highest_price}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
             print(text)
             print(bi)
             raise RuntimeError(text)
-        if lowest_price < min(bi.left_fx.low_price, bi.right_fx.low_price):
-            text = f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{max(bi.left_fx.high_price, bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
+        if lowest_price < init_lowest_price:
+            text = f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{init_lowest_price},{max(bi.left_fx.high_price, bi.right_fx.high_price)}],{bi.left_fx.trade_date=}~{bi.right_fx.trade_date=}"
             print(text)
             print(bi)
             raise RuntimeError(text)
@@ -661,24 +683,23 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         # mr拉长
         start_idx = bi_lm.right_fx.right_idx
         end_idx = len(all_klines) - 1  # 到最后的位置
-        init_highest_price = max(bi_lm.right_fx.high_price, bi_lm.right_fx.high_price)
-        init_lowest_price = min(bi_lm.right_fx.low_price, bi_lm.right_fx.low_price)
+        init_highest_price = max(bi_lm.left_fx.high_price, bi_lm.right_fx.high_price)
+        init_lowest_price = min(bi_lm.left_fx.low_price, bi_lm.right_fx.low_price)
 
-        # print(init_highest_price, init_lowest_price, start_idx, end_idx)
         highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
                                                                                            init_lowest_price, start_idx,
-                                                                                           end_idx, all_klines)
-        # print(highest_price, lowest_price, lowest_idx, highest_idx, )
-        # print(bi_lm.right_fx, highest_idx, lowest_idx, bi_lm.end_price, highest_price)
+                                                                                           end_idx, all_klines,
+                                                                                           high_prices, low_prices)
         if bi_mr is not None and bi_mr.bi_type == BiDirectionType.UP:
             fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=highest_idx,
                                              start_price=bi_lm.end_price, end_price=highest_price,
-                                             bi_type=BiDirectionType.UP, all_klines=all_klines)
+                                             bi_type=BiDirectionType.UP, all_klines=all_klines,
+                                             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
         else:
             fake_bi_mr = FakeBi.from_fenxing(left_fx=bi_lm.right_fx, right_fx_mid_idx=lowest_idx,
                                              start_price=bi_lm.end_price, end_price=lowest_price,
-                                             bi_type=BiDirectionType.DOWN, all_klines=all_klines)
-        # print(fake_bi_mr)
+                                             bi_type=BiDirectionType.DOWN, all_klines=all_klines,
+                                             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
         if fake_bi_mr.is_finished():
             bi_list.append(fake_bi_mr)
 
