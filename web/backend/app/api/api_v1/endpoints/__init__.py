@@ -7,6 +7,7 @@ from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.toolbox.bi import generate_bi, Bi
 from CLPainter.web.backend.app.toolbox.fenxing import generate_fenxing, FenXing
 from CLPainter.web.backend.app.toolbox.tezhengxulie import generate_te_zheng_xu_lie, TeZhengXuLie
+from CLPainter.web.backend.app.toolbox.xianduan import generate_xian_duan, XianDuan
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 from CLPainter.web.backend.app.toolbox.gap import Gap
@@ -64,6 +65,7 @@ class _DataCache:
         self._trade_dates = None
         self._bi_list = None
         self._te_zheng_xu_lie = None
+        self._xianduan_list = None
         self._initialized = True
 
     def ensure_loaded(self):
@@ -90,6 +92,8 @@ class _DataCache:
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
+
+        self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie)
 
         self._trade_dates = [data.trade_date for data in merged_klines]
 
@@ -128,6 +132,9 @@ class _DataCache:
         self.ensure_loaded()
         return self._te_zheng_xu_lie
 
+    def xian_duan_list(self) -> List[TeZhengXuLie]:
+        self.ensure_loaded()
+        return self._xianduan_list
     @property
     def fenxing_list(self) -> List[FenXing]:
         """获取分型列表"""
@@ -147,6 +154,7 @@ class _DataCache:
             cls._instance._trade_dates = None
             cls._instance._bi_list = None
             cls._instance._te_zheng_xu_lie = None
+            cls._instance._xianduan_list = None
             cls._instance._initialized = False
             cls._instance.special_path = None
             cls._instance = None
@@ -197,4 +205,5 @@ trade_date_list = _data_cache.trade_dates
 origin_kline_data = _data_cache.origin_kline_data
 bi_data_list = _data_cache.bi_list
 te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
+xian_duan_list = _data_cache.xian_duan_list
 gaps_list = _data_cache.gaps_list

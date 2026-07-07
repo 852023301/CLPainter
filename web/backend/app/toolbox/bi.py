@@ -651,11 +651,12 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     bi_list = list(bi_finish_deque)[::-1]
 
+    ####################### 检查
     # 检查笔连续性
     for i in range(len(bi_list) - 1):
         if bi_list[i].right_fx.trade_date != bi_list[i + 1].left_fx.trade_date:
             print(bi_list[i].right_fx.trade_date, bi_list[i + 1].left_fx.trade_date)
-            # raise RuntimeError("笔连续性检查失败")
+            raise RuntimeError("笔连续性检查失败")
 
     # 检查笔上下交替
     assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
@@ -680,6 +681,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             print(text)
             print(bi)
             raise RuntimeError(text)
+    ####################### 检查
 
     # 最后一笔mr
     if not bi_lm.is_finished():
