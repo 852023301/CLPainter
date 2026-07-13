@@ -1,0 +1,2 @@
+# Jinja2 模板文件包含 {{ }} 语法，Prettier 会将其误认为 JS 对象字面量并拆成多行，导致模板失效
+web/backend/app/templates/

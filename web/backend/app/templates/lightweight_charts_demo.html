@@ -114,36 +114,11 @@
 
 <script>
     // 从后端传入的数据
-    const candleData = {
-    {
-        candle_data | safe
-    }
-    }
-    ;
-    const biData = {
-    {
-        bi_data | safe
-    }
-    }
-    ;
-    const gapsData = {
-    {
-        gaps_data | safe
-    }
-    }
-    ;
-    const volumeData = {
-    {
-        volume_data | safe
-    }
-    }
-    ;
-    const currentPrecision = {
-    {
-        precision
-    }
-    }
-    ;  // 当前精度
+    const candleData = {{ candle_data | safe }};
+    const biData = {{ bi_data | safe }};
+    const gapsData = {{ gaps_data | safe }};
+    const volumeData = {{ volume_data | safe }};
+    const currentPrecision = {{ precision }};  // 当前精度
 
     console.log('收到的K线数据:', candleData.length);
     console.log('收到的笔数据:', biData.length);
