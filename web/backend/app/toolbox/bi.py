@@ -37,7 +37,7 @@ class FakeBi:
     has_gap_count: int = field(init=False)
 
     # bi索引
-    idx: int = field(init=False)
+    idx: int = None
 
     def __post_init__(self):
         # 确定起始和结束索引
@@ -179,7 +179,7 @@ class Bi:
     has_gap_count: int = field(init=False)
 
     # bi索引
-    idx: int = field(init=False)
+    idx: int = -1
 
     def __post_init__(self):
         self.bi_type = BiDirectionType.UP if self.right_fx.is_top() else BiDirectionType.DOWN
@@ -689,7 +689,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             bi_list[i].idx = i
         return bi_list
 
-    # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔 ===
+    # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔，适用于图中最后一根K线没有形成分型结构导致疑似lm后缺失显示两笔（一完成一未完成）的情况 ===
     start_idx = bi_lm.right_fx.right_idx
     end_idx = len(all_klines) - 1
     init_highest_price = bi_lm.right_fx.high_price
@@ -706,7 +706,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
             break
 
-    if new_bi_mr is not None and new_bi_mr.is_finished():
+    if new_bi_mr is not None and new_bi_mr.is_finished() and bi_lm is not None and new_bi_mr.bi_type != bi_lm.bi_type:
         bi_list.append(new_bi_mr)
 
     if new_bi_mr is None:
@@ -736,6 +736,19 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         prefix_merged=prefix_merged, prefix_gap=prefix_gap)
     if fake_bi_mr.is_finished():
         bi_list.append(fake_bi_mr)
+    else:
+        if fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(fake_bi_mr.end_price):
+            fake_bi_mr = FakeBi.from_fenxing(
+                left_fx=bi_lm.left_fx, right_fx_mid_idx=fake_bi_mr.end_idx,
+                start_price=bi_lm.start_price, end_price=fake_bi_mr.end_price,
+                bi_type=bi_lm.bi_type, all_klines=all_klines,
+                prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+
+            if bi_list[-1] is bi_lm:
+                bi_list.pop()
+            bi_list.append(fake_bi_mr)
+
+
 
     print(f"共{len(bi_list)}笔")
     for i in range(len(bi_list)):
