@@ -91,7 +91,9 @@ class XianDuan:
         if not self.is_fanbao():
             return False
 
-        # TODO 判断第二种特征序列时，线段完成判断具有滞后性
+        # TODO 判断第二种特征序列时，要考虑第一笔和第二笔的包含关系
+        if self.left_tzxl.is_second_category() and self.is_first_and_second_bi_contain():
+            return False
 
         return True
 
@@ -120,6 +122,10 @@ class XianDuan:
             return False
         return True
 
+    def is_second_bi_contain_first_bi(self) -> bool:
+        """判断第二笔是否包含第一笔"""
+        return False
+
 
 def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     """
@@ -130,8 +136,26 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     特征序列缺口被后续确认后，才把候选线段加入结果。
     """
 
-    tzxl_deque = deque((tzxl_list[i], tzxl_list[i + 1]) for i in range(len(tzxl_list) - 1))
     xianduan_finish_deque = deque([])
+    xianduan_list = []
+
+    if len(tzxl_list) < 2:
+        return xianduan_list
+
+    l_idx = 0
+    m_idx = 0
+    r_idx = 0
+
+    while r_idx <= len(tzxl_list) - 1:
+        l_tzxl = tzxl_list[l_idx]
+        m_tzxl = tzxl_list[m_idx]
+        if l_tzxl.type == m_tzxl.type:
+            ...
+
+
+
+
+
 
 
 
