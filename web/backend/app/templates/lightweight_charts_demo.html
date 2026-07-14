@@ -138,12 +138,14 @@
     // 从后端传入的数据
     const candleData = {{ candle_data | safe }};
     const biData = {{ bi_data | safe }};
+    const xdData = {{ xd_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
     const currentPrecision = {{ precision }};  // 当前精度
 
     console.log('收到的K线数据:', candleData.length);
     console.log('收到的笔数据:', biData.length);
+    console.log('收到的线段数据:', xdData.length);
     console.log('收到的缺口数据:', gapsData.length);
     console.log('收到的成交量数据:', volumeData.length);
     console.log('当前精度:', currentPrecision);
@@ -221,8 +223,20 @@
         });
 
         // 对笔数据进行排序，确保时间顺序正确（Lightweight Charts 要求严格的时间递增）
-        biData.sort((a, b) => new Date(a.time) - new Date(b.time));
-        biSeries.setData(biData);
+       biData.sort((a, b) => new Date(a.time) - new Date(b.time));
+       biSeries.setData(biData);
+
+        // 2.5 创建线段的折线系列（红色）
+        const xdSeries = chart.addLineSeries({
+            color: '#FF0000',
+            lineWidth: 2,
+            title: '线段',
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
+
+        xdData.sort((a, b) => new Date(a.time) - new Date(b.time));
+        xdSeries.setData(xdData);
 
         // 3.创建成交量图表
         const volumeChart = LightweightCharts.createChart(volumeContainer, {

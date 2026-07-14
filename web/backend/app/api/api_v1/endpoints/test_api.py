@@ -354,21 +354,34 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             }
             candle_data.append(candle)
 
-        # 2. 准备笔（Bi）数据 - 转换为折线图格式
-        # 笔的数据点通常是顶底分型的坐标
+       # 2. 准备笔（Bi）数据 - 转换为折线图格式
+       # 笔的数据点通常是顶底分型的坐标
         bi_line_data = []
         for bi in bi_data_list:
-            # 如果 bi 是 Bi 对象，使用 to_dict() 方法转换
-            bi_dict = bi.to_dict()
-            # 起点
-            bi_line_data.append({
-                "time": sample_dates[bi_dict['start_idx']],
-                "value": bi_dict['start_price']
+           # 如果 bi 是 Bi 对象，使用 to_dict() 方法转换
+           bi_dict = bi.to_dict()
+           # 起点
+           bi_line_data.append({
+               "time": sample_dates[bi_dict['start_idx']],
+               "value": bi_dict['start_price']
+           })
+           # 终点
+           bi_line_data.append({
+               "time": sample_dates[bi_dict['end_idx']],
+               "value": bi_dict['end_price']
+           })
+
+        # 2.5 准备线段（XianDuan）数据 - 转换为折线图格式
+        xd_line_data = []
+        for xd in xian_duan_list:
+            xd_dict = xd.to_dict()
+            xd_line_data.append({
+                "time": sample_dates[xd_dict['start_idx']],
+                "value": xd_dict['start_price']
             })
-            # 终点
-            bi_line_data.append({
-                "time": sample_dates[bi_dict['end_idx']],
-                "value": bi_dict['end_price']
+            xd_line_data.append({
+                "time": sample_dates[xd_dict['end_idx']],
+                "value": xd_dict['end_price']
             })
 
         # 3.成交量数据
@@ -391,12 +404,13 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             template = templates.env.get_template(template_name)
             html_content = template.render(
                 request=request,
-                candle_data=json.dumps(candle_data, ensure_ascii=False),
-                bi_data=json.dumps(bi_line_data, ensure_ascii=False),
-                candle_count=len(candle_data),
+               candle_data=json.dumps(candle_data, ensure_ascii=False),
+               bi_data=json.dumps(bi_line_data, ensure_ascii=False),
+               xd_data=json.dumps(xd_line_data, ensure_ascii=False),
+               candle_count=len(candle_data),
                 gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
                 volume_data=json.dumps(volume_data, ensure_ascii=False),
-                precision=precision,  # 传递精度参数到模板
+               precision=precision,  # 传递精度参数到模板
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:

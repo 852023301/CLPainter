@@ -132,9 +132,11 @@ class _DataCache:
         self.ensure_loaded()
         return self._te_zheng_xu_lie
 
+    @property
     def xian_duan_list(self) -> List[TeZhengXuLie]:
         self.ensure_loaded()
         return self._xianduan_list
+
     @property
     def fenxing_list(self) -> List[FenXing]:
         """获取分型列表"""
