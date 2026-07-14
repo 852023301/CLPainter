@@ -652,14 +652,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     bi_list = list(bi_finish_deque)[::-1]
 
     ####################### 检查
-    # 检查笔连续性
-    for i in range(len(bi_list) - 1):
-        if bi_list[i].right_fx.trade_date != bi_list[i + 1].left_fx.trade_date:
-            print(bi_list[i].right_fx.trade_date, bi_list[i + 1].left_fx.trade_date)
-            raise RuntimeError("笔连续性检查失败")
-
-    # 检查笔上下交替
-    assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
 
     # 检查笔的极值在两端
     for bi in bi_list:
@@ -748,9 +740,26 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 bi_list.pop()
             bi_list.append(fake_bi_mr)
 
-
-
     print(f"共{len(bi_list)}笔")
     for i in range(len(bi_list)):
         bi_list[i].idx = i
+
+    ####################### 检查
+    # 检查笔连续性
+    for i in range(len(bi_list) - 1):
+        if isinstance(bi_list[i], Bi):
+            r_trade_date = bi_list[i].right_fx.trade_date
+        else:
+            r_trade_date = all_klines[bi_list[i].end_idx].trade_date
+
+        l_trade_date = bi_list[i + 1].left_fx.trade_date
+
+
+        if r_trade_date != l_trade_date:
+            print(r_trade_date, l_trade_date)
+            raise RuntimeError("笔连续性检查失败")
+
+    # 检查笔上下交替
+    assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
+    ####################### 检查
     return bi_list
