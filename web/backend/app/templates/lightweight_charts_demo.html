@@ -103,7 +103,7 @@
 <body>
 
 <script>
-    // 日期格式化：将 time (UTC timestamp 字符串或秒数) 转为 "YYYY-MM-DD HH:MM:SS"
+    // 智能日期格式化：只有年月日则显示 YYYY-MM-DD，带时分则显示 YYYY-MM-DD HH:MM
     function formatDateTime(time) {
         let date;
         if (typeof time === 'number') {
@@ -114,7 +114,13 @@
             return String(time);
         }
         const pad = (n) => String(n).padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        const datePart = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+        const hours = date.getUTCHours();
+        const minutes = date.getUTCMinutes();
+        if (hours === 0 && minutes === 0) {
+            return datePart;
+        }
+        return `${datePart} ${pad(hours)}:${pad(minutes)}`;
     }
 </script>
 <div class="container">
