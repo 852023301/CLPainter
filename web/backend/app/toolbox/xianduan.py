@@ -92,7 +92,7 @@ class XianDuan:
             return False
 
         # TODO 判断第二种特征序列时，要考虑第一笔和第二笔的包含关系
-        if self.left_tzxl.is_second_category() and self.is_first_and_second_bi_contain():
+        if self.left_tzxl.is_second_category() and self.is_second_bi_contain_first_bi():
             return False
 
         return True
@@ -136,33 +136,55 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     特征序列缺口被后续确认后，才把候选线段加入结果。
     """
 
-    xianduan_finish_deque = deque([])
-    xianduan_list = []
+    # 取连续极值
+    tzxl_list_new = []
+    is_top = True
+    _temp = []
+    for tzxl in tzxl_list:
+        if tzxl.is_top() == is_top:
+            _temp.append(tzxl)
+        else:
+            if _temp:
+                if is_top == True:
+                    tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
+                else:
+                    tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
+            is_top = not is_top
+            _temp.clear()
+            _temp.append(tzxl)
+    if _temp:
+        if is_top == True:
+            tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
+        else:
+            tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
 
-    if len(tzxl_list) < 2:
+    # 检查特征序列顶底交替
+    assert np.all(np.diff([tzxl.is_top() for tzxl in tzxl_list_new]) != 0), "不满足特征序列顶底交替的要求"
+    xianduan_list = []
+    if len(tzxl_list_new) < 2:
         return xianduan_list
 
-    l_idx = 0
-    m_idx = 0
-    r_idx = 0
+    tzxl_deque = deque((tzxl_list_new[i], tzxl_list_new[i + 1]) for i in range(len(tzxl_list_new) - 1))
+    xianduan_finish_deque = deque([])
 
-    while r_idx <= len(tzxl_list) - 1:
-        l_tzxl = tzxl_list[l_idx]
-        m_tzxl = tzxl_list[m_idx]
-        if l_tzxl.type == m_tzxl.type:
-            ...
+    if len(tzxl_deque) == 1:
+        l_tzxl, r_tzxl = tzxl_deque.popleft()
+        xd = XianDuan.from_tzxl(l_tzxl, r_tzxl)
+        if xd.is_finished():
+            xianduan_list.append(xd)
+        return xianduan_list
 
-
-
-
-
-
+    # 在此 tzxl_deque至少有两个元素
+    while len(tzxl_deque) > 1:
+        l_tzxl, r_tzxl = tzxl_deque.popleft()
+        m_tzxl, r_tzxl = tzxl_deque.popleft()
+        break
 
 
 
     xianduan_list = list(xianduan_finish_deque)[::-1]
     # 检查笔上下交替
     assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
-    # TODO # 检查笔连续性
+    # TODO # 检查线段日期连续性
 
     return xianduan_list
