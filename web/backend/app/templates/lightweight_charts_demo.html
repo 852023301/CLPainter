@@ -101,6 +101,22 @@
     </style>
 </head>
 <body>
+
+<script>
+    // 日期格式化：将 time (UTC timestamp 字符串或秒数) 转为 "YYYY-MM-DD HH:MM:SS"
+    function formatDateTime(time) {
+        let date;
+        if (typeof time === 'number') {
+            date = new Date(time * 1000);
+        } else if (typeof time === 'string') {
+            date = new Date(time);
+        } else {
+            return String(time);
+        }
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+</script>
 <div class="container">
     <h1>📊 Lightweight Charts 简单示例</h1>
 
@@ -174,6 +190,9 @@
             leftPriceScale: {
                 visible: false,
             },
+            localization: {
+                timeFormatter: (time) => formatDateTime(time),
+            },
         });
 
         // 1. 创建K线系列
@@ -240,6 +259,9 @@
             },
             handleScroll: {
                 vertTouchDrag: false, // 禁止垂直拖动
+            },
+            localization: {
+                timeFormatter: (time) => formatDateTime(time),
             },
         });
 
@@ -388,8 +410,8 @@
             const priceClass = isUp ? 'up' : 'down';
             const arrow = isUp ? '↑' : '↓';
 
-            tooltip.innerHTML = `
-                    <div><span class="label">日期:</span><span class="value">${param.time}</span></div>
+           tooltip.innerHTML = `
+                    <div><span class="label">日期:</span><span class="value">${formatDateTime(param.time)}</span></div>
                     <div><span class="label">开盘:</span><span class="value ${priceClass}">${open}</span></div>
                     <div><span class="label">最高:</span><span class="value ${priceClass}">${high}</span></div>
                     <div><span class="label">最低:</span><span class="value ${priceClass}">${low}</span></div>
