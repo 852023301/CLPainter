@@ -1,16 +1,13 @@
 import json
 import logging
-from typing import List, Dict, Any
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
-from CLPainter.web.backend.app.toolbox.origin_kline import OriginKlineType
-from ..endpoints import bi_data_list
-from ..endpoints import origin_kline_data, trade_date_list, gaps_list
+from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 

@@ -68,8 +68,6 @@ class XianDuan:
         return {
             "start_idx": self.start_idx,
             "end_idx": self.end_idx,
-            "start_bi_idx": self.start_bi_idx,
-            "end_bi_idx": self.end_bi_idx,
             "direction": self.xianduan_type.value,
             "start_price": self.start_price,
             "end_price": self.end_price,
@@ -174,17 +172,35 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
             xianduan_list.append(xd)
         return xianduan_list
 
-    # 在此 tzxl_deque至少有两个元素
-    while len(tzxl_deque) > 1:
+    while len(tzxl_deque) > 0:
         l_tzxl, r_tzxl = tzxl_deque.popleft()
-        m_tzxl, r_tzxl = tzxl_deque.popleft()
-        break
+        xd = XianDuan.from_tzxl(l_tzxl, r_tzxl)
+        xianduan_finish_deque.append(xd)
+
+    # # 在此 tzxl_deque至少有两个元素
+    # while len(tzxl_deque) > 1:
+    #     l_tzxl, m_tzxl = tzxl_deque.popleft()
+    #     m_tzxl, r_tzxl = tzxl_deque.popleft()
+    #     break
 
 
 
-    xianduan_list = list(xianduan_finish_deque)[::-1]
+    xianduan_list = list(xianduan_finish_deque)
+
+
+    ####################### 检查
     # 检查笔上下交替
     assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
-    # TODO # 检查线段日期连续性
 
+    # 检查线段日期连续性
+    for i in range(len(xianduan_list) - 1):
+        r_trade_date = xianduan_list[i].end_time
+        l_trade_date = xianduan_list[i + 1].start_time
+
+
+        if r_trade_date != l_trade_date:
+            print(r_trade_date, l_trade_date)
+            raise RuntimeError("笔连续性检查失败")
+
+    ####################### 检查
     return xianduan_list
