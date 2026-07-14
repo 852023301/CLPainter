@@ -38,7 +38,7 @@ class FenXing:
     # 分型最低价索引
     low_idx: int = field(init=False)
     # 极值的交易日
-    trade_date: str = field(init=False)
+    trade_datetime: str = field(init=False)
     # fenxing索引
     idx: int = field(init=False)
 
@@ -171,7 +171,7 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.low_price = mid_kline.merged_low
             fenxing.low_idx = mid_kline.low_idx
 
-            fenxing.trade_date = all_klines[fenxing.high_idx].trade_date
+            fenxing.trade_datetime = all_klines[fenxing.high_idx].trade_datetime
         else:  # 底分型
             fenxing.low_price = mid_kline.merged_low
             fenxing.low_idx = mid_kline.low_idx
@@ -179,7 +179,7 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
             fenxing.high_price = mid_kline.merged_high
             fenxing.high_idx = mid_kline.high_idx
 
-            fenxing.trade_date = all_klines[fenxing.low_idx].trade_date
+            fenxing.trade_datetime = all_klines[fenxing.low_idx].trade_datetime
 
         fenxing_list.append(fenxing)
 

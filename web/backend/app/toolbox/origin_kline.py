@@ -15,7 +15,7 @@ class OriginKlineType(str, Enum):
 class OriginKLine:
     """原始的K线数据类"""
 
-    trade_date: str
+    trade_datetime: str
     open: float
     close: float
     low: float
@@ -67,7 +67,7 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
             kl.has_gap = True
             ratio = ((kl.low - last_origin_kline.high) / last_origin_kline.high * 100).__round__(2)
             gaps_list.append(Gap(
-                trade_date=kl.trade_date,
+                trade_datetime=kl.trade_datetime,
                 type=GapDirectionType.UP,
                 position='belowBar',
                 color='#ef5350',
@@ -79,7 +79,7 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
             kl.has_gap = True
             ratio = ((last_origin_kline.low - kl.high) / last_origin_kline.low * 100).__round__(2)
             gaps_list.append(Gap(
-                trade_date=kl.trade_date,
+                trade_datetime=kl.trade_datetime,
                 type=GapDirectionType.DOWN,
                 position='aboveBar',
                 color='#26a69a',

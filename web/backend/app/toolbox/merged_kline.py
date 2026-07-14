@@ -15,7 +15,7 @@ class MergedKLineType(int, Enum):
 class MergedKLine:
     """合并后的K线数据类"""
 
-    trade_date: str
+    trade_datetime: str
     open: float
     close: float
     low: float
@@ -133,7 +133,7 @@ def generate_merge_klines(origin_klines: List[OriginKLine]) -> List[MergedKLine]
             else:
                 print(f"{last_kline=}")
                 print(f"{merged_kline=}")
-                raise ValueError(f"存在趋势或包含之外的关系: {last_kline.trade_date} -> {merged_kline.trade_date}")
+                raise ValueError(f"存在趋势或包含之外的关系: {last_kline.trade_datetime} -> {merged_kline.trade_datetime}")
 
         all_klines.append(merged_kline)
 
@@ -171,7 +171,7 @@ def _apply_containment(last_kline: MergedKLine, current_kline: MergedKLine) -> N
         else:  # 向下趋势取低低
             current_kline.merged_low = last_kline.merged_low
     else:
-        raise ValueError(f"异常的包含关系: {last_kline.trade_date} -> {current_kline.trade_date}")
+        raise ValueError(f"异常的包含关系: {last_kline.trade_datetime} -> {current_kline.trade_datetime}")
 
 
 def find_top_bottom(all_klines: List[MergedKLine]) -> None:

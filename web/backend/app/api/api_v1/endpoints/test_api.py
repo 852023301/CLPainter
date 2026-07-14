@@ -349,7 +349,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
         candle_data = []
         for kline in sample_data:
             candle = {
-                "time": kline.trade_date,
+                "time": kline.trade_datetime,
                 "open": float(kline.open),
                 "high": float(kline.high),
                 "low": float(kline.low),
@@ -377,7 +377,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
         # 3.成交量数据
         volume_data = [
             {
-                'time': kline.trade_date,
+                'time': kline.trade_datetime,
                 'value': kline.volume,
                 'color': '#ef5350' if kline.is_up() else '#26a69a'
             }

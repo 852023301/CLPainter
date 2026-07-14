@@ -89,7 +89,7 @@ async def Kline_base_merged(request: Request):
             color = "#ff0000"
 
         mp = opts.MarkPointItem(
-            coord=[kl.trade_date, y],  # 第i天的收盘价坐标
+            coord=[kl.trade_datetime, y],  # 第i天的收盘价坐标
             name=f"收盘价 {idx + 1}",
             symbol_size=5,
             itemstyle_opts=opts.ItemStyleOpts(color="#0000FF"),  # 图钉颜色

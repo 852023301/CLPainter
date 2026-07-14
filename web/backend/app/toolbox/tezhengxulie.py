@@ -171,7 +171,7 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
                                      bi_idx_list=bi_idx_list))
 
     # for i in te_zheng_xu_lie_list:
-    #     print(i.mid_bi.left_fx.trade_date ,i.is_top())
+    #     print(i.mid_bi.left_fx.trade_datetime ,i.is_top())
     # print(f"{len(te_zheng_xu_lie_list)=}")
     # assert np.all(np.diff([tzxl.is_top() for tzxl in te_zheng_xu_lie_list]) != 0), "不满足特征序列交替的要求"
     return te_zheng_xu_lie_list

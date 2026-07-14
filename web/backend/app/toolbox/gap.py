@@ -14,7 +14,7 @@ class GapDirectionType(str, Enum):
 class Gap:
     """原始的K线数据类"""
 
-    trade_date: str
+    trade_datetime: str
     type: GapDirectionType
     position: str  # 'belowBar' 或者  'aboveBar'
     color: str

@@ -95,7 +95,7 @@ class _DataCache:
 
         self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie)
 
-        self._trade_dates = [data.trade_date for data in merged_klines]
+        self._trade_dates = [data.trade_datetime for data in merged_klines]
 
     @property
     def raw_data(self) -> List[List]:
