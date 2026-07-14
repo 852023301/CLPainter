@@ -472,7 +472,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         nonlocal bi_lm
         nonlocal bi_mr
         while len(bi_finish_deque) > 0:
-            last_bi_finish = bi_finish_deque.popleft()
+            last_bi_finish = bi_finish_deque.pop()
             if log_switch and trade_e >= last_bi_finish.left_fx.trade_datetime >= trade_s:
                 print("#" * 50, "lm弹出")
                 print(last_bi_finish)
@@ -499,7 +499,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         nonlocal bi_mr
         nonlocal bi_xy
         while len(bi_finish_deque) > 0:
-            last_bi_finish = bi_finish_deque.popleft()
+            last_bi_finish = bi_finish_deque.pop()
             if log_switch and trade_e >= last_bi_finish.left_fx.trade_datetime >= trade_s:
                 print("#" * 50, "mr弹出")
                 print(last_bi_finish)
@@ -518,7 +518,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                                                 prefix_gap)
                         if len(bi_finish_deque) > 0:
                             bi_mr = bi_lm
-                            bi_lm = bi_finish_deque.popleft()
+                            bi_lm = bi_finish_deque.pop()
 
                         elif len(fenxing_deque) > 0:
                             x_fx, y_fx = fenxing_deque.popleft()
@@ -534,7 +534,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                         bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines, prefix_merged,
                                                 prefix_gap)
                         if len(bi_finish_deque) > 0:
-                            bi_lm = bi_finish_deque.popleft()
+                            bi_lm = bi_finish_deque.pop()
 
                         elif len(fenxing_deque) > 0:
                             bi_lm = bi_mr
@@ -576,7 +576,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 print("#" * 50, "加入")
                 print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
                 print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
-            bi_finish_deque.appendleft(bi_lm)
+            bi_finish_deque.append(bi_lm)
             _advance_both()
             if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
                 print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
@@ -647,9 +647,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     # 最后一笔lm
     if bi_lm.is_finished():
-        bi_finish_deque.appendleft(bi_lm)
+        bi_finish_deque.append(bi_lm)
 
-    bi_list = list(bi_finish_deque)[::-1]
+    bi_list = list(bi_finish_deque)
 
     ####################### 检查
 
