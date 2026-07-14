@@ -727,7 +727,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         bi_type=fake_type, all_klines=all_klines,
         prefix_merged=prefix_merged, prefix_gap=prefix_gap)
     if fake_bi_mr.is_finished():
-        bi_list.append(fake_bi_mr)
+        if new_bi_mr.is_finished():
+            bi_list.append(fake_bi_mr)
     else:
         if fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(fake_bi_mr.end_price):
             fake_bi_mr = FakeBi.from_fenxing(
