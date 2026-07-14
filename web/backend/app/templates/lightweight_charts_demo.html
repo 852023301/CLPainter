@@ -215,11 +215,12 @@
 
         // 2. 创建笔的折线系列
         const biSeries = chart.addLineSeries({
-            color: '#2962FF', // 蓝色线条表示笔
-            lineWidth: 2,
-            title: '笔',
+            color: 'rgba(41, 98, 255, 0.8)',
+            lineWidth: 1,
+            // title: '笔',
             lastValueVisible: false,
             priceLineVisible: false,
+            lineStyle: 0, // 0=普通实线, 1=密集小圆点, 2=标准短虚线, 3=长虚线间隔较大, 4=稀疏点间隔很大
         });
 
         // 对笔数据进行排序，确保时间顺序正确（Lightweight Charts 要求严格的时间递增）
@@ -228,11 +229,12 @@
 
         // 2.5 创建线段的折线系列（红色）
         const xdSeries = chart.addLineSeries({
-            color: '#FF0000',
+            color: 'rgba(255, 0, 0, 0.7)',
             lineWidth: 2,
-            title: '线段',
+            // title: '线段',
             lastValueVisible: false,
             priceLineVisible: false,
+            lineStyle: 2, // 实线
         });
 
         xdData.sort((a, b) => new Date(a.time) - new Date(b.time));
