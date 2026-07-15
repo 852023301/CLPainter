@@ -159,6 +159,42 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     # 检查特征序列顶底交替
     assert np.all(np.diff([tzxl.is_top() for tzxl in tzxl_list_new]) != 0), "不满足特征序列顶底交替的要求"
     xianduan_list = []
+
+    ########################### 辅助函数
+    def _advance_both():
+        """推进 lm 和 mr：lm=mr，从 tzxl_deque 取下一对创建新 mr"""
+        nonlocal xd_lm, xd_mr, tzxl_deque
+        xd_lm = xd_mr
+        if len(tzxl_deque) > 0:
+            x_tzxl, y_tzxl = tzxl_deque.popleft()
+            xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+        else:
+            xd_mr = None
+
+    def find_first_xd_in_finish_deque():
+        """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
+        nonlocal xd_lm, xd_mr
+        while len(xianduan_finish_deque) > 0:
+            last_xd_finish = xianduan_finish_deque.pop()
+
+            if (last_xd_finish.xianduan_type == xd_lm.xianduan_type) and (
+                (
+                    last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_lm.start_price) or (
+                    last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_lm.start_price)):
+                xd_lm = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_lm.right_tzxl)
+                return True
+
+            #  这行代码按理来说会触发，但从来没有遇到过触发的情况
+            if (last_xd_finish.xianduan_type == xd_mr.xianduan_type) and (
+                (
+                    last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_mr.start_price) or (
+                    last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_mr.start_price)):
+                xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl)
+                raise ValueError(f"xd_mr:{xd_mr.left_tzxl.mid_bi.start_time}~{xd_mr.right_tzxl.mid_bi.start_time}")
+        return False
+
+    ###########################
+
     if len(tzxl_list_new) < 2:
         return xianduan_list
 
@@ -172,21 +208,68 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
             xianduan_list.append(xd)
         return xianduan_list
 
+    # 在此 tzxl_deque至少有两个元素
+    l_tzxl, m_tzxl = tzxl_deque.popleft()
+    m_tzxl, r_tzxl = tzxl_deque.popleft()
+    xd_lm = XianDuan.from_tzxl(l_tzxl, m_tzxl)
+    xd_mr = XianDuan.from_tzxl(m_tzxl, r_tzxl)
+
     while len(tzxl_deque) > 0:
-        l_tzxl, r_tzxl = tzxl_deque.popleft()
-        xd = XianDuan.from_tzxl(l_tzxl, r_tzxl)
-        xianduan_finish_deque.append(xd)
+        if xd_lm is None or xd_mr is None:
+            break
+        is_xd_lm_finished = xd_lm.is_finished()
+        is_xd_mr_finished = xd_mr.is_finished()
 
-    # # 在此 tzxl_deque至少有两个元素
-    # while len(tzxl_deque) > 1:
-    #     l_tzxl, m_tzxl = tzxl_deque.popleft()
-    #     m_tzxl, r_tzxl = tzxl_deque.popleft()
-    #     break
+        if is_xd_lm_finished and is_xd_mr_finished:
+            xianduan_finish_deque.append(xd_lm)
+            _advance_both()
+            continue
+
+        if is_xd_lm_finished and not is_xd_mr_finished:
+            x_tzxl, y_tzxl = tzxl_deque.popleft()
+            xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+            if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
+                (xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_lm.end_price) or (
+                xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_lm.end_price)):
+                xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl)
+                if len(tzxl_deque) > 0:
+                    x_tzxl, y_tzxl = tzxl_deque.popleft()
+                    xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+                else:
+                    xd_mr = None
+                    break
+
+            if (xd_xy.xianduan_type == xd_mr.xianduan_type) and (
+                (
+                    xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
+                    xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)):
+                xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl)
+
+            continue
+
+        if not is_xd_lm_finished and is_xd_mr_finished:
+            if not find_first_xd_in_finish_deque():
+                _advance_both()
+            continue
+
+        #### 如果lm和r都未完成
+        x_tzxl, y_tzxl = tzxl_deque.popleft()
+        xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl)
 
 
+        # print(xd_lm)
+        # print("##########")
+        # print(xd_mr)
+
+
+    if xd_lm.is_finished():
+        xianduan_finish_deque.append(xd_lm)
+        if xd_mr is not None and xd_mr.is_finished():
+            xianduan_finish_deque.append(xd_mr)
+            xd_lm = xd_mr
+            xd_mr = None
 
     xianduan_list = list(xianduan_finish_deque)
-
 
     ####################### 检查
     # 检查笔上下交替
@@ -197,10 +280,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
         r_trade_date = xianduan_list[i].end_time
         l_trade_date = xianduan_list[i + 1].start_time
 
-
         if r_trade_date != l_trade_date:
             print(r_trade_date, l_trade_date)
             raise RuntimeError("笔连续性检查失败")
 
     ####################### 检查
+    print(f"共{len(xianduan_list)}段")
     return xianduan_list

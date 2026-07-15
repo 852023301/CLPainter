@@ -462,10 +462,13 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     def _advance_both():
         """推进 lm 和 mr：lm=mr，从 fenxing_deque 取下一对创建新 mr"""
-        nonlocal bi_lm, bi_mr
+        nonlocal bi_lm, bi_mr, fenxing_deque
         bi_lm = bi_mr
-        m_fx, r_fx = fenxing_deque.popleft()
-        bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines, prefix_merged, prefix_gap)
+        if len(fenxing_deque) > 0:
+            m_fx, r_fx = fenxing_deque.popleft()
+            bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines, prefix_merged, prefix_gap)
+        else:
+            bi_mr = None
 
     def find_first_bi_in_finish_deque():
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
@@ -648,6 +651,10 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     # 最后一笔lm
     if bi_lm.is_finished():
         bi_finish_deque.append(bi_lm)
+        if bi_mr is not None and bi_mr.is_finished():
+            bi_finish_deque.append(bi_mr)
+            bi_lm = bi_mr
+            bi_mr = None
 
     bi_list = list(bi_finish_deque)
 
@@ -677,8 +684,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     # 最后一笔mr
     if not bi_lm.is_finished():
-        for i in range(len(bi_list)):
-            bi_list[i].idx = i
         return bi_list
 
     # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔，适用于图中最后一根K线没有形成分型结构导致疑似lm后缺失显示两笔（一完成一未完成）的情况 ===
@@ -741,7 +746,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 bi_list.pop()
             bi_list.append(fake_bi_mr)
 
-    print(f"共{len(bi_list)}笔")
+
     for i in range(len(bi_list)):
         bi_list[i].idx = i
 
@@ -763,4 +768,5 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     # 检查笔上下交替
     assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
     ####################### 检查
+    print(f"共{len(bi_list)}笔")
     return bi_list
