@@ -225,7 +225,13 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
             _advance_both()
             continue
 
-        if is_xd_lm_finished and not is_xd_mr_finished:
+        if not is_xd_lm_finished and is_xd_mr_finished:
+            if not find_first_xd_in_finish_deque():
+                _advance_both()
+            continue
+
+        # 无论lm是否完成，只要mr未完成
+        if not is_xd_mr_finished:
             x_tzxl, y_tzxl = tzxl_deque.popleft()
             xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl)
             if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
@@ -247,20 +253,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
             continue
 
-        if not is_xd_lm_finished and is_xd_mr_finished:
-            if not find_first_xd_in_finish_deque():
-                _advance_both()
-            continue
-
-        #### 如果lm和r都未完成
-        x_tzxl, y_tzxl = tzxl_deque.popleft()
-        xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl)
-
 
         # print(xd_lm)
         # print("##########")
         # print(xd_mr)
-
 
     if xd_lm.is_finished():
         xianduan_finish_deque.append(xd_lm)
