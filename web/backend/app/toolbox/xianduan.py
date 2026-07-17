@@ -189,6 +189,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                 (
                     last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_mr.start_price) or (
                     last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_mr.start_price)):
+                print(last_xd_finish)
+                print("#####")
+                print(xd_lm)
+                print("#####")
+                print(xd_mr)
                 xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl)
                 raise ValueError(f"xd_mr:{xd_mr.left_tzxl.mid_bi.start_time}~{xd_mr.right_tzxl.mid_bi.start_time}")
         return False
@@ -197,7 +202,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
     if len(tzxl_list_new) < 2:
         return xianduan_list
-
+    print([ i.start_time for i in tzxl_list_new])
     tzxl_deque = deque((tzxl_list_new[i], tzxl_list_new[i + 1]) for i in range(len(tzxl_list_new) - 1))
     xianduan_finish_deque = deque([])
 
@@ -278,7 +283,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
         if r_trade_date != l_trade_date:
             print(r_trade_date, l_trade_date)
-            raise RuntimeError("笔连续性检查失败")
+            raise RuntimeError("线段连续性检查失败")
 
     ####################### 检查
     print(f"共{len(xianduan_list)}段")
