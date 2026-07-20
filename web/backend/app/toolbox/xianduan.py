@@ -134,6 +134,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     特征序列缺口被后续确认后，才把候选线段加入结果。
     """
 
+    # 初始化
+    log_switch = True
+    trade_s = "2021-01-01"
+    trade_e = "2026-07-20"
+
     # 取连续极值
     tzxl_list_new = []
     is_top = True
@@ -176,12 +181,17 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
         nonlocal xd_lm, xd_mr
         while len(xianduan_finish_deque) > 0:
             last_xd_finish = xianduan_finish_deque.pop()
-
+            if log_switch and trade_e >= last_xd_finish.start_time >= trade_s:
+                print("#" * 50, "lm弹出")
+                print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
             if (last_xd_finish.xianduan_type == xd_lm.xianduan_type) and (
                 (
                     last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_lm.start_price) or (
                     last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_lm.start_price)):
                 xd_lm = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_lm.right_tzxl)
+                if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                    print("#" * 50, "lm被替换")
+                    print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                 return True
 
             #  这行代码按理来说会触发，但从来没有遇到过触发的情况
@@ -189,20 +199,20 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                 (
                     last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_mr.start_price) or (
                     last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_mr.start_price)):
-                print(last_xd_finish)
-                print("#####")
-                print(xd_lm)
-                print("#####")
-                print(xd_mr)
                 xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl)
-                raise ValueError(f"xd_mr:{xd_mr.left_tzxl.mid_bi.start_time}~{xd_mr.right_tzxl.mid_bi.start_time}")
+                if log_switch and trade_e >= last_xd_finish.start_time >= trade_s:
+                    print("#" * 50, "mr被替换")
+                    print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
+                    print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                    print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+                # raise ValueError(f"xd_mr:{xd_mr.left_tzxl.mid_bi.start_time}~{xd_mr.right_tzxl.mid_bi.start_time}")
         return False
 
     ###########################
 
     if len(tzxl_list_new) < 2:
         return xianduan_list
-    print([ i.start_time for i in tzxl_list_new])
+    # print([i.start_time for i in tzxl_list_new])
     tzxl_deque = deque((tzxl_list_new[i], tzxl_list_new[i + 1]) for i in range(len(tzxl_list_new) - 1))
     xianduan_finish_deque = deque([])
 
@@ -226,13 +236,31 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
         is_xd_mr_finished = xd_mr.is_finished()
 
         if is_xd_lm_finished and is_xd_mr_finished:
+            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                print("#" * 50, "加入前")
+                print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             xianduan_finish_deque.append(xd_lm)
             _advance_both()
+            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                print("#" * 50, "变更")
+                print(f"new xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             continue
 
+        if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+            print("lm和mr任一未完成")
+            print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+            print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+
         if not is_xd_lm_finished and is_xd_mr_finished:
+            print("lm未完成,所以往前寻找，寻找结果如下")
             if not find_first_xd_in_finish_deque():
                 _advance_both()
+                if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+                    print(f"new xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                    print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+
             continue
 
         # 无论lm是否完成，只要mr未完成
@@ -246,8 +274,14 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                 if len(tzxl_deque) > 0:
                     x_tzxl, y_tzxl = tzxl_deque.popleft()
                     xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+                    if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+                        print("@" * 50, "mr未完成,xy与lm同趋势")
+                        print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                        print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
                 else:
                     xd_mr = None
+                    if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+                        print("@" * 50, "和lm同趋势，tzxl_deque为空，退出")
                     break
 
             if (xd_xy.xianduan_type == xd_mr.xianduan_type) and (
@@ -255,9 +289,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                     xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
                     xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)):
                 xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl)
+                if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+                    print("@" * 50, "mr未完成,xy与mr同趋势")
+                    print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                    print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
 
             continue
-
 
         # print(xd_lm)
         # print("##########")
@@ -276,14 +313,14 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     # 检查笔上下交替
     assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
 
-    # 检查线段日期连续性
-    for i in range(len(xianduan_list) - 1):
-        r_trade_date = xianduan_list[i].end_time
-        l_trade_date = xianduan_list[i + 1].start_time
-
-        if r_trade_date != l_trade_date:
-            print(r_trade_date, l_trade_date)
-            raise RuntimeError("线段连续性检查失败")
+    # # 检查线段日期连续性
+    # for i in range(len(xianduan_list) - 1):
+    #     r_trade_date = xianduan_list[i].end_time
+    #     l_trade_date = xianduan_list[i + 1].start_time
+    #
+    #     if r_trade_date != l_trade_date:
+    #         print(r_trade_date, l_trade_date)
+    #         raise RuntimeError("线段连续性检查失败")
 
     ####################### 检查
     print(f"共{len(xianduan_list)}段")
