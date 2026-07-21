@@ -94,7 +94,7 @@ class _DataCache:
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
-        self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie)
+        self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
 

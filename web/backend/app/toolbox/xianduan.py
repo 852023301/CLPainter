@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Union
 from enum import Enum
 from collections import deque
 import numpy as np
 from .tezhengxulie import TeZhengXuLie
-
+from .bi import Bi, FakeBi
 
 class XianDuanDirectionType(str, Enum):
     """线段的类型"""
@@ -28,6 +28,9 @@ class XianDuan:
     # 左右分型
     left_tzxl: TeZhengXuLie
     right_tzxl: TeZhengXuLie
+    
+    # 完整的笔列表引用（用于第二种特征序列判断等场景）
+    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
         """根据左右两个特征序列分型初始化线段端点、方向和价格。"""
@@ -77,9 +80,11 @@ class XianDuan:
         }
 
     @classmethod
-    def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie) -> "XianDuan":
+    def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie, bi_list: List[Union[Bi, FakeBi]] = None) -> "XianDuan":
         """从一左一右两个特征序列分型构造候选线段。"""
-        return cls(left_tzxl=left_tzxl, right_tzxl=right_tzxl)
+        if bi_list is None:
+            bi_list = []
+        return cls(left_tzxl=left_tzxl, right_tzxl=right_tzxl, bi_list=bi_list)
 
     def is_finished(self) -> bool:
         """判断候选线段是否满足线段成立条件。"""
@@ -124,16 +129,87 @@ class XianDuan:
         return True
 
     def is_second_bi_contain_first_bi(self) -> bool:
-        """判断第二笔是否包含第一笔"""
-        return False
+        """判断在第二种特征序列中，第二条线段的结束特征序列中，第二笔是否包含第一笔（以此来判断第二段是否无效）"""
+        # 使用完整的 bi_list，如果未提供则回退到 right_tzxl.bi_list
+        target_bi_list = self.bi_list
+        
+        start_bi_idx = self.left_tzxl.mid_bi_idx + 1
+        end_bi_idx = self.right_tzxl.mid_bi_idx
+
+        # 第二段线段向上的情况
+        if self.xianduan_type == XianDuanDirectionType.UP:
+            has_valid_left_bi = False
+            bi = target_bi_list[start_bi_idx]   # 笔向下
+            assert bi.is_down(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
+            merged_low = bi.end_price
+            merged_high = bi.start_price
+            for idx in range(start_bi_idx + 2, end_bi_idx, 2):
+                if has_valid_left_bi:
+                    return False
+                bi = target_bi_list[idx]
+                if ((bi.start_price > merged_high and bi.end_price > merged_low) or
+                        (bi.start_price < merged_high and bi.end_price < merged_low)):
+                    has_valid_left_bi = True
+                    continue
+                elif (bi.end_price >= merged_low and bi.start_price <= merged_high) or (
+                        bi.end_price <= merged_low and bi.start_price >= merged_high):
+                    # 向上合并
+                    merged_high = max(merged_high, bi.start_price)
+                    merged_low = max(merged_low, bi.end_price)
+                else:
+                    raise ValueError(f"判断第二种特征序列是否成立时发现意外的笔")
+
+            if has_valid_left_bi:
+                return False
+
+            final_bi = self.right_tzxl.mid_bi
+            if merged_low < final_bi.end_price and merged_high < final_bi.start_price:
+                return False
 
 
-def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
+
+
+
+        # 第二段线段向下的情况
+        else:
+            has_valid_left_bi = False
+            bi = target_bi_list[start_bi_idx]   # 笔向上
+            assert bi.is_up(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
+            merged_low = bi.start_price
+            merged_high = bi.end_price
+            for idx in range(start_bi_idx + 2, end_bi_idx, 2):
+                if has_valid_left_bi:
+                    return False
+                bi = target_bi_list[idx]
+                if ((bi.start_price > merged_low and bi.end_price > merged_high) or
+                        (bi.start_price < merged_low and bi.end_price < merged_high)):
+                    has_valid_left_bi = True
+                    continue
+                elif (bi.start_price >= merged_low and bi.end_price <= merged_high) or (
+                        bi.start_price <= merged_low and bi.end_price >= merged_high):
+                    # 向下合并
+                    merged_high = min(merged_high, bi.end_price)
+                    merged_low = min(merged_low, bi.start_price)
+                else:
+                    raise ValueError(f"判断第二种特征序列是否成立时发现意外的笔")
+
+            if has_valid_left_bi:
+                return False
+
+            final_bi = self.right_tzxl.mid_bi
+            if merged_low > final_bi.start_price and merged_high > final_bi.end_price:
+                return False
+
+
+        return True
+
+
+def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, FakeBi]]) -> List[XianDuan]:
     """
     根据特征序列分型划分线段。
 
     实现思路和 generate_bi 保持一致：相邻异类特征序列先形成候选线段，
-    在确认前允许同向端点继续延长；满足三笔以上、端点离开区间、第二种
+    在确认前允许同向端点继续延长；满足三笔以上、不出现翻包、第二种
     特征序列缺口被后续确认后，才把候选线段加入结果。
     """
 
@@ -175,7 +251,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
         xd_lm = xd_mr
         if len(tzxl_deque) > 0:
             x_tzxl, y_tzxl = tzxl_deque.popleft()
-            xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+            xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
         else:
             xd_mr = None
 
@@ -189,7 +265,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print("#" * 50, "finished lm弹出")
                     print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-                xd_mr = XianDuan.from_tzxl(xd_lm.right_tzxl, xd_mr.right_tzxl)
+                xd_mr = XianDuan.from_tzxl(xd_lm.right_tzxl, xd_mr.right_tzxl, bi_list)
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
                 if xd_lm.is_finished() and xd_mr.is_finished():
@@ -211,7 +287,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
     if len(tzxl_deque) == 1:
         l_tzxl, r_tzxl = tzxl_deque.popleft()
-        xd = XianDuan.from_tzxl(l_tzxl, r_tzxl)
+        xd = XianDuan.from_tzxl(l_tzxl, r_tzxl, bi_list)
         if xd.is_finished():
             xianduan_list.append(xd)
         return xianduan_list
@@ -219,8 +295,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     # 在此 tzxl_deque至少有两个元素
     l_tzxl, m_tzxl = tzxl_deque.popleft()
     m_tzxl, r_tzxl = tzxl_deque.popleft()
-    xd_lm = XianDuan.from_tzxl(l_tzxl, m_tzxl)
-    xd_mr = XianDuan.from_tzxl(m_tzxl, r_tzxl)
+    xd_lm = XianDuan.from_tzxl(l_tzxl, m_tzxl, bi_list)
+    xd_mr = XianDuan.from_tzxl(m_tzxl, r_tzxl, bi_list)
 
     while len(tzxl_deque) > 0:
         if xd_lm is None or xd_mr is None:
@@ -259,16 +335,16 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
         # 若lm完成但mr未完成
         if not is_xd_mr_finished:
             x_tzxl, y_tzxl = tzxl_deque.popleft()
-            xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+            xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
             if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
                 print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
             if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
                 (xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_lm.end_price) or (
                 xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_lm.end_price)):
-                xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl)
+                xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl, bi_list)
                 if len(tzxl_deque) > 0:
                     x_tzxl, y_tzxl = tzxl_deque.popleft()
-                    xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+                    xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
                     if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
                         print("@" * 50, "mr未完成,xy与lm同趋势")
                         print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
@@ -280,7 +356,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                     break
 
             if (xd_xy.xianduan_type == xd_mr.xianduan_type):
-                new_xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl)
+                new_xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl, bi_list)
                 print(f"new xd_mr:{new_xd_mr.start_time}~{new_xd_mr.end_time}")
                 print(f"{new_xd_mr.has_enough_bi()=}  {new_xd_mr.is_fanbao()=}")
                 if ((xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (

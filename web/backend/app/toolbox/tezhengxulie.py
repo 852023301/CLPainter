@@ -24,7 +24,7 @@ class TeZhengXuLie:
     """笔的特征序列"""
     type: TeZhengXuLieType = field(default=TeZhengXuLieType.DING)
     category: TeZhengXuLieCategory = field(default_factory=TeZhengXuLieCategory.First)
-    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list)
+    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list)  # 内部三笔列表
     bi_idx_list: List[int] = field(default_factory=list)  # 特征序列组件三笔在原始笔列表中的索引
 
     @property
