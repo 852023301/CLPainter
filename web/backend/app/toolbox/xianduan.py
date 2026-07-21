@@ -50,6 +50,9 @@ class XianDuan:
         self.start_price = self.left_tzxl.start_price
         self.end_price = self.right_tzxl.start_price
 
+        if self.start_time >= self.end_time:
+            raise ValueError(f"线段起始时间不能大于结束时间:{self.start_time=}>={self.end_time=}")
+
     def is_up(self) -> bool:
         """判断当前线段是否为上升线段。"""
         return self.xianduan_type == XianDuanDirectionType.UP
@@ -181,31 +184,21 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
         nonlocal xd_lm, xd_mr
         while len(xianduan_finish_deque) > 0:
             last_xd_finish = xianduan_finish_deque.pop()
-            if log_switch and trade_e >= last_xd_finish.start_time >= trade_s:
-                print("#" * 50, "lm弹出")
-                print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
-            if (last_xd_finish.xianduan_type == xd_lm.xianduan_type) and (
-                (
-                    last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_lm.start_price) or (
-                    last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_lm.start_price)):
-                xd_lm = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_lm.right_tzxl)
+            if last_xd_finish.xianduan_type == xd_lm.xianduan_type:
+                xd_lm = last_xd_finish
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                    print("#" * 50, "lm被替换")
+                    print("#" * 50, "finished lm弹出")
                     print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-                return True
-
-            #  这行代码按理来说会触发，但从来没有遇到过触发的情况
-            if (last_xd_finish.xianduan_type == xd_mr.xianduan_type) and (
-                (
-                    last_xd_finish.xianduan_type == XianDuanDirectionType.UP and last_xd_finish.start_price <= xd_mr.start_price) or (
-                    last_xd_finish.xianduan_type == XianDuanDirectionType.DOWN and last_xd_finish.start_price >= xd_mr.start_price)):
-                xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl)
-                if log_switch and trade_e >= last_xd_finish.start_time >= trade_s:
-                    print("#" * 50, "mr被替换")
-                    print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
-                    print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                xd_mr = XianDuan.from_tzxl(xd_lm.right_tzxl, xd_mr.right_tzxl)
+                if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
-                # raise ValueError(f"xd_mr:{xd_mr.left_tzxl.mid_bi.start_time}~{xd_mr.right_tzxl.mid_bi.start_time}")
+                if xd_lm.is_finished() and xd_mr.is_finished():
+                    return True
+                continue
+
+        if log_switch:
+            print("#" * 50, "没找到，退出")
+
         return False
 
     ###########################
@@ -243,13 +236,13 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
             xianduan_finish_deque.append(xd_lm)
             _advance_both()
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                print("#" * 50, "变更")
+                print("#" * 50, "变更后")
                 print(f"new xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                 print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             continue
 
         if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
-            print("lm和mr任一未完成")
+            print(f"lm和mr任一未完成: {is_xd_lm_finished=}  {is_xd_mr_finished=}")
             print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
             print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
 
@@ -313,14 +306,14 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
     # 检查笔上下交替
     assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
 
-    # # 检查线段日期连续性
-    # for i in range(len(xianduan_list) - 1):
-    #     r_trade_date = xianduan_list[i].end_time
-    #     l_trade_date = xianduan_list[i + 1].start_time
-    #
-    #     if r_trade_date != l_trade_date:
-    #         print(r_trade_date, l_trade_date)
-    #         raise RuntimeError("线段连续性检查失败")
+    # 检查线段日期连续性
+    for i in range(len(xianduan_list) - 1):
+        r_trade_date = xianduan_list[i].end_time
+        l_trade_date = xianduan_list[i + 1].start_time
+
+        if r_trade_date != l_trade_date:
+            print(r_trade_date, l_trade_date)
+            raise RuntimeError("线段连续性检查失败")
 
     ####################### 检查
     print(f"共{len(xianduan_list)}段")
