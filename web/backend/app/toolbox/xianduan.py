@@ -86,8 +86,8 @@ class XianDuan:
         if not self.has_enough_bi():
             return False
 
-        if not self.is_broken():
-            return False
+        # if not self.is_broken():
+        #     return False
 
         if not self.is_fanbao():
             return False
@@ -102,18 +102,18 @@ class XianDuan:
         """缠论线段至少由三笔构成。"""
         return self.bi_count >= 3
 
-    def is_broken(self) -> bool:
-        """第三笔要超出第一笔"""
-        if self.is_up():
-            return (
-                self.left_tzxl.low_price < self.right_tzxl.low_price
-                and self.left_tzxl.high_price < self.right_tzxl.high_price
-            )
-
-        return (
-            self.left_tzxl.high_price > self.right_tzxl.high_price
-            and self.left_tzxl.low_price > self.right_tzxl.low_price
-        )
+    # def is_broken(self) -> bool:
+    #     """第三笔要超出第一笔"""
+    #     if self.is_up():
+    #         return (
+    #             self.left_tzxl.low_price < self.right_tzxl.low_price
+    #             and self.left_tzxl.high_price < self.right_tzxl.high_price
+    #         )
+    #
+    #     return (
+    #         self.left_tzxl.high_price > self.right_tzxl.high_price
+    #         and self.left_tzxl.low_price > self.right_tzxl.low_price
+    #     )
 
     def is_fanbao(self) -> bool:
         """若特征序列完成前已经反包原趋势，则前一个特征序列只是中继"""
@@ -139,8 +139,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
     # 初始化
     log_switch = True
-    trade_s = "2021-01-01"
-    trade_e = "2026-07-20"
+    trade_s = "2018-01-01"
+    trade_e = "2021-02-28"
 
     # 取连续极值
     tzxl_list_new = []
@@ -205,7 +205,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
     if len(tzxl_list_new) < 2:
         return xianduan_list
-    # print([i.start_time for i in tzxl_list_new])
+    print([i.start_time for i in tzxl_list_new])
     tzxl_deque = deque((tzxl_list_new[i], tzxl_list_new[i + 1]) for i in range(len(tzxl_list_new) - 1))
     xianduan_finish_deque = deque([])
 
@@ -256,10 +256,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
 
             continue
 
-        # 无论lm是否完成，只要mr未完成
+        # 若lm完成但mr未完成
         if not is_xd_mr_finished:
             x_tzxl, y_tzxl = tzxl_deque.popleft()
             xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl)
+            if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+                print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
             if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
                 (xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_lm.end_price) or (
                 xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_lm.end_price)):
@@ -277,17 +279,19 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie]) -> List[XianDuan]:
                         print("@" * 50, "和lm同趋势，tzxl_deque为空，退出")
                     break
 
-            if (xd_xy.xianduan_type == xd_mr.xianduan_type) and (
-                (
-                    xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
-                    xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)):
-                xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl)
-                if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
-                    print("@" * 50, "mr未完成,xy与mr同趋势")
-                    print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-                    print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+            if (xd_xy.xianduan_type == xd_mr.xianduan_type):
+                new_xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl)
+                print(f"new xd_mr:{new_xd_mr.start_time}~{new_xd_mr.end_time}")
+                print(f"{new_xd_mr.has_enough_bi()=}  {new_xd_mr.is_fanbao()=}")
+                if ((xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
+                    xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)) or new_xd_mr.is_finished():
+                    xd_mr = new_xd_mr
+                    if log_switch and trade_e >= trade_e >= xd_lm.start_time >= trade_s:
+                        print("@" * 50, "mr未完成,xy与mr同趋势")
+                        print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
 
             continue
+
 
         # print(xd_lm)
         # print("##########")
