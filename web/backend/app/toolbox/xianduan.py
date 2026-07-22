@@ -6,6 +6,7 @@ import numpy as np
 from .tezhengxulie import TeZhengXuLie
 from .bi import Bi, FakeBi
 
+
 class XianDuanDirectionType(str, Enum):
     """线段的类型"""
     UP = 'up'  # 上升段：底→顶
@@ -28,7 +29,7 @@ class XianDuan:
     # 左右分型
     left_tzxl: TeZhengXuLie
     right_tzxl: TeZhengXuLie
-    
+
     # 完整的笔列表引用（用于第二种特征序列判断等场景）
     bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list, repr=False)
 
@@ -80,7 +81,8 @@ class XianDuan:
         }
 
     @classmethod
-    def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie, bi_list: List[Union[Bi, FakeBi]] = None) -> "XianDuan":
+    def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie,
+                  bi_list: List[Union[Bi, FakeBi]] = None) -> "XianDuan":
         """从一左一右两个特征序列分型构造候选线段。"""
         if bi_list is None:
             bi_list = []
@@ -132,14 +134,14 @@ class XianDuan:
         """判断在第二种特征序列中，第二条线段的结束特征序列中，第二笔是否包含第一笔（以此来判断第二段是否无效）"""
         # 使用完整的 bi_list，如果未提供则回退到 right_tzxl.bi_list
         target_bi_list = self.bi_list
-        
+
         start_bi_idx = self.left_tzxl.mid_bi_idx + 1
         end_bi_idx = self.right_tzxl.mid_bi_idx
 
         # 第二段线段向上的情况
         if self.xianduan_type == XianDuanDirectionType.UP:
             has_valid_left_bi = False
-            bi = target_bi_list[start_bi_idx]   # 笔向下
+            bi = target_bi_list[start_bi_idx]  # 笔向下
             assert bi.is_down(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
             merged_low = bi.end_price
             merged_high = bi.start_price
@@ -148,11 +150,11 @@ class XianDuan:
                     return False
                 bi = target_bi_list[idx]
                 if ((bi.start_price > merged_high and bi.end_price > merged_low) or
-                        (bi.start_price < merged_high and bi.end_price < merged_low)):
+                    (bi.start_price < merged_high and bi.end_price < merged_low)):
                     has_valid_left_bi = True
                     continue
                 elif (bi.end_price >= merged_low and bi.start_price <= merged_high) or (
-                        bi.end_price <= merged_low and bi.start_price >= merged_high):
+                    bi.end_price <= merged_low and bi.start_price >= merged_high):
                     # 向上合并
                     merged_high = max(merged_high, bi.start_price)
                     merged_low = max(merged_low, bi.end_price)
@@ -166,14 +168,10 @@ class XianDuan:
             if merged_low < final_bi.end_price and merged_high < final_bi.start_price:
                 return False
 
-
-
-
-
         # 第二段线段向下的情况
         else:
             has_valid_left_bi = False
-            bi = target_bi_list[start_bi_idx]   # 笔向上
+            bi = target_bi_list[start_bi_idx]  # 笔向上
             assert bi.is_up(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
             merged_low = bi.start_price
             merged_high = bi.end_price
@@ -182,11 +180,11 @@ class XianDuan:
                     return False
                 bi = target_bi_list[idx]
                 if ((bi.start_price > merged_low and bi.end_price > merged_high) or
-                        (bi.start_price < merged_low and bi.end_price < merged_high)):
+                    (bi.start_price < merged_low and bi.end_price < merged_high)):
                     has_valid_left_bi = True
                     continue
                 elif (bi.start_price >= merged_low and bi.end_price <= merged_high) or (
-                        bi.start_price <= merged_low and bi.end_price >= merged_high):
+                    bi.start_price <= merged_low and bi.end_price >= merged_high):
                     # 向下合并
                     merged_high = min(merged_high, bi.end_price)
                     merged_low = min(merged_low, bi.start_price)
@@ -199,7 +197,6 @@ class XianDuan:
             final_bi = self.right_tzxl.mid_bi
             if merged_low > final_bi.start_price and merged_high > final_bi.end_price:
                 return False
-
 
         return True
 
@@ -367,7 +364,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                         print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
 
             continue
-
 
         # print(xd_lm)
         # print("##########")
