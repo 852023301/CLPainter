@@ -548,7 +548,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                         return True
 
             if log_switch and (
-                (trade_e >= bi_mr.left_fx.trade_datetime >= trade_s) or (trade_e >= bi_mr.right_fx.trade_datetime >= trade_s)):
+                (trade_e >= bi_mr.left_fx.trade_datetime >= trade_s) or (
+                trade_e >= bi_mr.right_fx.trade_datetime >= trade_s)):
                 print("#" * 50, "mr被替换")
                 print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
 
@@ -682,6 +683,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             raise RuntimeError(text)
     ####################### 检查
 
+    for i in range(len(bi_list)):
+        bi_list[i].idx = i
+
     # 最后一笔mr
     if not bi_lm.is_finished():
         return bi_list
@@ -692,63 +696,63 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     init_highest_price = bi_lm.right_fx.high_price
     init_lowest_price = bi_lm.right_fx.low_price
 
-    highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(
-        init_highest_price, init_lowest_price, start_idx, end_idx, all_klines, high_prices, low_prices)
+    if start_idx < end_idx:
+        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(
+            init_highest_price, init_lowest_price, start_idx, end_idx, all_klines, high_prices, low_prices)
 
-    # 遍历后续分型（避免列表切片拷贝），找到 mid_idx 命中极值点的第一个分型
-    new_bi_mr = None
-    for i in range(bi_lm.right_fx.idx + 1, len(fenxing_list)):
-        fx = fenxing_list[i]
-        if fx.mid_idx == highest_idx or fx.mid_idx == lowest_idx:
-            new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
-            break
+        # 遍历后续分型（避免列表切片拷贝），找到 mid_idx 命中极值点的第一个分型
+        new_bi_mr = None
+        for i in range(bi_lm.right_fx.idx + 1, len(fenxing_list)):
+            fx = fenxing_list[i]
+            if fx.mid_idx == highest_idx or fx.mid_idx == lowest_idx:
+                new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
+                break
 
-    if new_bi_mr is not None and new_bi_mr.is_finished() and bi_lm is not None and new_bi_mr.bi_type != bi_lm.bi_type:
-        bi_list.append(new_bi_mr)
+        if new_bi_mr is not None and new_bi_mr.is_finished() and bi_lm is not None and new_bi_mr.bi_type != bi_lm.bi_type:
+            bi_list.append(new_bi_mr)
 
-    if new_bi_mr is None:
-        new_bi_mr = bi_lm
+        if new_bi_mr is None:
+            new_bi_mr = bi_lm
 
-    # === 漏网之鱼2号：在1号笔之后创建反向 FakeBi ===
-    # 只需计算反方向极值（UP笔→找最低，DOWN笔→找最高），避免冗余双向扫描
-    is_up = new_bi_mr.bi_type == BiDirectionType.UP
-    scan_start = new_bi_mr.right_fx.right_idx
-    sl = slice(scan_start, end_idx + 1)
+        # === 漏网之鱼2号：在1号笔之后创建反向 FakeBi ===
+        # 只需计算反方向极值（UP笔→找最低，DOWN笔→找最高），避免冗余双向扫描
+        is_up = new_bi_mr.bi_type == BiDirectionType.UP
+        scan_start = new_bi_mr.right_fx.right_idx
+        sl = slice(scan_start, end_idx + 1)
 
-    if is_up:
-        local_idx = int(np.argmin(low_prices[sl]))
-        extreme_idx = scan_start + local_idx
-        extreme_price = float(low_prices[extreme_idx])
-        fake_type = BiDirectionType.DOWN
-    else:
-        local_idx = int(np.argmax(high_prices[sl]))
-        extreme_idx = scan_start + local_idx
-        extreme_price = float(high_prices[extreme_idx])
-        fake_type = BiDirectionType.UP
+        if is_up:
+            local_idx = int(np.argmin(low_prices[sl]))
+            extreme_idx = scan_start + local_idx
+            extreme_price = float(low_prices[extreme_idx])
+            fake_type = BiDirectionType.DOWN
+        else:
+            local_idx = int(np.argmax(high_prices[sl]))
+            extreme_idx = scan_start + local_idx
+            extreme_price = float(high_prices[extreme_idx])
+            fake_type = BiDirectionType.UP
 
-    fake_bi_mr = FakeBi.from_fenxing(
-        left_fx=new_bi_mr.right_fx, right_fx_mid_idx=extreme_idx,
-        start_price=new_bi_mr.end_price, end_price=extreme_price,
-        bi_type=fake_type, all_klines=all_klines,
-        prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-    if fake_bi_mr.is_finished():
-        if new_bi_mr.is_finished():
-            bi_list.append(fake_bi_mr)
-    else:
-        if fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(fake_bi_mr.end_price):
-            fake_bi_mr = FakeBi.from_fenxing(
-                left_fx=bi_lm.left_fx, right_fx_mid_idx=fake_bi_mr.end_idx,
-                start_price=bi_lm.start_price, end_price=fake_bi_mr.end_price,
-                bi_type=bi_lm.bi_type, all_klines=all_klines,
-                prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+        fake_bi_mr = FakeBi.from_fenxing(
+            left_fx=new_bi_mr.right_fx, right_fx_mid_idx=extreme_idx,
+            start_price=new_bi_mr.end_price, end_price=extreme_price,
+            bi_type=fake_type, all_klines=all_klines,
+            prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+        if fake_bi_mr.is_finished():
+            if new_bi_mr.is_finished():
+                bi_list.append(fake_bi_mr)
+        else:
+            if fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(fake_bi_mr.end_price):
+                fake_bi_mr = FakeBi.from_fenxing(
+                    left_fx=bi_lm.left_fx, right_fx_mid_idx=fake_bi_mr.end_idx,
+                    start_price=bi_lm.start_price, end_price=fake_bi_mr.end_price,
+                    bi_type=bi_lm.bi_type, all_klines=all_klines,
+                    prefix_merged=prefix_merged, prefix_gap=prefix_gap)
 
-            if bi_list[-1] is bi_lm:
-                bi_list.pop()
-            bi_list.append(fake_bi_mr)
+                if bi_list[-1] is bi_lm:
+                    bi_list.pop()
+                bi_list.append(fake_bi_mr)
 
-
-    for i in range(len(bi_list)):
-        bi_list[i].idx = i
+        for i in range(len(bi_list)):
+            bi_list[i].idx = i
 
     ####################### 检查
     # 检查笔连续性
@@ -759,7 +763,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             r_trade_date = all_klines[bi_list[i].end_idx].trade_datetime
 
         l_trade_date = bi_list[i + 1].left_fx.trade_datetime
-
 
         if r_trade_date != l_trade_date:
             print(r_trade_date, l_trade_date)
