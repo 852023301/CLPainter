@@ -336,12 +336,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                 print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             continue
 
-        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-            print(f"lm和mr任一未完成: {is_xd_lm_finished=}  {is_xd_mr_finished=}")
-            print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-            print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+        # if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+        #     print(f"lm和mr任一未完成: {is_xd_lm_finished=}  {is_xd_mr_finished=}")
+        #     print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+        #     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
 
-        if not is_xd_lm_finished and is_xd_mr_finished:
+        elif not is_xd_lm_finished and is_xd_mr_finished:
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                 print("lm未完成,所以往前寻找，寻找结果如下")
             if not find_first_xd_in_finish_deque():
@@ -352,11 +352,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
 
             continue
 
-        # 若lm完成但mr未完成
-        if not is_xd_mr_finished:
+        # 无论lm是否完成，只要mr未完成
+        elif not is_xd_mr_finished:
             x_tzxl, y_tzxl = tzxl_deque.popleft()
             xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                print("%" * 50, "lm未完成,mr未完成")
                 print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
             if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
                 (xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_lm.end_price) or (
@@ -388,6 +389,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                         print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
 
             continue
+        else:
+            raise RuntimeError("不应该存在其他情况")
 
         # print(xd_lm)
         # print("##########")
