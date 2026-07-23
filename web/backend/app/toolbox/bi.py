@@ -567,7 +567,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     bi_mr = Bi.from_fenxing(m_fx, r_fx, all_klines, prefix_merged, prefix_gap)
 
     while len(fenxing_deque) > 0:
-        if bi_lm is None or bi_mr is None:
+        if bi_mr is None:
             break
         is_bi_lm_finish = bi_lm.is_finished()
         is_bi_mr_finish = bi_mr.is_finished()
@@ -626,7 +626,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 bi_lm = Bi.from_fenxing(bi_lm.left_fx, y_fx, all_klines, prefix_merged, prefix_gap)
 
                 if len(fenxing_deque) == 0:
-                    # 这里可能会导致lm和mr重叠，后续fake逻辑会处理
+                    # 这里可能会导致lm和mr重叠，后续fake逻辑会处理，最后还会检查
                     if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
                         print("@" * 50, "和lm同趋势，fenxing_deque为空，退出")
                     break
@@ -708,7 +708,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
                 break
 
-        if new_bi_mr is not None and new_bi_mr.is_finished() and bi_lm is not None and new_bi_mr.bi_type != bi_lm.bi_type:
+        if new_bi_mr is not None and new_bi_mr.is_finished() and new_bi_mr.bi_type != bi_lm.bi_type:
             bi_list.append(new_bi_mr)
 
         if new_bi_mr is None:
@@ -736,6 +736,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             start_price=new_bi_mr.end_price, end_price=extreme_price,
             bi_type=fake_type, all_klines=all_klines,
             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+
         if fake_bi_mr.is_finished():
             if new_bi_mr.is_finished():
                 bi_list.append(fake_bi_mr)
