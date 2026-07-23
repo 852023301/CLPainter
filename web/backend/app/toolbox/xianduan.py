@@ -139,14 +139,15 @@ class XianDuan:
         start_bi_idx = self.left_tzxl.mid_bi_idx + 1
         end_bi_idx = self.right_tzxl.mid_bi_idx
         merged_deque = deque([])
+        bi = target_bi_list[start_bi_idx]
+        merged_low = bi.end_price
+        merged_high = bi.start_price
 
         # 第二段线段向上的情况
         if self.xianduan_type == XianDuanDirectionType.UP:
             forward_up = True
-            bi = target_bi_list[start_bi_idx]  # 笔向下
+            # 笔向下
             assert bi.is_down(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
-            merged_low = bi.end_price
-            merged_high = bi.start_price
 
             for idx in range(start_bi_idx + 2, end_bi_idx + 1, 2):
                 bi = target_bi_list[idx]
@@ -182,10 +183,8 @@ class XianDuan:
         # 第二段线段向下的情况
         else:
             forward_up = False
-            bi = target_bi_list[start_bi_idx]  # 笔向上
+            # 笔向上
             assert bi.is_up(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
-            merged_low = bi.start_price
-            merged_high = bi.end_price
 
             for idx in range(start_bi_idx + 2, end_bi_idx + 1, 2):
                 bi = target_bi_list[idx]
