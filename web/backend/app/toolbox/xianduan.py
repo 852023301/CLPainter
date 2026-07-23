@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Union
 from enum import Enum
 from collections import deque
+from functools import cached_property
 import numpy as np
 
 from .tezhengxulie import TeZhengXuLie
@@ -83,27 +84,23 @@ class XianDuan:
 
     @classmethod
     def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie,
-                  bi_list: List[Union[Bi, FakeBi]] = None) -> "XianDuan":
+                  bi_list: Optional[List[Union[Bi, FakeBi]]] = None) -> "XianDuan":
         """从一左一右两个特征序列分型构造候选线段。"""
         if bi_list is None:
             bi_list = []
         return cls(left_tzxl=left_tzxl, right_tzxl=right_tzxl, bi_list=bi_list)
 
+    @cached_property
     def is_finished(self) -> bool:
         """判断候选线段是否满足线段成立条件。"""
         if not self.has_enough_bi():
             return False
-
-        # if not self.is_broken():
-        #     return False
-
         if not self.is_fanbao():
             return False
 
-        # TODO 判断第二种特征序列时，要考虑第一笔和第二笔的包含关系
+        # 判断第二种特征序列时，要考虑第一笔和第二笔的包含关系
         if self.left_tzxl.is_second_category() and self.is_second_bi_contain_first_bi():
             return False
-
         return True
 
     def has_enough_bi(self) -> bool:
