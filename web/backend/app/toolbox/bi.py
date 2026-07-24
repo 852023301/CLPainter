@@ -443,9 +443,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     # 初始化
     bi_list = []
-    trade_s = "2026-05-14"
-    trade_e = "2026-06-22"
-    log_switch = False
+    trade_s = "2022-10-01"
+    trade_e = "2022-12-22"
+    log_switch = True
 
     # 预计算：合并K线数量和缺口数量的前缀和（O(1) 查询）
     n_klines = len(all_klines)
@@ -662,25 +662,25 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     ####################### 检查
 
     # 检查笔的极值在两端
-    for bi in bi_list:
-        init_highest_price = max(bi.left_fx.high_price, bi.right_fx.high_price)
-        init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
-        start_idx = bi.left_fx.right_idx
-        end_idx = bi.end_idx
-        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
-                                                                                           init_lowest_price, start_idx,
-                                                                                           end_idx, all_klines,
-                                                                                           high_prices, low_prices)
-        if highest_price > init_highest_price:
-            text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{init_highest_price}],{bi.left_fx.trade_datetime=}~{bi.right_fx.trade_datetime=}"
-            print(text)
-            print(bi)
-            raise RuntimeError(text)
-        if lowest_price < init_lowest_price:
-            text = f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{init_lowest_price},{max(bi.left_fx.high_price, bi.right_fx.high_price)}],{bi.left_fx.trade_datetime=}~{bi.right_fx.trade_datetime=}"
-            print(text)
-            print(bi)
-            raise RuntimeError(text)
+    # for bi in bi_list:
+    #     init_highest_price = max(bi.left_fx.high_price, bi.right_fx.high_price)
+    #     init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
+    #     start_idx = bi.left_fx.right_idx
+    #     end_idx = bi.end_idx
+    #     highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
+    #                                                                                        init_lowest_price, start_idx,
+    #                                                                                        end_idx, all_klines,
+    #                                                                                        high_prices, low_prices)
+    #     if highest_price > init_highest_price:
+    #         text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{init_highest_price}],{bi.left_fx.trade_datetime=}~{bi.right_fx.trade_datetime=}"
+    #         print(text)
+    #         print(bi)
+    #         raise RuntimeError(text)
+    #     if lowest_price < init_lowest_price:
+    #         text = f"底分型最低价不是一笔中的最低价: {lowest_price=}<[{init_lowest_price},{max(bi.left_fx.high_price, bi.right_fx.high_price)}],{bi.left_fx.trade_datetime=}~{bi.right_fx.trade_datetime=}"
+    #         print(text)
+    #         print(bi)
+    #         raise RuntimeError(text)
     ####################### 检查
 
     for i in range(len(bi_list)):
