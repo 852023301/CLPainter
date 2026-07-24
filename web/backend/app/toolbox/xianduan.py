@@ -281,7 +281,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                 xd_mr = XianDuan.from_tzxl(xd_lm.right_tzxl, xd_mr.right_tzxl, bi_list)
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
-                if xd_lm.is_finished() and xd_mr.is_finished():
+                if xd_lm.is_finished and xd_mr.is_finished:
                     return True
                 continue
 
@@ -303,7 +303,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
     if len(tzxl_deque) == 1:
         l_tzxl, r_tzxl = tzxl_deque.popleft()
         xd = XianDuan.from_tzxl(l_tzxl, r_tzxl, bi_list)
-        if xd.is_finished():
+        if xd.is_finished:
             xianduan_list.append(xd)
         return xianduan_list
 
@@ -316,8 +316,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
     while len(tzxl_deque) > 0:
         if xd_lm is None or xd_mr is None:
             break
-        is_xd_lm_finished = xd_lm.is_finished()
-        is_xd_mr_finished = xd_mr.is_finished()
+        is_xd_lm_finished = xd_lm.is_finished
+        is_xd_mr_finished = xd_mr.is_finished
 
         if is_xd_lm_finished and is_xd_mr_finished:
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
@@ -378,7 +378,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                     print(f"new xd_mr:{new_xd_mr.start_time}~{new_xd_mr.end_time}")
                     print(f"{new_xd_mr.has_enough_bi()=}  {new_xd_mr.is_fanbao()=}")
                 if ((xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
-                    xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)) or new_xd_mr.is_finished():
+                    xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)) or new_xd_mr.is_finished:
                     xd_mr = new_xd_mr
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                         print("@" * 50, "mr未完成,xy与mr同趋势")
@@ -392,9 +392,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
         # print("##########")
         # print(xd_mr)
 
-    if xd_lm.is_finished():
+    if xd_lm.is_finished:
         xianduan_finish_deque.append(xd_lm)
-        if xd_mr is not None and xd_mr.is_finished():
+        if xd_mr is not None and xd_mr.is_finished:
             xianduan_finish_deque.append(xd_mr)
             xd_lm = xd_mr
             xd_mr = None
