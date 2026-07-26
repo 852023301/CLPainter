@@ -33,7 +33,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")

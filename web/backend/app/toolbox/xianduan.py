@@ -36,6 +36,9 @@ class XianDuan:
     # 完整的笔列表引用（用于第二种特征序列判断等场景）
     bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list, repr=False)
 
+    # xianduan索引
+    idx: int = None
+
     def __post_init__(self):
         """根据左右两个特征序列分型初始化线段端点、方向和价格。"""
         if self.left_tzxl.type == self.right_tzxl.type:
@@ -232,33 +235,18 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
     trade_s = "2018-01-01"
     trade_e = "2021-02-28"
 
-    # 取连续极值
-    tzxl_list_new = []
-    is_top = True
-    _temp = []
-    for tzxl in tzxl_list:
-        if tzxl.is_top() == is_top:
-            _temp.append(tzxl)
-        else:
-            if _temp:
-                if is_top == True:
-                    tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
-                else:
-                    tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
-            is_top = not is_top
-            _temp.clear()
-            _temp.append(tzxl)
-    if _temp:
-        if is_top == True:
-            tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
-        else:
-            tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
-
-    # 检查特征序列顶底交替
-    assert np.all(np.diff([tzxl.is_top() for tzxl in tzxl_list_new]) != 0), "不满足特征序列顶底交替的要求"
     xianduan_list = []
 
     ########################### 辅助函数
+    def _adjust_xian_duan():
+        """
+        在lm和mr都完成的前提下，追寻lm延伸到更极值的价格
+        """
+        nonlocal xd_lm, xd_mr, tzxl_deque
+        xd_lm.right_tzxl
+
+
+
     def _advance_both():
         """推进 lm 和 mr：lm=mr，从 tzxl_deque 取下一对创建新 mr"""
         nonlocal xd_lm, xd_mr, tzxl_deque
@@ -293,12 +281,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
 
     ###########################
 
-    if len(tzxl_list_new) < 2:
+    if len(tzxl_list) < 2:
         return xianduan_list
     if log_switch:
-        print([i.start_time for i in tzxl_list_new])
+        print([i.start_time for i in tzxl_list])
 
-    tzxl_deque = deque((tzxl_list_new[i], tzxl_list_new[i + 1]) for i in range(len(tzxl_list_new) - 1))
+    tzxl_deque = deque((tzxl_list[i], tzxl_list[i + 1]) for i in range(len(tzxl_list) - 1))
     xianduan_finish_deque = deque([])
 
     if len(tzxl_deque) == 1:
@@ -325,10 +313,16 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                 print("#" * 50, "加入前")
                 print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                 print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+
+
+            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                print("#" * 50, "在加入前微调")
+                print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             xianduan_finish_deque.append(xd_lm)
             _advance_both()
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                print("#" * 50, "变更后")
+                print("#" * 50, "加入后变更")
                 print(f"new xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                 print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             continue
@@ -417,4 +411,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
 
     ####################### 检查
     print(f"共{len(xianduan_list)}段")
+    # 分配序号
+    for i in range(len(xianduan_list)):
+        xianduan_list[i].idx = i
     return xianduan_list

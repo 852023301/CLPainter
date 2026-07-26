@@ -27,6 +27,9 @@ class TeZhengXuLie:
     bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list)  # 内部三笔列表
     bi_idx_list: List[int] = field(default_factory=list)  # 特征序列组件三笔在原始笔列表中的索引
 
+    # tzxl索引
+    idx: int = None
+
     @property
     def left_bi(self) -> Union[Bi, FakeBi]:
         return self.bi_list[0]
@@ -170,8 +173,31 @@ def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXu
                                      bi_list=[left_bi, mid_bi, bi_list[right_idx]],
                                      bi_idx_list=bi_idx_list))
 
-    # for i in te_zheng_xu_lie_list:
-    #     print(i.mid_bi.left_fx.trade_datetime ,i.is_top())
-    # print(f"{len(te_zheng_xu_lie_list)=}")
-    # assert np.all(np.diff([tzxl.is_top() for tzxl in te_zheng_xu_lie_list]) != 0), "不满足特征序列交替的要求"
-    return te_zheng_xu_lie_list
+    # 取连续极值
+    tzxl_list_new = []
+    is_top = True
+    _temp = []
+    for tzxl in te_zheng_xu_lie_list:
+        if tzxl.is_top() == is_top:
+            _temp.append(tzxl)
+        else:
+            if _temp:
+                if is_top == True:
+                    tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
+                else:
+                    tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
+            is_top = not is_top
+            _temp.clear()
+            _temp.append(tzxl)
+    if _temp:
+        if is_top == True:
+            tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
+        else:
+            tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
+
+    # 检查特征序列顶底交替
+    assert np.all(np.diff([tzxl.is_top() for tzxl in tzxl_list_new]) != 0), "不满足特征序列顶底交替的要求"
+    # 分配序号
+    for i in range(len(tzxl_list_new)):
+        tzxl_list_new[i].idx = i
+    return tzxl_list_new
