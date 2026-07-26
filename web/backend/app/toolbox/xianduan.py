@@ -232,19 +232,43 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
 
     # 初始化
     log_switch = False
-    trade_s = "2018-01-01"
-    trade_e = "2021-02-28"
+    trade_s = "2012-12-04"
+    trade_e = "2016-03-01"
 
     xianduan_list = []
 
     ########################### 辅助函数
-    def _adjust_xian_duan():
+    def _adjust_xian_duan(xd_lm, xd_mr):
         """
         在lm和mr都完成的前提下，追寻lm延伸到更极值的价格
         """
-        nonlocal xd_lm, xd_mr, tzxl_deque
-        xd_lm.right_tzxl
+        nonlocal tzxl_list
+        if xd_lm is None or xd_mr is None:
+            return xd_lm, xd_mr
+        origin_type = xd_mr.left_tzxl.type
+        origin_tzxl = xd_mr.left_tzxl
+        old_tzxl = xd_mr.left_tzxl
+        start_idx = xd_mr.left_tzxl.idx
+        end_idx = xd_mr.right_tzxl.idx
 
+        for i in range(start_idx + 1, end_idx):
+            new_tzxl = tzxl_list[i]
+            if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
+                                                 or (new_tzxl.is_bottom() and new_tzxl.low_price < old_tzxl.low_price)):
+                new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
+                new_xd_mr = XianDuan.from_tzxl(new_tzxl, xd_mr.right_tzxl, bi_list)
+                if new_xd_lm.is_finished and new_xd_mr.is_finished:
+                    xd_lm = new_xd_lm
+                    xd_mr = new_xd_mr
+                    old_tzxl = new_tzxl
+
+
+
+        if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
+            print("#" * 50, "微调后")
+            print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+            print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+        return xd_lm, xd_mr
 
 
     def _advance_both():
@@ -258,7 +282,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
             xd_mr = None
 
     def find_first_xd_in_finish_deque():
-        """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找笔"""
+        """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找线段"""
         nonlocal xd_lm, xd_mr
         while len(xianduan_finish_deque) > 0:
             last_xd_finish = xianduan_finish_deque.pop()
@@ -275,7 +299,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                 continue
 
         if log_switch:
-            print("#" * 50, "没找到，退出")
+            print("#" * 50, "find_first_xd_in_finish_deque没找到，退出")
 
         return False
 
@@ -314,11 +338,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                 print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                 print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
 
+            xd_lm, xd_mr = _adjust_xian_duan(xd_lm, xd_mr)
 
-            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                print("#" * 50, "在加入前微调")
-                print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-                print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
             xianduan_finish_deque.append(xd_lm)
             _advance_both()
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
@@ -348,7 +369,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
             x_tzxl, y_tzxl = tzxl_deque.popleft()
             xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                print("%" * 50, "lm未完成,mr未完成")
+                print("%" * 50, f"{is_xd_lm_finished=}  mr未完成  ")
                 print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
             if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
                 (xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_lm.end_price) or (
@@ -370,14 +391,13 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
             if (xd_xy.xianduan_type == xd_mr.xianduan_type):
                 new_xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl, bi_list)
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                    print(f"new xd_mr:{new_xd_mr.start_time}~{new_xd_mr.end_time}")
-                    print(f"{new_xd_mr.has_enough_bi()=}  {new_xd_mr.is_fanbao()=}")
+                    print("@" * 50, "mr未完成,xy与mr同趋势")
+                    # print(f"{new_xd_mr.has_enough_bi()=}  {new_xd_mr.is_fanbao()=}")
                 if ((xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
                     xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)) or new_xd_mr.is_finished:
                     xd_mr = new_xd_mr
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                        print("@" * 50, "mr未完成,xy与mr同趋势")
-                        print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                        print(f"new xd_mr:{xd_lm.start_time}~{xd_lm.end_time}")
 
             continue
         else:
@@ -387,12 +407,19 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
         # print("##########")
         # print(xd_mr)
 
-    if xd_lm.is_finished:
+    if xd_lm.is_finished and xd_mr is not None and xd_mr.is_finished:
+        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+            print("#" * 50, "加入前")
+            print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+            print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+        xd_lm, xd_mr = _adjust_xian_duan(xd_lm, xd_mr)
         xianduan_finish_deque.append(xd_lm)
-        if xd_mr is not None and xd_mr.is_finished:
-            xianduan_finish_deque.append(xd_mr)
-            xd_lm = xd_mr
-            xd_mr = None
+        xianduan_finish_deque.append(xd_mr)
+        xd_lm = None
+        xd_mr = None
+    elif xd_lm.is_finished and xd_mr is not None and not xd_mr.is_finished:
+        xianduan_finish_deque.append(xd_lm)
+        xd_lm = xd_mr
 
     xianduan_list = list(xianduan_finish_deque)
 
@@ -414,4 +441,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
     # 分配序号
     for i in range(len(xianduan_list)):
         xianduan_list[i].idx = i
+
+    # 微调线段
+    for i in range(len(xianduan_list) - 1):
+        temp_xd_lm = xianduan_list[i]
+        temp_xd_mr = xianduan_list[i + 1]
+        xianduan_list[i], xianduan_list[i + 1] = _adjust_xian_duan(temp_xd_lm, temp_xd_mr)
     return xianduan_list
