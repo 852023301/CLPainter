@@ -1,12 +1,13 @@
-from dataclasses import dataclass, field
-from typing import List, Optional, Union
-from enum import Enum
 from collections import deque
+from dataclasses import dataclass, field
+from enum import Enum
 from functools import cached_property
+from typing import List, Optional, Union
+
 import numpy as np
 
-from .tezhengxulie import TeZhengXuLie
 from .bi import Bi, FakeBi
+from .tezhengxulie import TeZhengXuLie
 
 
 class XianDuanDirectionType(str, Enum):

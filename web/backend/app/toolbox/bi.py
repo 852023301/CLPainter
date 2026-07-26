@@ -1,7 +1,9 @@
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Tuple, Optional, Union
-from collections import deque
+from functools import cached_property
+from typing import List, Tuple, Union
+
 import numpy as np
 
 from .fenxing import FenXing
@@ -116,6 +118,7 @@ class FakeBi:
 
         return bi
 
+    @cached_property
     def is_finished(self) -> bool:
         """
         判断笔是否可以完成
@@ -258,6 +261,7 @@ class Bi:
 
         return bi
 
+    @cached_property
     def is_finished(self) -> bool:
         """
         判断笔是否可以完成
@@ -516,7 +520,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                                             prefix_gap)
                     return False
             else:
-                if bi_mr.is_finished():
+                if bi_mr.is_finished:
                     if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_lm.start_price) or (
                             bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_lm.start_price):
                         bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines, prefix_merged,
@@ -571,8 +575,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     while len(fenxing_deque) > 0:
         if bi_mr is None:
             break
-        is_bi_lm_finish = bi_lm.is_finished()
-        is_bi_mr_finish = bi_mr.is_finished()
+        is_bi_lm_finish = bi_lm.is_finished
+        is_bi_mr_finish = bi_mr.is_finished
         # if log_switch and bi_mr.left_fx.trade_datetime == '2025-10-27' and bi_mr.right_fx.trade_datetime == '2025-11-03':
         #     print(bi_mr)
         #     bi_mr.print_klines_info(all_klines)
@@ -657,9 +661,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
 
     # 最后一笔lm
-    if bi_lm.is_finished():
+    if bi_lm.is_finished:
         bi_finish_deque.append(bi_lm)
-        if bi_mr is not None and bi_mr.is_finished():
+        if bi_mr is not None and bi_mr.is_finished:
             bi_finish_deque.append(bi_mr)
             bi_lm = bi_mr
             bi_mr = None
@@ -695,7 +699,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         bi_list[i].idx = i
 
     # 最后一笔mr
-    if not bi_lm.is_finished():
+    if not bi_lm.is_finished:
         return bi_list
 
     # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔，适用于图中最后一根K线没有形成分型结构导致疑似lm后缺失显示两笔（一完成一未完成）的情况 ===
@@ -716,7 +720,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
                 break
 
-        if new_bi_mr is not None and new_bi_mr.is_finished() and new_bi_mr.bi_type != bi_lm.bi_type:
+        if new_bi_mr is not None and new_bi_mr.is_finished and new_bi_mr.bi_type != bi_lm.bi_type:
             bi_list.append(new_bi_mr)
 
         if new_bi_mr is None:
@@ -745,8 +749,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             bi_type=fake_type, all_klines=all_klines,
             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
 
-        if fake_bi_mr.is_finished():
-            if new_bi_mr.is_finished():
+        if fake_bi_mr.is_finished:
+            if new_bi_mr.is_finished:
                 bi_list.append(fake_bi_mr)
         else:
             if fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(fake_bi_mr.end_price):
