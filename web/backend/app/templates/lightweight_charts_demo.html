@@ -126,6 +126,12 @@
 <div class="container">
     <h1>📊 Lightweight Charts 简单示例</h1>
 
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:16px;">
+        <label style="font-size:14px;cursor:pointer;user-select:none;">
+            <input type="checkbox" id="showGapsToggle" checked style="margin-right:4px;cursor:pointer;">显示缺口
+        </label>
+    </div>
+
     <div id="chart">
         <div class="ohlc-tooltip" id="ohlcTooltip"></div>
     </div>
@@ -481,6 +487,12 @@
 
         displayGapsWithMarkers(gapsData);
 
+        // 缺口显示开关
+        const showGapsToggle = document.getElementById('showGapsToggle');
+        showGapsToggle.addEventListener('change', () => {
+            updateHighLowMarkers();
+        });
+
         // ========== 可见范围最高/最低价标注 ==========
 
         function updateHighLowMarkers() {
@@ -516,8 +528,9 @@
                 },
             ];
 
-            // 合并缺口 markers 和高低价 markers，按时间排序
-            const allMarkers = [...gapMarkers, ...hlMarkers].sort((a, b) => {
+            // 合并缺口 markers 和高低价 markers（受开关控制），按时间排序
+            const activeGapMarkers = showGapsToggle && showGapsToggle.checked ? gapMarkers : [];
+            const allMarkers = [...activeGapMarkers, ...hlMarkers].sort((a, b) => {
                 if (a.time < b.time) return -1;
                 if (a.time > b.time) return 1;
                 return 0;
