@@ -130,6 +130,14 @@
         <label style="font-size:14px;cursor:pointer;user-select:none;">
             <input type="checkbox" id="showGapsToggle" checked style="margin-right:4px;cursor:pointer;">显示缺口
         </label>
+        <div id="maTrigger" style="font-size:14px;user-select:none;position:relative;cursor:pointer;padding:2px 6px;">均线 ▾
+            <div id="maDropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:140px;">
+                <label style="display:block;font-size:13px;padding:2px 0;border-bottom:1px solid #eee;margin-bottom:4px;cursor:pointer;">
+                    <input type="checkbox" id="maSelectAll" checked style="margin-right:6px;cursor:pointer;">全选
+                </label>
+                <div id="maItems"></div>
+            </div>
+        </div>
     </div>
 
     <div id="chart">
@@ -141,12 +149,20 @@
 </div>
 
 <script>
+    // localStorage 持久化辅助(必须放在所有使用者之前, 否则触发 TDZ ReferenceError)
+    const lsGetBool = (k, def) => {
+        const v = localStorage.getItem(k);
+        return v === null ? def : v === '1';
+    };
+    const lsSetBool = (k, v) => localStorage.setItem(k, v ? '1' : '0');
+
     // 从后端传入的数据
     const candleData = {{ candle_data | safe }};
     const biData = {{ bi_data | safe }};
     const xdData = {{ xd_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
+        const maData = {{ ma_data | safe }};  // 后端计算的 MA 列表: [{period, color, values:[{time,value}]}]
     const currentPrecision = {{ precision }};  // 当前精度
 
     console.log('收到的K线数据:', candleData.length);
@@ -245,6 +261,88 @@
 
         xdData.sort((a, b) => new Date(a.time) - new Date(b.time));
         xdSeries.setData(xdData);
+
+        // ========== 均线(后端计算, 前端可单条/全部显隐) ==========
+        const maSeriesMap = {};  // period -> series 对象
+        maData.forEach(item => {
+            const series = chart.addLineSeries({
+                color: item.color,
+                lineWidth: 1,
+                lastValueVisible: true,
+                priceLineVisible: false,
+                lineStyle: 0,
+                crosshairMarkerVisible: true,
+            });
+            series.setData(item.values);
+            maSeriesMap[item.period] = series;
+        });
+
+        // 构建下拉项 + 显隐联动
+        (function setupMAControls() {
+            const itemsContainer = document.getElementById('maItems');
+            const selectAll = document.getElementById('maSelectAll');
+            const dropdown = document.getElementById('maDropdown');
+            const trigger = document.getElementById('maTrigger');
+
+            // 点击"均线 ▾"切换下拉显隐; 点击下拉项不切换(避免误关)
+            trigger.addEventListener('click', (e) => {
+                // 只在点击到 trigger 自身或"均线 ▾"文本时切换, 点击内部 checkbox 不切换
+                if (e.target === trigger || e.target.nodeType === 3) {
+                    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+                }
+            });
+            // 点击外部关闭下拉
+            document.addEventListener('click', (e) => {
+                if (!trigger.contains(e.target)) dropdown.style.display = 'none';
+            });
+
+            // 每条 MA 一个 checkbox
+            maData.forEach(item => {
+                const lbl = document.createElement('label');
+                lbl.style.cssText = 'display:block;font-size:13px;padding:2px 0;cursor:pointer;';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = true;
+                cb.dataset.period = String(item.period);
+                cb.style.cssText = 'margin-right:6px;cursor:pointer;';
+                const dot = document.createElement('span');
+                dot.style.cssText = "display:inline-block;width:10px;height:10px;border-radius:50%;background:" + item.color + ";margin-right:6px;vertical-align:middle;";
+                lbl.appendChild(cb);
+                lbl.appendChild(dot);
+                lbl.appendChild(document.createTextNode('MA' + item.period));
+                itemsContainer.appendChild(lbl);
+
+                cb.addEventListener('change', () => {
+                    lsSetBool('ma:' + item.period, cb.checked);
+                    maSeriesMap[item.period].applyOptions({ visible: cb.checked });
+                    syncSelectAll();
+                });
+            });
+
+            // 全选/全不选
+            selectAll.addEventListener('change', () => {
+                const boxes = itemsContainer.querySelectorAll('input[type=checkbox]');
+                boxes.forEach(b => {
+                    b.checked = selectAll.checked;
+                    lsSetBool('ma:' + b.dataset.period, selectAll.checked);
+                    maSeriesMap[b.dataset.period].applyOptions({ visible: selectAll.checked });
+                });
+            });
+
+// 从 localStorage 恢复每条 MA 的显隐状态
+            itemsContainer.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                const checked = lsGetBool('ma:' + cb.dataset.period, true);
+                cb.checked = checked;
+                maSeriesMap[cb.dataset.period].applyOptions({ visible: checked });
+            });
+
+            function syncSelectAll() {
+                const boxes = itemsContainer.querySelectorAll('input[type=checkbox]');
+                const all = Array.from(boxes);
+                selectAll.checked = all.length > 0 && all.every(b => b.checked);
+            }
+            syncSelectAll();
+        })();
 
         // 3.创建成交量图表
         const volumeChart = LightweightCharts.createChart(volumeContainer, {
@@ -489,9 +587,14 @@
 
         // 缺口显示开关
         const showGapsToggle = document.getElementById('showGapsToggle');
+
+        // 应用缺口开关初始状态(从 localStorage 读回)
+        showGapsToggle.checked = lsGetBool('gaps:visible', true);
         showGapsToggle.addEventListener('change', () => {
+            lsSetBool('gaps:visible', showGapsToggle.checked);
             updateHighLowMarkers();
         });
+
 
         // ========== 可见范围最高/最低价标注 ==========
 

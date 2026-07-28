@@ -8,6 +8,25 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list
+from ....toolbox.calculate import calculate_ma_list
+import pandas as pd
+import random
+
+# 默认显示的 MA 窗口期(均线种类由这个全局变量完全控制)
+DEFAULT_MA_PERIODS = [5, 10, 20, 30]
+
+
+def _generate_ma_colors(periods, alpha=0.9):
+    """
+    根据 periods 列表确定性地生成配色:
+      - 同一 periods 每次运行/调用都得到完全相同的颜色(seed 基于 periods 元组的哈希)
+      - periods 内容/长度变化时, 整组颜色会重新生成
+    """
+    rng = random.Random(tuple(periods).__hash__())
+    return [
+        f'rgba({rng.randint(60, 230)}, {rng.randint(60, 230)}, {rng.randint(60, 230)}, {alpha})'
+        for _ in periods
+    ]
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -337,6 +356,10 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
     """
     # 限制精度范围
     precision = max(0, min(6, precision))
+
+    periods = list(DEFAULT_MA_PERIODS)
+    ma_colors = _generate_ma_colors(periods)
+
     try:
         # 1. 准备 K 线数据
         sample_dates = trade_date_list
@@ -397,6 +420,20 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
         logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(bi_data_list)}笔")
 
         # 调试：检查模板名称类型
+        # 计算多条 MA 线(后端 pandas, 支撑万根 K 线)
+        close_series = pd.Series(
+            [kline.close for kline in sample_data],
+            index=[kline.trade_datetime for kline in sample_data],
+        )
+        ma_list_raw = calculate_ma_list(close_series, periods)
+        ma_list = []
+        for i, item in enumerate(ma_list_raw):
+            color = ma_colors[i % len(ma_colors)]
+            ma_list.append({
+                "period": item["period"],
+                "color": color,
+                "values": item["values"],
+            })
         template_name = "lightweight_charts_demo.html"
 
         # 尝试直接渲染模板
@@ -410,7 +447,8 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                candle_count=len(candle_data),
                 gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
                 volume_data=json.dumps(volume_data, ensure_ascii=False),
-               precision=precision,  # 传递精度参数到模板
+               precision=precision,
+               ma_data=json.dumps(ma_list, ensure_ascii=False),  # 传递精度参数到模板
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:
