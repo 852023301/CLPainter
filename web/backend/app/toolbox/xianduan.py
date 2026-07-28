@@ -17,7 +17,7 @@ class XianDuanDirectionType(str, Enum):
 
 
 @dataclass
-class XianDuan:
+class XianDuanBase:
     """线段数据结构"""
     start_idx: int = field(init=False)  # 线段起始位置索引（特征序列所在 K 线索引）
     end_idx: int = field(init=False)  # 线段结束位置索引（特征序列所在 K 线索引）
@@ -29,15 +29,54 @@ class XianDuan:
     end_price: float = field(init=False)  # 结束价格（顶/底特征序列的极值）
     xianduan_type: XianDuanDirectionType = field(init=False)  # 线段的方向
 
+    def is_up(self) -> bool:
+        """判断当前线段是否为上升线段。"""
+        return self.xianduan_type == XianDuanDirectionType.UP
+
+    def is_down(self) -> bool:
+        """判断当前线段是否为下降线段。"""
+        return self.xianduan_type == XianDuanDirectionType.DOWN
+
+    @property
+    def bi_count(self) -> int:
+        """返回线段覆盖的笔数量。"""
+        return self.end_bi_idx - self.start_bi_idx + 1
+
+    def to_dict(self) -> dict:
+        """转换成前端画线更容易消费的字典结构。"""
+        return {
+            "start_idx": self.start_idx,
+            "end_idx": self.end_idx,
+            "direction": self.xianduan_type.value,
+            "start_price": self.start_price,
+            "end_price": self.end_price,
+        }
+
+
+@dataclass
+class FakeXianDuanLast(XianDuanBase):
+    """最末尾的假线"""
+
+    # xianduan索引
+    idx: int = None
+
+    def __post_init__(self):
+        ...
+
+
+
+
+@dataclass
+class XianDuan(XianDuanBase):
     # 左右分型
     left_tzxl: TeZhengXuLie
     right_tzxl: TeZhengXuLie
 
-    # 完整的笔列表引用（用于第二种特征序列判断等场景）
-    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list, repr=False)
-
     # xianduan索引
     idx: int = None
+
+    # 完整的笔列表引用（用于第二种特征序列判断等场景）
+    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
         """根据左右两个特征序列分型初始化线段端点、方向和价格。"""
@@ -62,29 +101,6 @@ class XianDuan:
 
         if self.start_time >= self.end_time:
             raise ValueError(f"线段起始时间不能大于结束时间:{self.start_time=}>={self.end_time=}")
-
-    def is_up(self) -> bool:
-        """判断当前线段是否为上升线段。"""
-        return self.xianduan_type == XianDuanDirectionType.UP
-
-    def is_down(self) -> bool:
-        """判断当前线段是否为下降线段。"""
-        return self.xianduan_type == XianDuanDirectionType.DOWN
-
-    @property
-    def bi_count(self) -> int:
-        """返回线段覆盖的笔数量。"""
-        return self.end_bi_idx - self.start_bi_idx + 1
-
-    def to_dict(self) -> dict:
-        """转换成前端画线更容易消费的字典结构。"""
-        return {
-            "start_idx": self.start_idx,
-            "end_idx": self.end_idx,
-            "direction": self.xianduan_type.value,
-            "start_price": self.start_price,
-            "end_price": self.end_price,
-        }
 
     @classmethod
     def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie,
@@ -262,14 +278,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
                     xd_mr = new_xd_mr
                     old_tzxl = new_tzxl
 
-
-
         if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
             print("#" * 50, "微调后")
             print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
             print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
         return xd_lm, xd_mr
-
 
     def _advance_both():
         """推进 lm 和 mr：lm=mr，从 tzxl_deque 取下一对创建新 mr"""
