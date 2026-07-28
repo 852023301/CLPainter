@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 import pandas as pd
 
 
@@ -57,7 +57,7 @@ def calculate_ma(close: pd.Series, day_count: int) -> pd.Series:
 def calculate_ma_list(
     close: pd.Series,
     periods: List[int],
-    min_periods: int = 1,
+    min_periods: Optional[int] = None,
 ) -> List[Dict[str, Union[str, int, List[Dict[str, Union[str, float]]]]]]:
     """
     一次性计算多条简单移动平均线(MA), 返回前端可直接渲染的结构.
@@ -65,8 +65,8 @@ def calculate_ma_list(
     Args:
         close: 收盘价序列(已按时间升序)
         periods: MA 窗口期列表, 例如 [5, 10, 20, 30]
-        min_periods: 窗口内至少需要多少个非 NaN 点才输出值, 默认 1
-                     (pandas rolling 默认要求满窗才输出, 这里透传该参数)
+        min_periods: 窗口内至少需要多少个非 NaN 点才输出值;
+                     None 时使用 pandas 默认(等于 window, 即满窗才输出)
 
     Returns:
         [{"period": 5, "values": [{"time": "2024-01-07", "value": 10.32}, ...]}, ...]
@@ -84,3 +84,26 @@ def calculate_ma_list(
         ]
         result.append({"period": period, "values": values})
     return result
+
+
+
+def calculate_ma_colors(periods: List[int], alpha: float = 0.9) -> List[str]:
+    """
+    根据 periods 列表确定性地生成 MA 配色:
+      - 同一 periods 每次运行/调用都得到完全相同的颜色(seed 基于 periods 元组的哈希)
+      - periods 内容/长度变化时, 整组颜色会重新生成
+
+    Args:
+        periods: MA 窗口期列表, 例如 [5, 10, 20, 30]
+        alpha: 颜色透明度, 默认 0.9
+
+    Returns:
+        与 periods 等长的 rgba 颜色字符串列表, RGB 分量限定在 60-230 区间
+        (避免过暗/过亮, 保证在 K 线黑白背景上都读)
+    """
+    import random
+    rng = random.Random(tuple(periods).__hash__())
+    return [
+        f'rgba({rng.randint(60, 230)}, {rng.randint(60, 230)}, {rng.randint(60, 230)}, {alpha})'
+        for _ in periods
+    ]

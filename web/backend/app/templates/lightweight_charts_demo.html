@@ -284,9 +284,8 @@
             const dropdown = document.getElementById('maDropdown');
             const trigger = document.getElementById('maTrigger');
 
-            // 点击"均线 ▾"切换下拉显隐; 点击下拉项不切换(避免误关)
+            // 点击"均线 ▾"切换下拉显隐; 点击下拉内部项不切换(避免误关)
             trigger.addEventListener('click', (e) => {
-                // 只在点击到 trigger 自身或"均线 ▾"文本时切换, 点击内部 checkbox 不切换
                 if (e.target === trigger || e.target.nodeType === 3) {
                     dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
                 }
@@ -296,13 +295,21 @@
                 if (!trigger.contains(e.target)) dropdown.style.display = 'none';
             });
 
-            // 每条 MA 一个 checkbox
+            // 取所有 MA checkbox(用于全选联动 / 全选反推)
+            const boxes = () => itemsContainer.querySelectorAll('input[type=checkbox]');
+            const syncSelectAll = () => {
+                const list = Array.from(boxes());
+                selectAll.checked = list.length > 0 && list.every(b => b.checked);
+            };
+
+            // 每条 MA 创建 checkbox, 初始值从 localStorage 读回
             maData.forEach(item => {
+                const visible = lsGetBool('ma:' + item.period, true);
                 const lbl = document.createElement('label');
                 lbl.style.cssText = 'display:block;font-size:13px;padding:2px 0;cursor:pointer;';
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
-                cb.checked = true;
+                cb.checked = visible;
                 cb.dataset.period = String(item.period);
                 cb.style.cssText = 'margin-right:6px;cursor:pointer;';
                 const dot = document.createElement('span');
@@ -311,6 +318,7 @@
                 lbl.appendChild(dot);
                 lbl.appendChild(document.createTextNode('MA' + item.period));
                 itemsContainer.appendChild(lbl);
+                maSeriesMap[item.period].applyOptions({ visible });
 
                 cb.addEventListener('change', () => {
                     lsSetBool('ma:' + item.period, cb.checked);
@@ -321,26 +329,13 @@
 
             // 全选/全不选
             selectAll.addEventListener('change', () => {
-                const boxes = itemsContainer.querySelectorAll('input[type=checkbox]');
-                boxes.forEach(b => {
+                boxes().forEach(b => {
                     b.checked = selectAll.checked;
                     lsSetBool('ma:' + b.dataset.period, selectAll.checked);
                     maSeriesMap[b.dataset.period].applyOptions({ visible: selectAll.checked });
                 });
             });
 
-// 从 localStorage 恢复每条 MA 的显隐状态
-            itemsContainer.querySelectorAll('input[type=checkbox]').forEach(cb => {
-                const checked = lsGetBool('ma:' + cb.dataset.period, true);
-                cb.checked = checked;
-                maSeriesMap[cb.dataset.period].applyOptions({ visible: checked });
-            });
-
-            function syncSelectAll() {
-                const boxes = itemsContainer.querySelectorAll('input[type=checkbox]');
-                const all = Array.from(boxes);
-                selectAll.checked = all.length > 0 && all.every(b => b.checked);
-            }
             syncSelectAll();
         })();
 

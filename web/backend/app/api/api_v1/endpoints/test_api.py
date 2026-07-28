@@ -8,25 +8,13 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list
-from ....toolbox.calculate import calculate_ma_list
+from ....toolbox.calculate import calculate_ma_colors, calculate_ma_list
+
 import pandas as pd
-import random
 
 # 默认显示的 MA 窗口期(均线种类由这个全局变量完全控制)
-DEFAULT_MA_PERIODS = [5, 10, 20, 30]
+DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
 
-
-def _generate_ma_colors(periods, alpha=0.9):
-    """
-    根据 periods 列表确定性地生成配色:
-      - 同一 periods 每次运行/调用都得到完全相同的颜色(seed 基于 periods 元组的哈希)
-      - periods 内容/长度变化时, 整组颜色会重新生成
-    """
-    rng = random.Random(tuple(periods).__hash__())
-    return [
-        f'rgba({rng.randint(60, 230)}, {rng.randint(60, 230)}, {rng.randint(60, 230)}, {alpha})'
-        for _ in periods
-    ]
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -358,7 +346,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
     precision = max(0, min(6, precision))
 
     periods = list(DEFAULT_MA_PERIODS)
-    ma_colors = _generate_ma_colors(periods)
+    ma_colors = calculate_ma_colors(periods)
 
     try:
         # 1. 准备 K 线数据
@@ -377,22 +365,22 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             }
             candle_data.append(candle)
 
-       # 2. 准备笔（Bi）数据 - 转换为折线图格式
-       # 笔的数据点通常是顶底分型的坐标
+        # 2. 准备笔（Bi）数据 - 转换为折线图格式
+        # 笔的数据点通常是顶底分型的坐标
         bi_line_data = []
         for bi in bi_data_list:
-           # 如果 bi 是 Bi 对象，使用 to_dict() 方法转换
-           bi_dict = bi.to_dict()
-           # 起点
-           bi_line_data.append({
-               "time": sample_dates[bi_dict['start_idx']],
-               "value": bi_dict['start_price']
-           })
-           # 终点
-           bi_line_data.append({
-               "time": sample_dates[bi_dict['end_idx']],
-               "value": bi_dict['end_price']
-           })
+            # 如果 bi 是 Bi 对象，使用 to_dict() 方法转换
+            bi_dict = bi.to_dict()
+            # 起点
+            bi_line_data.append({
+                "time": sample_dates[bi_dict['start_idx']],
+                "value": bi_dict['start_price']
+            })
+            # 终点
+            bi_line_data.append({
+                "time": sample_dates[bi_dict['end_idx']],
+                "value": bi_dict['end_price']
+            })
 
         # 2.5 准备线段（XianDuan）数据 - 转换为折线图格式
         xd_line_data = []
@@ -426,14 +414,10 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             index=[kline.trade_datetime for kline in sample_data],
         )
         ma_list_raw = calculate_ma_list(close_series, periods)
-        ma_list = []
-        for i, item in enumerate(ma_list_raw):
-            color = ma_colors[i % len(ma_colors)]
-            ma_list.append({
-                "period": item["period"],
-                "color": color,
-                "values": item["values"],
-            })
+        ma_list = [
+            {"period": item["period"], "color": ma_colors[i], "values": item["values"]}
+            for i, item in enumerate(ma_list_raw)
+        ]
         template_name = "lightweight_charts_demo.html"
 
         # 尝试直接渲染模板
@@ -441,14 +425,14 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             template = templates.env.get_template(template_name)
             html_content = template.render(
                 request=request,
-               candle_data=json.dumps(candle_data, ensure_ascii=False),
-               bi_data=json.dumps(bi_line_data, ensure_ascii=False),
-               xd_data=json.dumps(xd_line_data, ensure_ascii=False),
-               candle_count=len(candle_data),
+                candle_data=json.dumps(candle_data, ensure_ascii=False),
+                bi_data=json.dumps(bi_line_data, ensure_ascii=False),
+                xd_data=json.dumps(xd_line_data, ensure_ascii=False),
+                candle_count=len(candle_data),
                 gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
                 volume_data=json.dumps(volume_data, ensure_ascii=False),
-               precision=precision,
-               ma_data=json.dumps(ma_list, ensure_ascii=False),  # 传递精度参数到模板
+                precision=precision,
+                ma_data=json.dumps(ma_list, ensure_ascii=False),  # 传递精度参数到模板
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:
