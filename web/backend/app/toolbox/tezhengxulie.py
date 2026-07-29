@@ -4,7 +4,7 @@ from enum import Enum
 from collections import deque
 import numpy as np
 
-from .bi import Bi, FakeBi
+from .bi import BiBase
 
 
 class TeZhengXuLieType(int, Enum):
@@ -24,22 +24,22 @@ class TeZhengXuLie:
     """笔的特征序列"""
     type: TeZhengXuLieType = field(default=TeZhengXuLieType.DING)
     category: TeZhengXuLieCategory = field(default_factory=TeZhengXuLieCategory.First)
-    bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list)  # 内部三笔列表
+    bi_list: List[Union[BiBase]] = field(default_factory=list)  # 内部三笔列表
     bi_idx_list: List[int] = field(default_factory=list)  # 特征序列组件三笔在原始笔列表中的索引
 
     # tzxl索引
     idx: int = None
 
     @property
-    def left_bi(self) -> Union[Bi, FakeBi]:
+    def left_bi(self) -> Union[BiBase]:
         return self.bi_list[0]
 
     @property
-    def mid_bi(self) -> Union[Bi, FakeBi]:
+    def mid_bi(self) -> Union[BiBase]:
         return self.bi_list[1]
 
     @property
-    def right_bi(self) -> Union[Bi, FakeBi]:
+    def right_bi(self) -> Union[BiBase]:
         return self.bi_list[2]
 
     @property
@@ -91,7 +91,7 @@ class TeZhengXuLie:
         return min(self.mid_bi.start_price, self.mid_bi.end_price)
 
 
-def generate_te_zheng_xu_lie(bi_list: List[Union[Bi, FakeBi]]) -> List[TeZhengXuLie]:
+def generate_te_zheng_xu_lie(bi_list: List[Union[BiBase]]) -> List[TeZhengXuLie]:
     """生成特征序列"""
     te_zheng_xu_lie_list: List[TeZhengXuLie] = []
     bi_idx_length = len(bi_list)

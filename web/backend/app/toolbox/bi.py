@@ -42,7 +42,7 @@ class BiBase:
 
 
 @dataclass
-class FakeBi(BiBase):
+class FakeBiLast(BiBase):
     """Fake笔数据结构"""
     all_klines: List[MergedKLine] = None
 
@@ -117,7 +117,7 @@ class FakeBi(BiBase):
             left_fx.mid_idx, right_fx_mid_idx,
             all_klines, prefix_merged, prefix_gap)
 
-        bi = FakeBi(
+        bi = FakeBiLast(
             left_fx=left_fx,
             end_idx=right_fx_mid_idx,
             bi_type=bi_type,
@@ -432,7 +432,7 @@ class Bi(BiBase):
             print(all_klines[i])
 
 
-def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBi]]:
+def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBiLast]]:
     """
     根据分型列表划分缠论笔
 
@@ -729,7 +729,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         if new_bi_mr is None:
             new_bi_mr = bi_lm
 
-        # === 漏网之鱼2号：在1号笔之后创建反向 FakeBi ===
+        # === 漏网之鱼2号：在1号笔之后创建反向 FakeBiLast ===
         # 只需计算反方向极值（UP笔→找最低，DOWN笔→找最高），避免冗余双向扫描
         is_up = new_bi_mr.bi_type == BiDirectionType.UP
         scan_start = new_bi_mr.right_fx.right_idx
@@ -746,7 +746,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             extreme_price = float(high_prices[extreme_idx])
             fake_type = BiDirectionType.UP
 
-        fake_bi_mr = FakeBi.from_fenxing(
+        fake_bi_mr = FakeBiLast.from_fenxing(
             left_fx=new_bi_mr.right_fx, right_fx_mid_idx=extreme_idx,
             start_price=new_bi_mr.end_price, end_price=extreme_price,
             bi_type=fake_type, all_klines=all_klines,
@@ -757,7 +757,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 bi_list.append(fake_bi_mr)
         else:
             if fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(fake_bi_mr.end_price):
-                fake_bi_mr = FakeBi.from_fenxing(
+                fake_bi_mr = FakeBiLast.from_fenxing(
                     left_fx=bi_lm.left_fx, right_fx_mid_idx=fake_bi_mr.end_idx,
                     start_price=bi_lm.start_price, end_price=fake_bi_mr.end_price,
                     bi_type=bi_lm.bi_type, all_klines=all_klines,
