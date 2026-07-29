@@ -58,7 +58,7 @@ class FakeXianDuanLast(XianDuanBase):
     """最末尾的假线段"""
 
     # xianduan索引
-    idx: int = None
+    idx: int = field(init=False)
 
 
 @dataclass
@@ -67,18 +67,12 @@ class FakeXianDuanFirst(XianDuanBase):
 
     right_tzxl: TeZhengXuLie = field(init=False)
 
-    # xianduan索引
-    idx: int = None
-
 
 @dataclass
 class XianDuan(XianDuanBase):
     # 左右分型
     left_tzxl: TeZhengXuLie
     right_tzxl: TeZhengXuLie
-
-    # xianduan索引
-    idx: int = None
 
     # 完整的笔列表引用（用于第二种特征序列判断等场景）
     bi_list: List[Union[Bi, FakeBi]] = field(default_factory=list, repr=False)

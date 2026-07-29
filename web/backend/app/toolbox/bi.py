@@ -17,20 +17,16 @@ class BiDirectionType(str, Enum):
 
 
 @dataclass
-class FakeBi:
-    """Fake笔数据结构"""
+class BiBase:
     start_idx: int = field(init=False)  # 笔起始位置索引（分型所在 K 线索引）
-
+    end_idx: int = None  # 笔结束位置索引（分型所在 K 线索引）
     start_time: str = field(init=False)  # 起始时间
     end_time: str = field(init=False)  # 结束时间
-    start_price: float  # 起始价格（顶/底分型的极值）
-    end_price: float  # 结束价格（顶/底分型的极值）
-    bi_type: BiDirectionType  # 笔的方向
 
-    # 左右分型
-    left_fx: FenXing
-    end_idx: int  # 笔结束位置索引（分型所在 K 线索引）
-    all_klines: List[MergedKLine] = field(repr=False)
+    start_price: float = 0  # 起始价格（顶/底分型的极值）
+    end_price: float = 0  # 结束价格（顶/底分型的极值）
+
+    bi_type: BiDirectionType = None  # 笔的方向
 
     real_origin_kline_count: int = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
     real_merged_kline_count: int = field(init=False)  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
@@ -38,8 +34,17 @@ class FakeBi:
     # 包含缺口数量
     has_gap_count: int = field(init=False)
 
-    # bi索引
-    idx: int = None
+    idx: int = field(init=False)
+
+    left_fx: FenXing = None
+
+    right_fx: FenXing = None
+
+
+@dataclass
+class FakeBi(BiBase):
+    """Fake笔数据结构"""
+    all_klines: List[MergedKLine] = None
 
     def __post_init__(self):
         # 确定起始和结束索引
@@ -169,28 +174,10 @@ class FakeBi:
 
 
 @dataclass
-class Bi:
+class Bi(BiBase):
     """笔数据结构"""
-    start_idx: int = field(init=False)  # 笔起始位置索引（分型所在 K 线索引）
-    end_idx: int = field(init=False)  # 笔结束位置索引（分型所在 K 线索引）
-    start_time: str = field(init=False)  # 起始时间
-    end_time: str = field(init=False)  # 结束时间
-    start_price: float = field(init=False)  # 起始价格（顶/底分型的极值）
-    end_price: float = field(init=False)  # 结束价格（顶/底分型的极值）
-    bi_type: BiDirectionType = field(init=False)  # 笔的方向
 
     # 左右分型
-    left_fx: FenXing
-    right_fx: FenXing
-
-    real_origin_kline_count: int = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
-    real_merged_kline_count: int = field(init=False)  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
-
-    # 包含缺口数量
-    has_gap_count: int = field(init=False)
-
-    # bi索引
-    idx: int = -1
 
     def __post_init__(self):
         self.bi_type = BiDirectionType.UP if self.right_fx.is_top() else BiDirectionType.DOWN
