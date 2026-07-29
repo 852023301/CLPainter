@@ -32,22 +32,22 @@ class MergedKLine:
     _is_contained: int = field(default=0, repr=False)  # 是否被合并：1=合并，0=未合并
     merged_length: int = 1  # 连续合并的K线数量
     merged_trend: int = 1  # 合并趋势：1=向上，0=向下
-    merged_high: float = field(init=False)  # 合并后的最高价
-    merged_low: float = field(init=False)  # 合并后的最低价
+    merged_high: float = field(init=False, default=0.0)  # 合并后的最高价(__post_init__ 填充)  # 合并后的最高价
+    merged_low: float = field(init=False, default=0.0)  # 合并后的最低价(__post_init__ 填充)  # 合并后的最低价
 
     # 分型标记：1=顶分型，-1=底分型，0=无分型
     is_top_bottom: MergedKLineType = MergedKLineType.NORMAL
 
     # 合并后最高价
-    high_price: float = field(init=False)
+    high_price: float = field(init=False, default=0.0)  # 合并后最高价(__post_init__ 填充)
     # 合并后最低价
-    low_price: float = field(init=False)
+    low_price: float = field(init=False, default=0.0)  # 合并后最低价(__post_init__ 填充)
     # 合并后最高价索引
-    high_idx: int = field(init=False)
+    high_idx: int = field(init=False, default=0)  # 合并后最高价索引(generate_merge_klines 填充)
     # 合并后最低价索引
-    low_idx: int = field(init=False)
+    low_idx: int = field(init=False, default=0)  # 合并后最低价索引(generate_merge_klines 填充)
     # 自身的索引
-    idx: int = field(init=False)
+    idx: int = field(init=False, default=0)  # 自身索引(generate_merge_klines 填充)
 
     def __post_init__(self):
         # 初始化合并后的高低点为当前K线的高低点

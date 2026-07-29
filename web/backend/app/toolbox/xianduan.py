@@ -18,16 +18,20 @@ class XianDuanDirectionType(str, Enum):
 
 @dataclass
 class XianDuanBase:
-    """线段数据结构"""
-    start_idx: int = field(init=False)  # 线段起始位置索引（特征序列所在 K 线索引）
-    end_idx: int = field(init=False)  # 线段结束位置索引（特征序列所在 K 线索引）
-    start_bi_idx: int = field(init=False)  # 线段起始位置的笔索引（特征序列所在 笔索引）
-    end_bi_idx: int = field(init=False)  # 线段结束位置的笔索引（特征序列所在 笔索引）
-    start_time: str = field(init=False)  # 起始时间
-    end_time: str = field(init=False)  # 结束时间
-    start_price: float = field(init=False)  # 起始价格（顶/底特征序列的极值）
-    end_price: float = field(init=False)  # 结束价格（顶/底特征序列的极值）
-    xianduan_type: XianDuanDirectionType = field(init=False)  # 线段的方向
+    """线段数据结构基类
+
+    所有字段均为 init=False + 默认值: 由子类的 __post_init__ 或外部构造逻辑
+    (如 make_fake_last_xd) 事后填充
+    """
+    start_idx: int = field(init=False, default=0)  # 线段起始位置索引(特征序列所在 K 线索引)
+    end_idx: int = field(init=False, default=0)  # 线段结束位置索引(特征序列所在 K 线索引)
+    start_bi_idx: int = field(init=False, default=0)  # 线段起始位置的笔索引(特征序列所在笔索引)
+    end_bi_idx: int = field(init=False, default=0)  # 线段结束位置的笔索引(特征序列所在笔索引)
+    start_time: str = field(init=False, default='')  # 起始时间
+    end_time: str = field(init=False, default='')  # 结束时间
+    start_price: float = field(init=False, default=0.0)  # 起始价格(顶/底特征序列的极值)
+    end_price: float = field(init=False, default=0.0)  # 结束价格(顶/底特征序列的极值)
+    xianduan_type: Optional[XianDuanDirectionType] = field(init=False, default=None)  # 线段的方向
 
     def is_up(self) -> bool:
         """判断当前线段是否为上升线段。"""
@@ -57,15 +61,16 @@ class XianDuanBase:
 class FakeXianDuanLast(XianDuanBase):
     """最末尾的假线段"""
 
-    # xianduan索引
-    idx: int = field(init=False)
+    # xianduan索引(由 generate_xian_duan 事后填充)
+    idx: int = field(init=False, default=0)
 
 
 @dataclass
 class FakeXianDuanFirst(XianDuanBase):
     """最早的假线段"""
 
-    right_tzxl: TeZhengXuLie = field(init=False)
+    # 右侧特征序列(由 make_fake_first_xd 事后填充)
+    right_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
 
 
 @dataclass

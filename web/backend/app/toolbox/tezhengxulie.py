@@ -23,12 +23,12 @@ class TeZhengXuLieCategory(int, Enum):
 class TeZhengXuLie:
     """笔的特征序列"""
     type: TeZhengXuLieType = field(default=TeZhengXuLieType.DING)
-    category: TeZhengXuLieCategory = field(default_factory=TeZhengXuLieCategory.First)
+    category: TeZhengXuLieCategory = field(default=TeZhengXuLieCategory.First)  # 默认第一类
     bi_list: List[Union[BiBase]] = field(default_factory=list)  # 内部三笔列表
     bi_idx_list: List[int] = field(default_factory=list)  # 特征序列组件三笔在原始笔列表中的索引
 
-    # tzxl索引
-    idx: int = None
+    # tzxl索引(generate_te_zheng_xu_lie 事后填充)
+    idx: Optional[int] = None
 
     @property
     def left_bi(self) -> Union[BiBase]:
