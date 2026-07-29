@@ -2,7 +2,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import cached_property
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import numpy as np
 
@@ -18,27 +18,27 @@ class BiDirectionType(str, Enum):
 
 @dataclass
 class BiBase:
-    start_idx: int = field(init=False)  # 笔起始位置索引（分型所在 K 线索引）
-    end_idx: int = None  # 笔结束位置索引（分型所在 K 线索引）
-    start_time: str = field(init=False)  # 起始时间
-    end_time: str = field(init=False)  # 结束时间
+    """笔的基类: 字段分三类——
+    1) init 参数: 实例化时由调用方传入(或默认值)
+    2) init=False + 默认值: 由 __post_init__ 或外部逻辑事后赋值
+    3) Optional: 允许为 None 的可空字段
+    """
+    # === init 参数(可由调用方传入) ===
+    end_idx: int = 0  # 笔结束位置索引(分型所在 K 线索引); 默认 0, 子类/FakeBiLast 会显式传入
+    start_price: float = 0.0  # 起始价格(顶/底分型的极值)
+    end_price: float = 0.0  # 结束价格(顶/底分型的极值)
+    bi_type: Optional[BiDirectionType] = None  # 笔的方向; Bi 在 __post_init__ 推导, FakeBiLast 由构造传入
+    left_fx: Optional[FenXing] = None  # 左侧分型; 可空(部分子类构造时不一定有)
+    right_fx: Optional[FenXing] = None  # 右侧分型; 可空
 
-    start_price: float = 0  # 起始价格（顶/底分型的极值）
-    end_price: float = 0  # 结束价格（顶/底分型的极值）
-
-    bi_type: BiDirectionType = None  # 笔的方向
-
-    real_origin_kline_count: int = field(init=False)  # 笔包含的真实原始 K 线数量（一端分型最高点到另一端最低点之间）
-    real_merged_kline_count: int = field(init=False)  # 笔包含的真实合并 K 线数量（一端分型最高点到另一端最低点之间）
-
-    # 包含缺口数量
-    has_gap_count: int = field(init=False)
-
-    idx: int = field(init=False)
-
-    left_fx: FenXing = None
-
-    right_fx: FenXing = None
+    # === 由 __post_init__ / 外部事后赋值(init=False) ===
+    start_idx: int = field(init=False, default=0)  # 笔起始位置索引(分型所在 K 线索引)
+    start_time: str = field(init=False, default='')  # 起始时间
+    end_time: str = field(init=False, default='')  # 结束时间
+    real_origin_kline_count: int = field(init=False, default=0)  # 笔包含的真实原始 K 线数量(一端分型最高点到另一端最低点之间)
+    real_merged_kline_count: int = field(init=False, default=0)  # 笔包含的真实合并 K 线数量(一端分型最高点到另一端最低点之间)
+    has_gap_count: int = field(init=False, default=0)  # 包含缺口数量
+    idx: int = field(init=False, default=0)  # 本笔在笔列表中的索引
 
     def is_up(self) -> bool:
         return self.bi_type == BiDirectionType.UP
@@ -214,7 +214,7 @@ class BiBase:
 @dataclass
 class FakeBiLast(BiBase):
     """Fake笔数据结构"""
-    all_klines: List[MergedKLine] = None
+    all_klines: Optional[List[MergedKLine]] = None
 
     def __post_init__(self):
         # 确定起始和结束索引
