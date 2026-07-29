@@ -40,24 +40,6 @@ class BiBase:
 
     right_fx: FenXing = None
 
-
-@dataclass
-class FakeBiLast(BiBase):
-    """Fake笔数据结构"""
-    all_klines: List[MergedKLine] = None
-
-    def __post_init__(self):
-        # 确定起始和结束索引
-        self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
-
-        if self.end_idx <= self.start_idx:
-            raise ValueError(f"结束索引不能小于起始索引:{self.end_idx=}<={self.start_idx=}")
-
-        self.start_time = self.left_fx.trade_datetime
-        self.end_time = self.all_klines[self.end_idx].trade_datetime
-
-        self.real_origin_kline_count = self.end_idx - self.start_idx + 1
-
     def is_up(self) -> bool:
         return self.bi_type == BiDirectionType.UP
 
@@ -97,40 +79,6 @@ class FakeBiLast(BiBase):
             "end_price": self.end_price
         }
 
-    @classmethod
-    def from_fenxing(cls, left_fx: FenXing, right_fx_mid_idx: int, start_price, end_price, bi_type: BiDirectionType,
-                     all_klines: List[MergedKLine], prefix_merged: Union[List[int], None] = None,
-                     prefix_gap: Union[List[int], None] = None):
-        """
-        从两个分型对象中创建一个笔对象
-
-        Args:
-            left_fx: 左侧分型对象
-            right_fx: 右侧分型对象
-            all_klines: 合并后的K线列表
-
-        Returns:
-            Bi: 笔对象
-        """
-
-        bi_real_merged_kline_count, bi_has_gap_count = Bi.calculate_bi_real_merged_kline_count_and_gap_count(
-            left_fx.mid_idx, right_fx_mid_idx,
-            all_klines, prefix_merged, prefix_gap)
-
-        bi = FakeBiLast(
-            left_fx=left_fx,
-            end_idx=right_fx_mid_idx,
-            bi_type=bi_type,
-            all_klines=all_klines,
-            start_price=start_price,
-            end_price=end_price,
-        )
-
-        bi.real_merged_kline_count = bi_real_merged_kline_count
-        bi.has_gap_count = bi_has_gap_count
-
-        return bi
-
     @cached_property
     def is_finished(self) -> bool:
         """
@@ -148,19 +96,6 @@ class FakeBiLast(BiBase):
 
         return True
 
-    def is_leaving_interval(self) -> bool:
-        """
-        判断一端分型是否有一部分能够离开另一端分型
-
-        Returns:
-            bool: 笔是否满足底分型和顶分型拉开距离
-        """
-        end_kline = self.all_klines[self.end_idx]
-        if self.bi_type == BiDirectionType.UP:
-            return self.left_fx.low_price < end_kline.merged_low and self.left_fx.high_price < self.end_price
-        else:
-            return self.left_fx.high_price > end_kline.merged_high and self.left_fx.low_price > self.end_price
-
     def is_kline_count_enough(self) -> bool:
         """
         一笔中有效K线至少四根，并且顶分型最高点到底分型最低点最低点之间共有五根原始K线，跳空一次算一根
@@ -172,128 +107,6 @@ class FakeBiLast(BiBase):
         """
         return self.origin_kline_count >= 5 and self.merged_kline_count >= 4 and self.real_merged_kline_count >= 3
 
-
-@dataclass
-class Bi(BiBase):
-    """笔数据结构"""
-
-    # 左右分型
-
-    def __post_init__(self):
-        self.bi_type = BiDirectionType.UP if self.right_fx.is_top() else BiDirectionType.DOWN
-
-        # 确定起始和结束索引
-        self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
-        self.end_idx = self.right_fx.high_idx if self.bi_type == BiDirectionType.UP else self.right_fx.low_idx
-        if self.end_idx <= self.start_idx:
-            raise ValueError(f"结束索引不能小于起始索引:{self.end_idx=}<={self.start_idx=}")
-
-        self.start_time = self.left_fx.trade_datetime
-        self.end_time = self.right_fx.trade_datetime
-        self.start_price = self.left_fx.low_price if self.bi_type == BiDirectionType.UP else self.left_fx.high_price
-        self.end_price = self.right_fx.high_price if self.bi_type == BiDirectionType.UP else self.right_fx.low_price
-        self.real_origin_kline_count = self.end_idx - self.start_idx + 1
-
-    def is_up(self) -> bool:
-        return self.bi_type == BiDirectionType.UP
-
-    def is_down(self) -> bool:
-        return self.bi_type == BiDirectionType.DOWN
-
-    @property
-    def high_price(self):
-        return max(self.start_price, self.end_price)
-
-    @property
-    def low_price(self):
-        return min(self.start_price, self.end_price)
-
-    @property
-    def origin_kline_count(self):
-        """笔包含的原始 K 线数量（一端分型最高点到另一端最低点之间）+缺口数量"""
-        return self.real_origin_kline_count + self.has_gap_count
-
-    @property
-    def merged_kline_count(self):
-        """笔包含的合并 K 线数量（一端分型最高点到另一端最低点之间）+缺口数量"""
-        return self.real_merged_kline_count + self.has_gap_count
-
-    def to_dict(self) -> dict:
-        """
-        将 Bi 对象转换为字典格式（兼容原有 identify_bi 的输出格式）
-
-        Returns:
-            dict: 包含 start, end, direction, start_price, end_price 的字典
-        """
-        return {
-            "start_idx": self.start_idx,
-            "end_idx": self.end_idx,
-            "direction": self.bi_type.value,
-            "start_price": self.start_price,
-            "end_price": self.end_price
-        }
-
-    @classmethod
-    def from_fenxing(cls, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine],
-                     prefix_merged=None, prefix_gap=None):
-        """
-        从两个分型对象中创建一个笔对象
-
-        Args:
-            left_fx: 左侧分型对象
-            right_fx: 右侧分型对象
-            all_klines: 合并后的K线列表
-
-        Returns:
-            Bi: 笔对象
-        """
-        if left_fx.fenxing_type == right_fx.fenxing_type:
-            raise ValueError(f"分型方向一致: {left_fx.fenxing_type=}")
-
-        bi_real_merged_kline_count, bi_has_gap_count = Bi.calculate_bi_real_merged_kline_count_and_gap_count(
-            left_fx.mid_idx, right_fx.mid_idx,
-            all_klines, prefix_merged, prefix_gap)
-
-        bi = Bi(
-            left_fx=left_fx,
-            right_fx=right_fx,
-        )
-
-        bi.real_merged_kline_count = bi_real_merged_kline_count
-        bi.has_gap_count = bi_has_gap_count
-
-        return bi
-
-    @cached_property
-    def is_finished(self) -> bool:
-        """
-        判断笔是否可以完成
-
-        Returns:
-            bool: 笔是否可以完成
-        """
-        # if not self.has_different_Fenxing():
-        #     return False
-
-        if not self.is_leaving_interval():
-            return False
-
-        if not self.is_kline_count_enough():
-            return False
-
-        return True
-
-    def has_different_Fenxing(self) -> bool:
-        """
-        判断笔是否包含不同的分型
-
-        Returns:
-            bool: 笔是否包含不同的分型
-        """
-        if self.left_fx.fenxing_type == self.right_fx.fenxing_type:
-            raise ValueError(f"分型方向一致: {self.left_fx.fenxing_type=}")
-        return True
-
     def is_leaving_interval(self) -> bool:
         """
         判断一端分型是否有一部分能够离开另一端分型
@@ -301,41 +114,7 @@ class Bi(BiBase):
         Returns:
             bool: 笔是否满足底分型和顶分型拉开距离
         """
-        if self.bi_type == BiDirectionType.UP:
-            return self.left_fx.low_price < self.right_fx.low_price and self.left_fx.high_price < self.right_fx.high_price
-        else:
-            return self.left_fx.high_price > self.right_fx.high_price and self.left_fx.low_price > self.right_fx.low_price
-
-    def is_kline_count_enough(self) -> bool:
-        """
-        一笔中有效K线至少四根，并且顶分型最高点到底分型最低点最低点之间共有五根原始K线，跳空一次算一根
-
-
-        Returns:
-            bool: 笔是否包含指定数量的K线
-
-        """
-        return self.origin_kline_count >= 5 and self.merged_kline_count >= 4 and self.real_merged_kline_count >= 3
-
-    def extends_beyond_end(self, price: float) -> bool:
-        """判断给定价格是否在本笔方向上超越了本笔终点价格
-
-        UP笔: price > end_price (向上超越顶分型)
-        DOWN笔: price < end_price (向下超越底分型)
-        """
-        if self.bi_type == BiDirectionType.UP:
-            return price > self.end_price
-        return price < self.end_price
-
-    def extends_beyond_start(self, price: float) -> bool:
-        """判断给定价格是否在本笔反方向上超越了本笔起点价格
-
-        UP笔: price < start_price (向下超越底分型)
-        DOWN笔: price > start_price (向上超越顶分型)
-        """
-        if self.bi_type == BiDirectionType.UP:
-            return price < self.start_price
-        return price > self.start_price
+        ...
 
     @staticmethod
     def calculate_bi_real_merged_kline_count_and_gap_count(start_kline_idx: int, end_kline_idx: int,
@@ -430,6 +209,167 @@ class Bi(BiBase):
     def print_klines_info(self, all_klines):
         for i in range(self.start_idx, self.end_idx + 1):
             print(all_klines[i])
+
+
+@dataclass
+class FakeBiLast(BiBase):
+    """Fake笔数据结构"""
+    all_klines: List[MergedKLine] = None
+
+    def __post_init__(self):
+        # 确定起始和结束索引
+        self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
+
+        if self.end_idx <= self.start_idx:
+            raise ValueError(f"结束索引不能小于起始索引:{self.end_idx=}<={self.start_idx=}")
+
+        self.start_time = self.left_fx.trade_datetime
+        self.end_time = self.all_klines[self.end_idx].trade_datetime
+
+        self.real_origin_kline_count = self.end_idx - self.start_idx + 1
+
+    @classmethod
+    def from_fenxing(cls, left_fx: FenXing, right_fx_mid_idx: int, start_price, end_price, bi_type: BiDirectionType,
+                     all_klines: List[MergedKLine], prefix_merged: Union[List[int], None] = None,
+                     prefix_gap: Union[List[int], None] = None):
+        """
+        从两个分型对象中创建一个笔对象
+
+        Args:
+            left_fx: 左侧分型对象
+            right_fx: 右侧分型对象
+            all_klines: 合并后的K线列表
+
+        Returns:
+            Bi: 笔对象
+        """
+
+        bi_real_merged_kline_count, bi_has_gap_count = BiBase.calculate_bi_real_merged_kline_count_and_gap_count(
+            left_fx.mid_idx, right_fx_mid_idx,
+            all_klines, prefix_merged, prefix_gap)
+
+        bi = FakeBiLast(
+            left_fx=left_fx,
+            end_idx=right_fx_mid_idx,
+            bi_type=bi_type,
+            all_klines=all_klines,
+            start_price=start_price,
+            end_price=end_price,
+        )
+
+        bi.real_merged_kline_count = bi_real_merged_kline_count
+        bi.has_gap_count = bi_has_gap_count
+
+        return bi
+
+    def is_leaving_interval(self) -> bool:
+        """
+        判断一端分型是否有一部分能够离开另一端分型
+
+        Returns:
+            bool: 笔是否满足底分型和顶分型拉开距离
+        """
+        end_kline = self.all_klines[self.end_idx]
+        if self.bi_type == BiDirectionType.UP:
+            return self.left_fx.low_price < end_kline.merged_low and self.left_fx.high_price < self.end_price
+        else:
+            return self.left_fx.high_price > end_kline.merged_high and self.left_fx.low_price > self.end_price
+
+
+@dataclass
+class Bi(BiBase):
+    """笔数据结构"""
+
+    # 左右分型
+
+    def __post_init__(self):
+        self.bi_type = BiDirectionType.UP if self.right_fx.is_top() else BiDirectionType.DOWN
+
+        # 确定起始和结束索引
+        self.start_idx = self.left_fx.low_idx if self.bi_type == BiDirectionType.UP else self.left_fx.high_idx
+        self.end_idx = self.right_fx.high_idx if self.bi_type == BiDirectionType.UP else self.right_fx.low_idx
+        if self.end_idx <= self.start_idx:
+            raise ValueError(f"结束索引不能小于起始索引:{self.end_idx=}<={self.start_idx=}")
+
+        self.start_time = self.left_fx.trade_datetime
+        self.end_time = self.right_fx.trade_datetime
+        self.start_price = self.left_fx.low_price if self.bi_type == BiDirectionType.UP else self.left_fx.high_price
+        self.end_price = self.right_fx.high_price if self.bi_type == BiDirectionType.UP else self.right_fx.low_price
+        self.real_origin_kline_count = self.end_idx - self.start_idx + 1
+
+    @classmethod
+    def from_fenxing(cls, left_fx: FenXing, right_fx: FenXing, all_klines: List[MergedKLine],
+                     prefix_merged=None, prefix_gap=None):
+        """
+        从两个分型对象中创建一个笔对象
+
+        Args:
+            left_fx: 左侧分型对象
+            right_fx: 右侧分型对象
+            all_klines: 合并后的K线列表
+
+        Returns:
+            Bi: 笔对象
+        """
+        if left_fx.fenxing_type == right_fx.fenxing_type:
+            raise ValueError(f"分型方向一致: {left_fx.fenxing_type=}")
+
+        bi_real_merged_kline_count, bi_has_gap_count = BiBase.calculate_bi_real_merged_kline_count_and_gap_count(
+            left_fx.mid_idx, right_fx.mid_idx,
+            all_klines, prefix_merged, prefix_gap)
+
+        bi = Bi(
+            left_fx=left_fx,
+            right_fx=right_fx,
+        )
+
+        bi.real_merged_kline_count = bi_real_merged_kline_count
+        bi.has_gap_count = bi_has_gap_count
+
+        return bi
+
+    def has_different_Fenxing(self) -> bool:
+        """
+        判断笔是否包含不同的分型
+
+        Returns:
+            bool: 笔是否包含不同的分型
+        """
+        if self.left_fx.fenxing_type == self.right_fx.fenxing_type:
+            raise ValueError(f"分型方向一致: {self.left_fx.fenxing_type=}")
+        return True
+
+    def is_leaving_interval(self) -> bool:
+        """
+        判断一端分型是否有一部分能够离开另一端分型
+
+        Returns:
+            bool: 笔是否满足底分型和顶分型拉开距离
+        """
+        if self.bi_type == BiDirectionType.UP:
+            return self.left_fx.low_price < self.right_fx.low_price and self.left_fx.high_price < self.right_fx.high_price
+        else:
+            return self.left_fx.high_price > self.right_fx.high_price and self.left_fx.low_price > self.right_fx.low_price
+
+    def extends_beyond_end(self, price: float) -> bool:
+        """判断给定价格是否在本笔方向上超越了本笔终点价格
+
+        UP笔: price > end_price (向上超越顶分型)
+        DOWN笔: price < end_price (向下超越底分型)
+        """
+        if self.bi_type == BiDirectionType.UP:
+            return price > self.end_price
+        return price < self.end_price
+
+    def extends_beyond_start(self, price: float) -> bool:
+        """判断给定价格是否在本笔反方向上超越了本笔起点价格
+
+        UP笔: price < start_price (向下超越底分型)
+        DOWN笔: price > start_price (向上超越顶分型)
+        """
+        if self.bi_type == BiDirectionType.UP:
+            return price < self.start_price
+        return price > self.start_price
 
 
 def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBiLast]]:
@@ -682,10 +622,11 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         start_idx = bi.left_fx.right_idx
         end_idx = bi.end_idx
         # print(init_highest_price, init_lowest_price, start_idx, end_idx)
-        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(init_highest_price,
-                                                                                           init_lowest_price, start_idx,
-                                                                                           end_idx, all_klines,
-                                                                                           high_prices, low_prices)
+        highest_price, lowest_price, highest_idx, lowest_idx = BiBase.get_highest_lowest_price(init_highest_price,
+                                                                                               init_lowest_price,
+                                                                                               start_idx,
+                                                                                               end_idx, all_klines,
+                                                                                               high_prices, low_prices)
         if highest_price > init_highest_price:
             text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{init_highest_price}],{bi.left_fx.trade_datetime=}~{bi.right_fx.trade_datetime=}"
             print(text)
@@ -712,7 +653,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     init_lowest_price = bi_lm.right_fx.low_price
 
     if start_idx < end_idx:
-        highest_price, lowest_price, highest_idx, lowest_idx = Bi.get_highest_lowest_price(
+        highest_price, lowest_price, highest_idx, lowest_idx = BiBase.get_highest_lowest_price(
             init_highest_price, init_lowest_price, start_idx, end_idx, all_klines, high_prices, low_prices)
 
         # 遍历后续分型（避免列表切片拷贝），找到 mid_idx 命中极值点的第一个分型
