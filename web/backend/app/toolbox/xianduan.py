@@ -60,11 +60,6 @@ class FakeXianDuanLast(XianDuanBase):
     # xianduan索引
     idx: int = None
 
-    def __post_init__(self):
-        ...
-
-
-
 
 @dataclass
 class XianDuan(XianDuanBase):
@@ -237,7 +232,7 @@ class XianDuan(XianDuanBase):
         return True
 
 
-def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, FakeBi]]) -> List[XianDuan]:
+def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, FakeBi]]) -> List[XianDuanBase]:
     """
     根据特征序列分型划分线段。
 
@@ -434,6 +429,51 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
         xianduan_finish_deque.append(xd_lm)
         xd_lm = xd_mr
 
+
+    # 制造fake last线段
+
+    last_xd: XianDuan = xianduan_finish_deque.pop()
+    xianduan_finish_deque.append(last_xd)
+
+    if last_xd.is_up():
+        fake_last_xd_direction_type = XianDuanDirectionType.DOWN
+    else:
+        fake_last_xd_direction_type = XianDuanDirectionType.UP
+
+    fisrt_bi_index = last_xd.end_bi_idx
+    sl = slice(fisrt_bi_index, len(bi_list))
+
+    bi_high_prices = np.array([bi.high_price for bi in bi_list[sl]])
+    bi_low_prices = np.array([bi.low_price for bi in bi_list[sl]])
+    local_max_idx = int(np.argmax(bi_high_prices))
+    local_min_idx = int(np.argmin(bi_low_prices))
+
+    if fake_last_xd_direction_type == XianDuanDirectionType.UP:
+        end_bi_index = fisrt_bi_index + local_max_idx
+    else:
+        end_bi_index = fisrt_bi_index + local_min_idx
+
+
+
+    first_bi = bi_list[fisrt_bi_index]
+    end_bi = bi_list[end_bi_index]
+
+
+
+    fake_last_xd = FakeXianDuanLast()
+    fake_last_xd.start_bi_idx = fisrt_bi_index
+    fake_last_xd.end_bi_idx = end_bi_index
+    fake_last_xd.start_idx = first_bi.start_idx
+    fake_last_xd.end_idx = end_bi.end_idx
+    fake_last_xd.start_time = first_bi.start_time
+    fake_last_xd.end_time = end_bi.end_time
+    fake_last_xd.start_price =  first_bi.start_price
+    fake_last_xd.end_price =  end_bi.end_price
+
+    fake_last_xd.xianduan_type = fake_last_xd_direction_type
+
+
+    xianduan_finish_deque.append(fake_last_xd)
     xianduan_list = list(xianduan_finish_deque)
 
     ####################### 检查
@@ -448,8 +488,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
         if r_trade_date != l_trade_date:
             print(r_trade_date, l_trade_date)
             raise RuntimeError("线段连续性检查失败")
-
     ####################### 检查
+
     print(f"共{len(xianduan_list)}段")
     # 分配序号
     for i in range(len(xianduan_list)):
@@ -459,5 +499,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
     for i in range(len(xianduan_list) - 1):
         temp_xd_lm = xianduan_list[i]
         temp_xd_mr = xianduan_list[i + 1]
+        if type(temp_xd_lm) == FakeXianDuanLast or type(temp_xd_mr) == FakeXianDuanLast:
+            break
         xianduan_list[i], xianduan_list[i + 1] = _adjust_xian_duan(temp_xd_lm, temp_xd_mr)
     return xianduan_list
