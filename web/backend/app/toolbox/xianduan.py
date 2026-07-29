@@ -65,6 +65,8 @@ class FakeXianDuanLast(XianDuanBase):
 class FakeXianDuanFirst(XianDuanBase):
     """最早的假线段"""
 
+    right_tzxl: TeZhengXuLie = field(init=False)
+
     # xianduan索引
     idx: int = None
 
@@ -442,6 +444,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
         制造fake last线段
         """
         nonlocal xianduan_finish_deque, bi_list
+        if len(xianduan_finish_deque) == 0:
+            return
         last_xd: XianDuan = xianduan_finish_deque.pop()
         xianduan_finish_deque.append(last_xd)
 
@@ -489,7 +493,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
          制造fake first线段
         """
         nonlocal xianduan_finish_deque, bi_list
-
+        if len(xianduan_finish_deque) == 0:
+            return
         first_xd: XianDuan = xianduan_finish_deque.popleft()
 
         origin_first_bi_index = first_xd.left_tzxl.mid_bi_idx
@@ -530,6 +535,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[Bi, Fa
         fake_first_xd.start_price = first_bi.start_price
         fake_first_xd.end_price = end_bi.start_price
         fake_first_xd.xianduan_type = first_xd.xianduan_type
+        fake_first_xd.right_tzxl = first_xd.right_tzxl
 
         xianduan_finish_deque.appendleft(fake_first_xd)
 
