@@ -14,33 +14,27 @@ class FenXingType(int, Enum):
 
 @dataclass
 class FenXing:
-    """分型数据结构"""
-    # 分型标记：1=顶分型，-1=底分型
-    fenxing_type: FenXingType
-    # 分型结束位置的K线索引
-    start_idx: int = field(init=False)
-    # 分型结束位置的K线索引
-    end_idx: int = field(init=False)
-    # 分型长度
-    length: int = field(init=False)
-    # 三根合并后K线各自的长度
-    length_list: List[int] = field(init=False)
-    # 三根合并后K线各自的开始索引
-    start_idx_list: List[int] = field(init=False)
-    # 三根合并后K线各自的结束索引
-    end_idx_list: List[int] = field(init=False)
-    # 分型最高价
-    high_price: float = field(init=False)
-    # 分型最低价
-    low_price: float = field(init=False)
-    # 分型最高价索引
-    high_idx: int = field(init=False)
-    # 分型最低价索引
-    low_idx: int = field(init=False)
-    # 极值的交易日
-    trade_datetime: str = field(init=False)
-    # fenxing索引
-    idx: int = field(init=False)
+    """分型数据结构
+
+    使用方式: FenXing(fenxing_type=...) 构造后, 由 generate_fenxing() 函数
+    逐个填充下面的 init=False 字段(本类不实现 __post_init__)
+    """
+    # === init 参数 ===
+    fenxing_type: FenXingType  # 分型标记: 1=顶分型, -1=底分型
+
+    # === 由 generate_fenxing() 事后填充(init=False, 带安全默认值) ===
+    start_idx: int = field(init=False, default=0)  # 分型起始位置索引
+    end_idx: int = field(init=False, default=0)  # 分型结束位置索引
+    length: int = field(init=False, default=0)  # 分型长度(三根合并K线 merged_length 之和)
+    length_list: List[int] = field(init=False, default_factory=list)  # 三根合并K线各自的长度
+    start_idx_list: List[int] = field(init=False, default_factory=list)  # 三根合并K线各自的起始索引
+    end_idx_list: List[int] = field(init=False, default_factory=list)  # 三根合并K线各自的结束索引
+    high_price: float = field(init=False, default=0.0)  # 分型最高价
+    low_price: float = field(init=False, default=0.0)  # 分型最低价
+    high_idx: int = field(init=False, default=0)  # 分型最高价索引
+    low_idx: int = field(init=False, default=0)  # 分型最低价索引
+    trade_datetime: str = field(init=False, default='')  # 极值的交易日
+    idx: int = field(init=False, default=0)  # 本分型在分型列表中的索引
 
     @property
     def left_idx(self) -> int:
