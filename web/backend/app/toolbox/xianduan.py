@@ -505,10 +505,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         local_max_idx = int(np.argmax(bi_high_prices))
         local_min_idx = int(np.argmin(bi_low_prices))
 
-        if first_xd.xianduan_type == XianDuanDirectionType.DOWN and local_max_idx < origin_first_bi_index and \
+        if first_xd.is_down() and local_max_idx < origin_first_bi_index and \
             bi_high_prices[local_max_idx] >= bi_list[origin_first_bi_index].high_price:
             first_bi_index = local_max_idx
-        elif first_xd.xianduan_type == XianDuanDirectionType.UP and local_min_idx < origin_first_bi_index and \
+        elif first_xd.is_up() and local_min_idx < origin_first_bi_index and \
             bi_low_prices[local_min_idx] <= bi_list[origin_first_bi_index].low_price:
             first_bi_index = local_min_idx
 

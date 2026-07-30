@@ -4,3 +4,4 @@ ray[default]>=2.32.0
 database>=2.0.7
 tdata
 ddp
+tushare
