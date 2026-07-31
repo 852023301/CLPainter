@@ -8,7 +8,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list
-from ....toolbox.calculate import calculate_ma_colors, calculate_ma_list
+from ....toolbox.calculate import calculate_boll_list, calculate_ma_colors, calculate_ma_list, calculate_rsi_list
 
 import pandas as pd
 
@@ -415,8 +415,20 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
         )
         ma_list_raw = calculate_ma_list(close_series, periods)
         ma_list = [
-            {"period": item["period"], "color": ma_colors[i], "values": item["values"]}
+            {"key": f"MA{item['period']}", "label": f"MA{item['period']}", "color": ma_colors[i], "values": item["values"]}
             for i, item in enumerate(ma_list_raw)
+        ]
+        boll_list_raw = calculate_boll_list(close_series)
+        boll_colors = calculate_ma_colors(["BOLL_UP", "BOLL_MID", "BOLL_DOWN"])
+        boll_list = [
+            {"key": item["key"], "label": item["key"], "color": boll_colors[i], "values": item["values"]}
+            for i, item in enumerate(boll_list_raw)
+        ]
+        rsi_list_raw = calculate_rsi_list(close_series)
+        rsi_colors = calculate_ma_colors(["RSI6", "RSI12", "RSI24"])
+        rsi_list = [
+            {"key": item["key"], "label": item["key"], "color": rsi_colors[i], "values": item["values"]}
+            for i, item in enumerate(rsi_list_raw)
         ]
         template_name = "lightweight_charts_demo.html"
 
@@ -433,6 +445,8 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 volume_data=json.dumps(volume_data, ensure_ascii=False),
                 precision=precision,
                 ma_data=json.dumps(ma_list, ensure_ascii=False),  # 传递精度参数到模板
+                boll_data=json.dumps(boll_list, ensure_ascii=False),
+                rsi_data=json.dumps(rsi_list, ensure_ascii=False),
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:
