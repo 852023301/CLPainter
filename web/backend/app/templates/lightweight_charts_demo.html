@@ -52,6 +52,30 @@
             position: relative;
         }
 
+        .panel-select {
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            z-index: 2000;
+            font-size: 12px;
+            padding: 2px 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.92);
+            cursor: pointer;
+        }
+
+        .panel-value-label {
+            position: absolute;
+            top: 8px;
+            left: 96px;
+            z-index: 1000;
+            font-size: 12px;
+            color: #333;
+            display: none;
+            pointer-events: none;
+        }
+
         .info h3 {
             margin-top: 0;
             color: #333;
@@ -153,14 +177,18 @@
     <div id="chart">
         <div class="ohlc-tooltip" id="ohlcTooltip"></div>
     </div>
-    <div id="volume-chart" class="volume-container">
-        <div class="volume-label" id="volumeLabel">成交量: --</div>
+
+    <div id="panel0" class="indicator-container">
+        <select id="panelSelect0" class="panel-select"></select>
+        <div id="panelValue0" class="panel-value-label"></div>
     </div>
-    <div id="boll-chart" class="indicator-container">
-        <div class="volume-label" style="display:block;">BOLL(26,2)</div>
+    <div id="panel1" class="indicator-container">
+        <select id="panelSelect1" class="panel-select"></select>
+        <div id="panelValue1" class="panel-value-label"></div>
     </div>
-    <div id="rsi-chart" class="indicator-container">
-        <div class="volume-label" style="display:block;">RSI(6,12,24)</div>
+    <div id="panel2" class="indicator-container">
+        <select id="panelSelect2" class="panel-select"></select>
+        <div id="panelValue2" class="panel-value-label"></div>
     </div>
 </div>
 
@@ -171,6 +199,11 @@
         return v === null ? def : v === '1';
     };
     const lsSetBool = (k, v) => localStorage.setItem(k, v ? '1' : '0');
+    const lsGetString = (k, def) => {
+        const v = localStorage.getItem(k);
+        return v === null ? def : v;
+    };
+    const lsSetString = (k, v) => localStorage.setItem(k, v);
 
     // 从后端传入的数据
     const candleData = {{ candle_data | safe }};
@@ -195,9 +228,7 @@
         document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
     } else {
         const chartContainer = document.getElementById('chart');
-        const volumeContainer = document.getElementById('volume-chart');
         const tooltip = document.getElementById('ohlcTooltip');
-        const volumeLabel = document.getElementById('volumeLabel');
 
         const chart = LightweightCharts.createChart(chartContainer, {
             width: chartContainer.clientWidth,
@@ -361,180 +392,14 @@
 
         setupIndicatorGroup({ triggerId: 'maTrigger', dropdownId: 'maDropdown', itemsId: 'maItems', selectAllId: 'maSelectAll', data: maData, seriesMap: maSeriesMap, prefix: 'ma:' });
 
-        // 3.创建成交量图表
-        const volumeChart = LightweightCharts.createChart(volumeContainer, {
-            width: volumeContainer.clientWidth,
-            height: 150,
-            layout: {
-                background: {color: '#ffffff'},
-                textColor: '#333',
-            },
-            grid: {
-                vertLines: {visible: false},
-                horzLines: {visible: false},
-            },
-            crosshair: {
-                mode: LightweightCharts.CrosshairMode.Normal,
-                vertLine: {
-                    width: 1,
-                    color: '#758694',
-                    style: 2, // 虚线
-                },
-                horzLine: {
-                    visible: false, // 隐藏水平线
-                },
-            },
-            timeScale: {
-                visible: true,
-                timeVisible: true,
-                rightOffset: 12,        // 与主图表保持一致
-                barSpacing: 4,          // K线间距,与主图表保持一致
-                minBarSpacing: 0.2,     // 最小K线间距,与主图表保持一致
-                fixLeftEdge: false,     // 不固定左边缘
-                fixRightEdge: false,    // 不固定右边缘
-            },
-            rightPriceScale: {
-                visible: true, // 显示右侧价格刻度，保持与主图表一致
-                autoScale: true,
-            },
-            leftPriceScale: {
-                visible: false,
-            },
-            handleScroll: {
-                vertTouchDrag: false, // 禁止垂直拖动
-            },
-            localization: {
-                timeFormatter: (time) => formatDateTime(time),
-            },
-        });
 
-        // 创建成交量系列
-        const volumeSeries = volumeChart.addHistogramSeries({
-            color: '#26a69a',
-            priceFormat: { type: 'volume' },
-            lastValueVisible: false,
-            priceLineVisible: false,
-        });
+        // 3. 创建三个可切换指标面板(成交量/BOLL/RSI), 每个面板左上角有下拉框选择当前指标,
+        //    下拉框收起时显示当前指标名(同花顺风格), 选择状态持久化到 localStorage.
+        const PRICE_SCALE_WIDTH = 200;  // 统一右侧价格刻度宽度, 保证各面板绘图区等宽、垂直对齐
+        // 主图右侧价格刻度也设为相同宽度, 保证主图与各副图绘图区等宽、横向严格对齐(否则副图会整体左移)
+        chart.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH });
 
-        volumeSeries.setData(volumeData);
-
-        // ========== 指标子图(布林/RSI) —— 独立面板, 位于成交量下方 ==========
-        function createSubChart(container) {
-            return LightweightCharts.createChart(container, {
-                width: container.clientWidth,
-                height: 120,
-                layout: { background: { color: '#ffffff' }, textColor: '#333' },
-                grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-                crosshair: {
-                    mode: LightweightCharts.CrosshairMode.Normal,
-                    vertLine: { width: 1, color: '#758694', style: 2 },
-                    horzLine: { visible: false },
-                },
-                timeScale: {
-                    visible: true, timeVisible: true,
-                    rightOffset: 12, barSpacing: 4, minBarSpacing: 0.2,
-                    fixLeftEdge: false, fixRightEdge: false,
-                    ticksVisible: false,
-                    borderVisible: false,
-                },
-                rightPriceScale: { visible: true, autoScale: true, minimumWidth: 200 },
-                leftPriceScale: { visible: false },
-                handleScroll: { vertTouchDrag: false },
-                localization: { timeFormatter: (time) => formatDateTime(time) },
-            });
-        }
-
-        // 在子图上渲染多条折线, 返回 key -> series
-        function buildSubSeries(subChart, data) {
-            // 对齐逻辑索引: 指标数据常因热身期(RSI 的 diff、BOLL 的滚动窗口)产生前导
-            // NaN 被丢弃, 导致子图第一根数据点晚于主图 K 线. lightweight-charts 按各图
-            // 自身数据顺序分配逻辑索引, 起点错位会使同步可见范围时整体偏移(如 RSI 偏左 1 根).
-            // 在首根 K 线时间补一个空白点(无 value), 让逻辑索引 0 与主图严格对齐.
-            const firstTime = candleData.length ? candleData[0].time : null;
-            const map = {};
-            data.forEach(item => {
-                let values = item.values;
-                if (firstTime && (values.length === 0 || values[0].time !== firstTime)) {
-                    values = [{ time: firstTime }, ...values];
-                }
-                const s = subChart.addLineSeries({
-                    color: item.color, lineWidth: 1,
-                    lastValueVisible: false, priceLineVisible: false,
-                    crosshairMarkerVisible: true,
-                });
-                s.setData(values);
-                map[item.key] = s;
-            });
-            return map;
-        }
-
-        // 布林子图: 中间叠加一份 K 线(与主图同数据), 外加 BOLL 三条线
-        const bollContainer = document.getElementById('boll-chart');
-        const bollChart = createSubChart(bollContainer);
-        const bollCandleSeries = bollChart.addCandlestickSeries({
-            upColor: 'rgba(239, 83, 80, 0.5)',
-            downColor: 'rgba(38, 166, 154, 0.5)',
-            borderVisible: false,
-            wickUpColor: 'rgba(239, 83, 80, 0.5)',
-            wickDownColor: 'rgba(38, 166, 154, 0.5)',
-            lastValueVisible: false,
-            priceLineVisible: false,
-        });
-        bollCandleSeries.setData(candleData);
-        const bollSeriesMap = buildSubSeries(bollChart, bollData);
-
-        // RSI 子图 + 20/50/80 参考线
-        const rsiContainer = document.getElementById('rsi-chart');
-        const rsiChart = createSubChart(rsiContainer);
-        const rsiSeriesMap = buildSubSeries(rsiChart, rsiData);
-        const rsiRef = rsiSeriesMap[Object.keys(rsiSeriesMap)[0]];
-        if (rsiRef) {
-            rsiRef.createPriceLine({ price: 80, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '80' });
-            rsiRef.createPriceLine({ price: 50, color: 'rgba(120,120,120,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '50' });
-            rsiRef.createPriceLine({ price: 20, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '20' });
-        }
-
-        // ========== 统一右侧价格刻度宽度, 保证各子图绘图区域等宽(垂直对齐) ==========
-        // 不同面板的价格量级不同(股价/成交量/0-100), 默认刻度宽度不一,
-        // 会导致绘图区域宽度不同, 同一 K 线在各面板的 x 坐标错位.
-        // 统一右侧价格刻度宽度, 保证各子图绘图区域等宽(垂直对齐).
-        // minimumWidth 是下限, 必须大于任一图表的自然刻度宽度,
-        // 否则自然更宽的图表(如主图股价)仍会不一致 -> BOLL/RSI 与 K 线错位.
-        const PRICE_SCALE_WIDTH = 200;
-        [chart, volumeChart, bollChart, rsiChart].forEach(c =>
-            c.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH })
-        );
-
-        // ========== 时间轴/滚动同步 (主图 ↔ 成交量/布林/RSI 子图) ==========
-        const subCharts = [volumeChart, bollChart, rsiChart];
-        let isSyncingTimeRange = false;
-
-        function applyLogicalRange(logicalRange, source) {
-            if (isSyncingTimeRange || !logicalRange) return;
-            isSyncingTimeRange = true;
-            if (source !== chart) chart.timeScale().setVisibleLogicalRange(logicalRange);
-            subCharts.filter(c => c !== source).forEach(c => c.timeScale().setVisibleLogicalRange(logicalRange));
-            isSyncingTimeRange = false;
-        }
-
-        chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, chart));
-        subCharts.forEach(sub => sub.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, sub)));
-
-        chart.timeScale().fitContent();
-        subCharts.forEach(sub => sub.timeScale().fitContent());
-
-        // 响应式调整
-        window.addEventListener('resize', () => {
-            chart.applyOptions({ width: chartContainer.clientWidth });
-            volumeChart.applyOptions({ width: volumeContainer.clientWidth });
-            bollChart.applyOptions({ width: bollContainer.clientWidth });
-            rsiChart.applyOptions({ width: rsiContainer.clientWidth });
-        });
-
-        // ========== 跨图表十字光标同步 ==========
-        let isSyncingCrosshair = false;
-
-        // time -> price 查找表(用于 setCrosshairPosition)
+        // 时间 -> 数值 查找表(用于跨面板十字光标定位)
         const volumeLookup = {};
         volumeData.forEach(v => { volumeLookup[v.time] = v.value; });
         const bollLookup = {};
@@ -542,48 +407,223 @@
         const rsiLookup = {};
         (rsiData[0] || { values: [] }).values.forEach(v => { rsiLookup[v.time] = v.value; });
 
-        const subChartMeta = [
-            { chart: volumeChart, lookup: volumeLookup, series: volumeSeries, label: volumeLabel, updater: updateVolumeLabel },
-            { chart: bollChart, lookup: bollLookup, series: bollCandleSeries },
-            { chart: rsiChart, lookup: rsiLookup, series: rsiSeriesMap[Object.keys(rsiSeriesMap)[0]] },
-        ];
+        // 将指标序列对齐到完整 K 线时间轴(热身期补空白点), 使子图逻辑索引与主图严格一致,
+        // 杜绝副图整体偏移(如 RSI 偏左一个交易日).
+        function alignToCandles(values) {
+            const map = {};
+            values.forEach(v => { map[v.time] = v.value; });
+            return candleData.map(c => (c.time in map ? { time: c.time, value: map[c.time] } : { time: c.time }));
+        }
 
-        // 同步所有子图十字光标(可排除触发源)
-        function syncAllSubCrosshairs(time, except) {
-            subChartMeta.filter(m => m !== except).forEach(meta => {
-                if (time && time in meta.lookup) {
-                    meta.chart.setCrosshairPosition(meta.lookup[time], time, meta.series);
-                    if (meta.label && meta.updater) meta.updater(meta.lookup[time]);
+        // 创建指标子图(配置与主图一致: 统一 barSpacing/rightOffset/价格刻度宽度;
+        // 开启水平十字线, 悬停副图时显示水平影线)
+        function createSubChart(container, height) {
+            return LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: height,
+                layout: { background: { color: '#ffffff' }, textColor: '#333' },
+                grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: { width: 1, color: '#758694', style: 2 },
+                    horzLine: { width: 1, color: '#758694', style: 2 },
+                },
+                timeScale: {
+                    visible: true, timeVisible: true,
+                    rightOffset: 12, barSpacing: 4, minBarSpacing: 0.2,
+                    fixLeftEdge: false, fixRightEdge: false,
+                    ticksVisible: false, borderVisible: false,
+                },
+                rightPriceScale: { visible: true, autoScale: true, minimumWidth: PRICE_SCALE_WIDTH },
+                leftPriceScale: { visible: false },
+                handleScroll: { vertTouchDrag: false },
+                localization: { timeFormatter: (time) => formatDateTime(time) },
+            });
+        }
+
+        // 在子图上渲染多条折线(数据已对齐到 K 线时间轴), 返回 key->series
+        function buildSubSeries(subChart, data) {
+            const map = {};
+            data.forEach(item => {
+                const s = subChart.addLineSeries({
+                    color: item.color, lineWidth: 1,
+                    lastValueVisible: false, priceLineVisible: false,
+                    crosshairMarkerVisible: true,
+                });
+                s.setData(alignToCandles(item.values));
+                map[item.key] = s;
+            });
+            return map;
+        }
+
+        // 指标注册表
+        const INDICATOR_LABEL = { volume: '成交量', boll: 'BOLL(26,2)', rsi: 'RSI(6,12,24)' };
+        const INDICATOR_HEIGHT = { volume: 150, boll: 120, rsi: 120 };
+        const INDICATOR_KEYS = ['volume', 'boll', 'rsi'];
+        const DEFAULT_PANELS = ['volume', 'boll', 'rsi'];
+        const panels = [];  // 各面板运行时状态
+
+        // 在指定面板上(重新)构建某指标的系列; 切换指标时先移除旧系列(含依附其上的价格线)
+        function buildIndicator(meta, indicator) {
+            const { chart, container, valueLabel } = meta;
+            meta.addedSeries.forEach(s => { try { chart.removeSeries(s); } catch (e) {} });
+            meta.addedSeries = [];
+            meta.primarySeries = null;
+            meta.lookup = {};
+            meta.showVolumeLabel = false;
+            valueLabel.style.display = 'none';
+
+            const h = INDICATOR_HEIGHT[indicator] || 120;
+            chart.applyOptions({ height: h });
+            container.style.height = h + 'px';
+
+            if (indicator === 'volume') {
+                const s = chart.addHistogramSeries({
+                    color: '#26a69a', priceFormat: { type: 'volume' },
+                    lastValueVisible: false, priceLineVisible: false,
+                });
+                s.setData(volumeData);
+                meta.addedSeries.push(s);
+                meta.primarySeries = s;
+                meta.lookup = volumeLookup;
+                meta.showVolumeLabel = true;
+            } else if (indicator === 'boll') {
+                const cs = chart.addCandlestickSeries({
+                    upColor: 'rgba(239, 83, 80, 0.5)', downColor: 'rgba(38, 166, 154, 0.5)',
+                    borderVisible: false, wickUpColor: 'rgba(239, 83, 80, 0.5)', wickDownColor: 'rgba(38, 166, 154, 0.5)',
+                    lastValueVisible: false, priceLineVisible: false,
+                });
+                cs.setData(candleData);
+                meta.addedSeries.push(cs);
+                meta.primarySeries = cs;
+                meta.lookup = bollLookup;
+                const lines = buildSubSeries(chart, bollData);
+                Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
+            } else if (indicator === 'rsi') {
+                const lines = buildSubSeries(chart, rsiData);
+                const firstKey = Object.keys(lines)[0];
+                Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
+                const first = lines[firstKey];
+                if (first) {
+                    first.createPriceLine({ price: 80, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '80' });
+                    first.createPriceLine({ price: 50, color: 'rgba(120,120,120,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '50' });
+                    first.createPriceLine({ price: 20, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '20' });
+                }
+                meta.primarySeries = first || null;
+                meta.lookup = rsiLookup;
+            }
+
+            meta.indicator = indicator;
+            chart.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH });
+
+            // 与主图可见范围保持一致
+            const lr = chart.timeScale().getVisibleLogicalRange();
+            if (lr) meta.chart.timeScale().setVisibleLogicalRange(lr);
+            else meta.chart.timeScale().fitContent();
+        }
+
+        // 初始化一个面板: 创建图表实例、填充下拉选项、绑定切换事件、构建初始指标
+        function setupPanel(idx) {
+            const container = document.getElementById('panel' + idx);
+            const select = document.getElementById('panelSelect' + idx);
+            const valueLabel = document.getElementById('panelValue' + idx);
+            const subChart = createSubChart(container, INDICATOR_HEIGHT.volume);
+
+            const meta = { idx, container, select, valueLabel, chart: subChart, indicator: null, addedSeries: [], primarySeries: null, lookup: {}, showVolumeLabel: false };
+
+            INDICATOR_KEYS.forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = INDICATOR_LABEL[key];
+                select.appendChild(opt);
+            });
+
+            let initKey = lsGetString('panel:' + idx, DEFAULT_PANELS[idx] || 'volume');
+            if (!INDICATOR_LABEL[initKey]) initKey = DEFAULT_PANELS[idx] || 'volume';
+            select.value = initKey;
+
+            select.addEventListener('change', () => {
+                lsSetString('panel:' + idx, select.value);
+                buildIndicator(meta, select.value);
+            });
+
+            buildIndicator(meta, initKey);
+            panels.push(meta);
+            return meta;
+        }
+
+        for (let i = 0; i < 3; i++) setupPanel(i);
+
+        // ========== 时间轴/滚动同步 (主图 ↔ 三个面板) ==========
+        const subChartList = panels.map(p => p.chart);
+        let isSyncingTimeRange = false;
+
+        function applyLogicalRange(logicalRange, source) {
+            if (isSyncingTimeRange || !logicalRange) return;
+            isSyncingTimeRange = true;
+            if (source !== chart) chart.timeScale().setVisibleLogicalRange(logicalRange);
+            subChartList.filter(c => c !== source).forEach(c => c.timeScale().setVisibleLogicalRange(logicalRange));
+            isSyncingTimeRange = false;
+        }
+
+        chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, chart));
+        subChartList.forEach(sub => sub.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, sub)));
+
+        chart.timeScale().fitContent();
+        subChartList.forEach(sub => sub.timeScale().fitContent());
+
+        // 响应式宽度
+        window.addEventListener('resize', () => {
+            chart.applyOptions({ width: chartContainer.clientWidth });
+            panels.forEach(p => p.chart.applyOptions({ width: p.container.clientWidth }));
+        });
+
+        // ========== 跨面板十字光标同步(垂直贯穿 + 各副图水平影线) ==========
+        let isSyncingCrosshair = false;
+
+        // 同步除触发源外所有面板的十字光标, 并更新成交量数值标签
+        function syncSubCrosshairs(time, exceptMeta) {
+            panels.forEach(p => {
+                if (p === exceptMeta) return;
+                if (time && (time in p.lookup) && p.primarySeries) {
+                    p.chart.setCrosshairPosition(p.lookup[time], time, p.primarySeries);
+                    if (p.showVolumeLabel) {
+                        p.valueLabel.textContent = '成交量: ' + formatVolume(p.lookup[time]);
+                        p.valueLabel.style.display = 'block';
+                    }
                 } else {
-                    meta.chart.clearCrosshairPosition();
-                    if (meta.label) meta.label.style.display = 'none';
+                    p.chart.clearCrosshairPosition();
+                    p.valueLabel.style.display = 'none';
                 }
             });
         }
 
-        // 主图 -> 子图
+        // 主图 -> 各面板
         chart.subscribeCrosshairMove((param) => {
             if (isSyncingCrosshair) return;
             isSyncingCrosshair = true;
-            syncAllSubCrosshairs(param.time, null);
+            syncSubCrosshairs(param.time, null);
             updateTooltip(param, candlestickSeries);
             isSyncingCrosshair = false;
         });
 
-        // 各子图 -> 主图 + 其他子图
-        subChartMeta.forEach(meta => {
-            meta.chart.subscribeCrosshairMove((param) => {
+        // 各面板 -> 主图 + 其他面板
+        panels.forEach(p => {
+            p.chart.subscribeCrosshairMove((param) => {
                 if (isSyncingCrosshair) return;
                 isSyncingCrosshair = true;
                 if (param.time) {
                     const candleAt = candleData.find(d => d.time === param.time);
                     if (candleAt) chart.setCrosshairPosition(candleAt.close, param.time, candlestickSeries);
-                    syncAllSubCrosshairs(param.time, meta);
-                    if (param.time in meta.lookup && meta.label && meta.updater) meta.updater(meta.lookup[param.time]);
+                    syncSubCrosshairs(param.time, p);
+                    if ((param.time in p.lookup) && p.showVolumeLabel) {
+                        p.valueLabel.textContent = '成交量: ' + formatVolume(p.lookup[param.time]);
+                        p.valueLabel.style.display = 'block';
+                    }
                 } else {
                     chart.clearCrosshairPosition();
-                    syncAllSubCrosshairs(null, meta);
-                    if (meta.label) meta.label.style.display = 'none';
+                    syncSubCrosshairs(null, p);
+                    p.valueLabel.style.display = 'none';
                 }
                 const mainParam = { ...param, seriesData: new Map([[candlestickSeries, candleData.find(d => d.time === param.time)]]) };
                 updateTooltip(mainParam, candlestickSeries);
@@ -627,20 +667,12 @@
             tooltip.style.display = 'block';
         }
 
-        // 成交量标签更新函数
-        function updateVolumeLabel(volume) {
-            // 格式化成交量数值
-            let formattedVolume;
-            if (volume >= 100000000) {
-                formattedVolume = (volume / 100000000).toFixed(2) + '亿';
-            } else if (volume >= 10000) {
-                formattedVolume = (volume / 10000).toFixed(2) + '万';
-            } else {
-                formattedVolume = volume.toLocaleString();
-            }
 
-            volumeLabel.textContent = `成交量: ${formattedVolume}`;
-            volumeLabel.style.display = 'block';
+        // 成交量数值格式化(亿/万)
+        function formatVolume(volume) {
+            if (volume >= 100000000) return (volume / 100000000).toFixed(2) + '亿';
+            if (volume >= 10000) return (volume / 10000).toFixed(2) + '万';
+            return volume.toLocaleString();
         }
 
 
