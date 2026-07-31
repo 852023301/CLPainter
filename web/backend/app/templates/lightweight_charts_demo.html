@@ -408,6 +408,8 @@
         // 时间 -> 数值 查找表(用于跨面板十字光标定位)
         const volumeLookup = {};
         volumeData.forEach(v => { volumeLookup[v.time] = v.value; });
+        const volumeColorLookup = {};
+        volumeData.forEach(v => { volumeColorLookup[v.time] = v.color; });
         const bollLookup = {};
         candleData.forEach(v => { bollLookup[v.time] = v.close; });
         const rsiLookup = {};
@@ -500,7 +502,7 @@
                 meta.labelRenderer = (t) => {
                     const vl = meta.valueLabel;
                     if (!(t in volumeLookup)) { vl.style.display = 'none'; return; }
-                    vl.textContent = '成交量: ' + formatVolume(volumeLookup[t]);
+                    vl.innerHTML = '成交量: <span style="color:' + (volumeColorLookup[t] || '#333') + ';font-weight:bold">' + formatVolume(volumeLookup[t]) + '</span>';
                     vl.style.display = 'block';
                 };
             } else if (indicator === 'boll') {
@@ -520,8 +522,8 @@
                 meta.labelRenderer = (t) => {
                     const vl = meta.valueLabel; const close = bollLookup[t];
                     if (close == null) { vl.style.display = 'none'; return; }
-                    const bands = (bollData || []).map(it => { const m = _bollMaps[it.key]; return (m && (t in m)) ? it.key.replace('BOLL_', '') + ':' + m[t].toFixed(currentPrecision) : null; }).filter(Boolean);
-                    vl.textContent = '收盘:' + close.toFixed(currentPrecision) + (bands.length ? '  ' + bands.join('  ') : '');
+                    const bands = (bollData || []).map(it => { const m = _bollMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key.replace('BOLL_', '') + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
+                    vl.innerHTML = '<span style="color:#666">收盘:' + close.toFixed(currentPrecision) + '</span>' + (bands.length ? '  ' + bands.join('  ') : '');
                     vl.style.display = 'block';
                 };
             } else if (indicator === 'rsi') {
@@ -540,9 +542,9 @@
                 (rsiData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _rsiMaps[it.key] = m; });
                 meta.labelRenderer = (t) => {
                     const vl = meta.valueLabel;
-                    const parts = (rsiData || []).map(it => { const m = _rsiMaps[it.key]; return (m && (t in m)) ? it.key + ':' + m[t].toFixed(currentPrecision) : null; }).filter(Boolean);
+                    const parts = (rsiData || []).map(it => { const m = _rsiMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
                     if (!parts.length) { vl.style.display = 'none'; return; }
-                    vl.textContent = parts.join('  ');
+                    vl.innerHTML = parts.join('  ');
                     vl.style.display = 'block';
                 };
             } else if (indicator === 'macd') {
@@ -559,10 +561,13 @@
                 meta.labelRenderer = (t) => {
                     const s = macdStatLookup[t]; const vl = meta.valueLabel;
                     if (!s) { vl.style.display = 'none'; return; }
-                    const col = (txt, v) => '<span style="color:' + (v >= 0 ? '#ef5350' : '#26a69a') + ';font-weight:bold">' + txt + '</span>';
-                    vl.innerHTML = 'MACD ' + col(s.macd.toFixed(currentPrecision), s.macd) + '  连增 ' + col((s.lianzeng > 0 ? '+' : '') + s.lianzeng, s.lianzeng)
-                        + '  ' + (s.area >= 0 ? '红柱面积 ' : '绿柱面积 ') + Math.abs(s.area).toFixed(1) + '  平均 ' + Math.abs(s.avg).toFixed(1)
-                        + '  DIFF ' + s.dif.toFixed(currentPrecision) + '  DEA ' + s.dea.toFixed(currentPrecision);
+                    const sp = (txt, color) => '<span style="color:' + color + ';font-weight:bold">' + txt + '</span>';
+                    const rg = (v) => v >= 0 ? '#ef5350' : '#26a69a';
+                    vl.innerHTML = sp('MACD ' + s.macd.toFixed(currentPrecision), rg(s.macd))
+                        + '  ' + sp('连增 ' + (s.lianzeng > 0 ? '+' : '') + s.lianzeng, rg(s.lianzeng))
+                        + '  ' + sp((s.area >= 0 ? '红柱面积 ' : '绿柱面积 ') + Math.abs(s.area).toFixed(1) + '  平均 ' + Math.abs(s.avg).toFixed(1), rg(s.area))
+                        + '  ' + sp('DIFF ' + s.dif.toFixed(currentPrecision), '#ff9800')
+                        + '  ' + sp('DEA ' + s.dea.toFixed(currentPrecision), '#5b9bd5');
                     vl.style.display = 'block';
                 };
             }
