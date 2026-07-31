@@ -505,9 +505,9 @@
                 Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
                 const first = lines[firstKey];
                 if (first) {
-                    first.createPriceLine({ price: 80, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '80' });
-                    first.createPriceLine({ price: 50, color: 'rgba(120,120,120,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '50' });
-                    first.createPriceLine({ price: 20, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '20' });
+                    first.createPriceLine({ price: 80, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '80' });
+                    first.createPriceLine({ price: 50, color: 'rgba(120,120,120,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '50' });
+                    first.createPriceLine({ price: 20, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '20' });
                 }
                 meta.primarySeries = first || null;
                 meta.lookup = rsiLookup;
