@@ -40,6 +40,125 @@ def calculate_macd(
     }
 
 
+# MACD 4-color palette: TongDaXin uses RED/WHITE/GREEN/WHITE; pure WHITE is invisible
+# on a white background, so the weakening bars use light tints instead.
+_MACD_RED_STRONG = '#ef5350'      # MACD>prev and MACD>0   (rising positive)
+_MACD_RED_LIGHT = '#f4a8a4'      # MACD<=prev and MACD>0  (falling positive)
+_MACD_GREEN_STRONG = '#00a800'   # MACD<prev and MACD<0   (falling negative)
+_MACD_GREEN_LIGHT = '#9fd6a8'    # MACD>=prev and MACD<0  (rising negative)
+
+
+def calculate_macd_indicator(
+    close: pd.Series,
+    short: int = 10,
+    long: int = 21,
+    mid: int = 7,
+    precision: int = 2,
+) -> Dict[str, Union[List, Dict]]:
+    """
+    TongDaXin-style MACD (DIFF / DEA / MACD histogram) preserving every feature of the
+    reference formula: 4-color histogram, red/green column area (x100) with block length
+    and average area, lianzeng (consecutive same-trend bars via turning-point detection),
+    and area text annotations at sign flips and at the last bar.
+
+    Returns {"lines":[DIFF,DEA], "stats":[per-bar], "markers":[area annotations]}.
+    """
+    import numpy as np
+
+    ema_short = close.ewm(span=short, adjust=False).mean()
+    ema_long = close.ewm(span=long, adjust=False).mean()
+    dif = ema_short - ema_long
+    dea = dif.ewm(span=mid, adjust=False).mean()
+    macd = (dif - dea) * 2
+
+    macd_prev = macd.shift(1)
+    pos = macd > 0
+    block = (pos != pos.shift(1)).cumsum()  # id of each same-sign run
+
+    block_sum = macd.groupby(block).cumsum()        # running sum within run
+    block_len = macd.groupby(block).cumcount() + 1  # length within run
+
+    red_area = (block_sum * 100).where(pos, 0.0)
+    green_area = (block_sum * 100).where(~pos, 0.0)
+
+    mm1 = macd.shift(1)
+    mm2 = macd.shift(2)
+    is_turn = (np.maximum(macd.values, mm2.values) < mm1.values) | (np.minimum(macd.values, mm2.values) > mm1.values)
+    is_turn_s = pd.Series(is_turn, index=macd.index).fillna(False)
+    idx = pd.Series(np.arange(len(macd)), index=macd.index)
+    last_turn = idx.where(is_turn_s).ffill()
+    same_len = (idx - last_turn).fillna(idx) + 1  # BARSLAST(IS_TURNING_POINT)+1
+    lianzeng = same_len.where(macd > macd.shift(1), -same_len)
+
+    times = list(close.index)
+    macd_v = macd.tolist()
+    prev_v = macd_prev.tolist()
+    dif_v = dif.tolist()
+    dea_v = dea.tolist()
+    red_v = red_area.tolist()
+    green_v = green_area.tolist()
+    len_v = block_len.tolist()
+    lian_v = lianzeng.tolist()
+
+    stats = []
+    lines_diff = []
+    lines_dea = []
+    for i, t in enumerate(times):
+        m = macd_v[i]
+        mp = prev_v[i]
+        if mp != mp:  # NaN (first bar)
+            color = _MACD_RED_STRONG if m > 0 else (_MACD_GREEN_STRONG if m < 0 else _MACD_GREEN_LIGHT)
+        elif m > 0:
+            color = _MACD_RED_STRONG if m > mp else _MACD_RED_LIGHT
+        elif m < 0:
+            color = _MACD_GREEN_STRONG if m < mp else _MACD_GREEN_LIGHT
+        else:
+            color = _MACD_GREEN_LIGHT
+        area = red_v[i] if m > 0 else green_v[i]
+        avg = (area / len_v[i]) if len_v[i] else 0.0
+        stats.append({
+            "time": str(t),
+            "dif": round(float(dif_v[i]), precision),
+            "dea": round(float(dea_v[i]), precision),
+            "macd": round(float(m), precision),
+            "color": color,
+            "lianzeng": int(lian_v[i]),
+            "area": round(float(area), 2),
+            "avg": round(float(avg), 2),
+        })
+        lines_diff.append({"time": str(t), "value": round(float(dif_v[i]), precision)})
+        lines_dea.append({"time": str(t), "value": round(float(dea_v[i]), precision)})
+
+    markers = []
+    prev_pos = None
+    for i, t in enumerate(times):
+        cur_pos = macd_v[i] > 0
+        if prev_pos is True and not cur_pos:
+            markers.append({"time": str(t), "position": "aboveBar", "color": _MACD_RED_STRONG,
+                            "shape": "circle", "text": f"{red_v[i-1]:.1f}"})
+        elif prev_pos is False and cur_pos:
+            markers.append({"time": str(t), "position": "belowBar", "color": _MACD_GREEN_STRONG,
+                            "shape": "circle", "text": f"{abs(green_v[i-1]):.1f}"})
+        prev_pos = cur_pos
+    last_t = str(times[-1])
+    lm = macd_v[-1]
+    if not markers or markers[-1]["time"] != last_t:
+        if lm > 0:
+            markers.append({"time": last_t, "position": "aboveBar", "color": _MACD_RED_STRONG,
+                            "shape": "circle", "text": f"{red_v[-1]:.1f}"})
+        elif lm < 0:
+            markers.append({"time": last_t, "position": "belowBar", "color": _MACD_GREEN_STRONG,
+                            "shape": "circle", "text": f"{abs(green_v[-1]):.1f}"})
+
+    return {
+        "lines": [
+            {"key": "DIFF", "color": "#ff9800", "values": lines_diff},
+            {"key": "DEA", "color": "#5b9bd5", "values": lines_dea},
+        ],
+        "stats": stats,
+        "markers": markers,
+    }
+
 def calculate_ma(close: pd.Series, day_count: int) -> pd.Series:
     """
     计算移动平均线 (MA)

@@ -68,10 +68,11 @@
         .panel-value-label {
             position: absolute;
             top: 8px;
-            left: 96px;
+            left: 140px;
             z-index: 1000;
             font-size: 12px;
             color: #333;
+            white-space: nowrap;
             display: none;
             pointer-events: none;
         }
@@ -190,6 +191,10 @@
         <select id="panelSelect2" class="panel-select"></select>
         <div id="panelValue2" class="panel-value-label"></div>
     </div>
+    <div id="panel3" class="indicator-container">
+        <select id="panelSelect3" class="panel-select"></select>
+        <div id="panelValue3" class="panel-value-label"></div>
+    </div>
 </div>
 
 <script>
@@ -211,6 +216,7 @@
     const xdData = {{ xd_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
+        const macdData = {{ macd_data | safe }};  // MACD(10,21,7): {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
         const maData = {{ ma_data | safe }};      // 后端计算的 MA 列表:   [{key, label, color, values:[{time,value}]}]
         const bollData = {{ boll_data | safe }};  // 后端计算的 BOLL 列表: [{key, label, color, values:[{time,value}]}]
         const rsiData = {{ rsi_data | safe }};    // 后端计算的 RSI 列表:  [{key, label, color, values:[{time,value}]}]
@@ -406,6 +412,9 @@
         candleData.forEach(v => { bollLookup[v.time] = v.close; });
         const rsiLookup = {};
         (rsiData[0] || { values: [] }).values.forEach(v => { rsiLookup[v.time] = v.value; });
+        const macdLookup = {};
+        const macdStatLookup = {};
+        (macdData.stats || []).forEach(s => { macdLookup[s.time] = s.macd; macdStatLookup[s.time] = s; });
 
         // 将指标序列对齐到完整 K 线时间轴(热身期补空白点), 使子图逻辑索引与主图严格一致,
         // 杜绝副图整体偏移(如 RSI 偏左一个交易日).
@@ -459,8 +468,10 @@
         // 指标注册表
         const INDICATOR_LABEL = { volume: '成交量', boll: 'BOLL(26,2)', rsi: 'RSI(6,12,24)' };
         const INDICATOR_HEIGHT = { volume: 150, boll: 120, rsi: 120 };
-        const INDICATOR_KEYS = ['volume', 'boll', 'rsi'];
-        const DEFAULT_PANELS = ['volume', 'boll', 'rsi'];
+        const INDICATOR_KEYS = ['volume', 'boll', 'rsi', 'macd'];
+        const DEFAULT_PANELS = ['volume', 'boll', 'rsi', 'macd'];
+        INDICATOR_LABEL.macd = 'MACD(10,21,7)';
+        INDICATOR_HEIGHT.macd = 150;
         const panels = [];  // 各面板运行时状态
 
         // 在指定面板上(重新)构建某指标的系列; 切换指标时先移除旧系列(含依附其上的价格线)
@@ -470,7 +481,7 @@
             meta.addedSeries = [];
             meta.primarySeries = null;
             meta.lookup = {};
-            meta.showVolumeLabel = false;
+            meta.labelRenderer = null;
             valueLabel.style.display = 'none';
 
             const h = INDICATOR_HEIGHT[indicator] || 120;
@@ -486,7 +497,12 @@
                 meta.addedSeries.push(s);
                 meta.primarySeries = s;
                 meta.lookup = volumeLookup;
-                meta.showVolumeLabel = true;
+                meta.labelRenderer = (t) => {
+                    const vl = meta.valueLabel;
+                    if (!(t in volumeLookup)) { vl.style.display = 'none'; return; }
+                    vl.textContent = '成交量: ' + formatVolume(volumeLookup[t]);
+                    vl.style.display = 'block';
+                };
             } else if (indicator === 'boll') {
                 const cs = chart.addCandlestickSeries({
                     upColor: 'rgba(239, 83, 80, 0.5)', downColor: 'rgba(38, 166, 154, 0.5)',
@@ -499,6 +515,15 @@
                 meta.lookup = bollLookup;
                 const lines = buildSubSeries(chart, bollData);
                 Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
+                const _bollMaps = {};
+                (bollData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _bollMaps[it.key] = m; });
+                meta.labelRenderer = (t) => {
+                    const vl = meta.valueLabel; const close = bollLookup[t];
+                    if (close == null) { vl.style.display = 'none'; return; }
+                    const bands = (bollData || []).map(it => { const m = _bollMaps[it.key]; return (m && (t in m)) ? it.key.replace('BOLL_', '') + ':' + m[t].toFixed(currentPrecision) : null; }).filter(Boolean);
+                    vl.textContent = '收盘:' + close.toFixed(currentPrecision) + (bands.length ? '  ' + bands.join('  ') : '');
+                    vl.style.display = 'block';
+                };
             } else if (indicator === 'rsi') {
                 const lines = buildSubSeries(chart, rsiData);
                 const firstKey = Object.keys(lines)[0];
@@ -511,6 +536,35 @@
                 }
                 meta.primarySeries = first || null;
                 meta.lookup = rsiLookup;
+                const _rsiMaps = {};
+                (rsiData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _rsiMaps[it.key] = m; });
+                meta.labelRenderer = (t) => {
+                    const vl = meta.valueLabel;
+                    const parts = (rsiData || []).map(it => { const m = _rsiMaps[it.key]; return (m && (t in m)) ? it.key + ':' + m[t].toFixed(currentPrecision) : null; }).filter(Boolean);
+                    if (!parts.length) { vl.style.display = 'none'; return; }
+                    vl.textContent = parts.join('  ');
+                    vl.style.display = 'block';
+                };
+            } else if (indicator === 'macd') {
+                const _hist = chart.addHistogramSeries({ priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) }, lastValueVisible: false, priceLineVisible: false });
+                const _hmap = {};
+                (macdData.stats || []).forEach(s => { _hmap[s.time] = { v: s.macd, c: s.color }; });
+                _hist.setData(candleData.map(k => (k.time in _hmap ? { time: k.time, value: _hmap[k.time].v, color: _hmap[k.time].c } : { time: k.time, value: 0 })));
+                meta.addedSeries.push(_hist);
+                if ((macdData.markers || []).length) _hist.setMarkers(macdData.markers);
+                const _mlines = buildSubSeries(chart, macdData.lines || []);
+                Object.keys(_mlines).forEach(k => meta.addedSeries.push(_mlines[k]));
+                meta.primarySeries = _hist;
+                meta.lookup = macdLookup;
+                meta.labelRenderer = (t) => {
+                    const s = macdStatLookup[t]; const vl = meta.valueLabel;
+                    if (!s) { vl.style.display = 'none'; return; }
+                    const col = (txt, v) => '<span style="color:' + (v >= 0 ? '#ef5350' : '#26a69a') + ';font-weight:bold">' + txt + '</span>';
+                    vl.innerHTML = 'MACD ' + col(s.macd.toFixed(currentPrecision), s.macd) + '  连增 ' + col((s.lianzeng > 0 ? '+' : '') + s.lianzeng, s.lianzeng)
+                        + '  ' + (s.area >= 0 ? '红柱面积 ' : '绿柱面积 ') + Math.abs(s.area).toFixed(1) + '  平均 ' + Math.abs(s.avg).toFixed(1)
+                        + '  DIFF ' + s.dif.toFixed(currentPrecision) + '  DEA ' + s.dea.toFixed(currentPrecision);
+                    vl.style.display = 'block';
+                };
             }
 
             meta.indicator = indicator;
@@ -529,7 +583,7 @@
             const valueLabel = document.getElementById('panelValue' + idx);
             const subChart = createSubChart(container, INDICATOR_HEIGHT.volume);
 
-            const meta = { idx, container, select, valueLabel, chart: subChart, indicator: null, addedSeries: [], primarySeries: null, lookup: {}, showVolumeLabel: false };
+            const meta = { idx, container, select, valueLabel, chart: subChart, indicator: null, addedSeries: [], primarySeries: null, lookup: {} };
 
             INDICATOR_KEYS.forEach(key => {
                 const opt = document.createElement('option');
@@ -552,7 +606,7 @@
             return meta;
         }
 
-        for (let i = 0; i < 3; i++) setupPanel(i);
+        for (let i = 0; i < 4; i++) setupPanel(i);
 
         // ========== 时间轴/滚动同步 (主图 ↔ 三个面板) ==========
         const subChartList = panels.map(p => p.chart);
@@ -587,10 +641,7 @@
                 if (p === exceptMeta) return;
                 if (time && (time in p.lookup) && p.primarySeries) {
                     p.chart.setCrosshairPosition(p.lookup[time], time, p.primarySeries);
-                    if (p.showVolumeLabel) {
-                        p.valueLabel.textContent = '成交量: ' + formatVolume(p.lookup[time]);
-                        p.valueLabel.style.display = 'block';
-                    }
+                    if (p.labelRenderer) p.labelRenderer(time);
                 } else {
                     p.chart.clearCrosshairPosition();
                     p.valueLabel.style.display = 'none';
@@ -616,10 +667,7 @@
                     const candleAt = candleData.find(d => d.time === param.time);
                     if (candleAt) chart.setCrosshairPosition(candleAt.close, param.time, candlestickSeries);
                     syncSubCrosshairs(param.time, p);
-                    if ((param.time in p.lookup) && p.showVolumeLabel) {
-                        p.valueLabel.textContent = '成交量: ' + formatVolume(p.lookup[param.time]);
-                        p.valueLabel.style.display = 'block';
-                    }
+                    if (p.labelRenderer) p.labelRenderer(param.time);
                 } else {
                     chart.clearCrosshairPosition();
                     syncSubCrosshairs(null, p);

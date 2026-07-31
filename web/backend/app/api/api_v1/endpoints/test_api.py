@@ -8,7 +8,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list
-from ....toolbox.calculate import calculate_boll_list, calculate_ma_colors, calculate_ma_list, calculate_rsi_list
+from ....toolbox.calculate import calculate_boll_list, calculate_macd_indicator, calculate_ma_colors, calculate_ma_list, calculate_rsi_list
 
 import pandas as pd
 
@@ -430,6 +430,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             {"key": item["key"], "label": item["key"], "color": rsi_colors[i], "values": item["values"]}
             for i, item in enumerate(rsi_list_raw)
         ]
+        macd_indicator = calculate_macd_indicator(close_series, precision=precision)
         template_name = "lightweight_charts_demo.html"
 
         # 尝试直接渲染模板
@@ -447,6 +448,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 ma_data=json.dumps(ma_list, ensure_ascii=False),  # 传递精度参数到模板
                 boll_data=json.dumps(boll_list, ensure_ascii=False),
                 rsi_data=json.dumps(rsi_list, ensure_ascii=False),
+                macd_data=json.dumps(macd_indicator, ensure_ascii=False),
             )
             return HTMLResponse(content=html_content)
         except Exception as render_error:
