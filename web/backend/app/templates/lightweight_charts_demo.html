@@ -473,7 +473,7 @@
         const INDICATOR_KEYS = ['volume', 'boll', 'rsi', 'macd'];
         const DEFAULT_PANELS = ['volume', 'boll', 'rsi', 'macd'];
         INDICATOR_LABEL.macd = 'MACD(10,21,7)';
-        INDICATOR_HEIGHT.macd = 120;
+        INDICATOR_HEIGHT.macd = 180;
         const panels = [];  // 各面板运行时状态
 
         // 在指定面板上(重新)构建某指标的系列; 切换指标时先移除旧系列(含依附其上的价格线)
@@ -556,20 +556,18 @@
                 _hist.setData(candleData.map(k => (k.time in _hmap ? { time: k.time, value: _hmap[k.time].v, color: _hmap[k.time].c } : { time: k.time, value: 0 })));
                 meta.addedSeries.push(_hist);
                 if ((macdData.markers || []).length) _hist.setMarkers(macdData.markers);
-                chart.priceScale('right').applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
+                chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
                 const _mlines = buildSubSeries(chart, macdData.lines || []);
                 Object.keys(_mlines).forEach(k => meta.addedSeries.push(_mlines[k]));
-                // 让 DIFF/DEA 线也使用与柱子相同的价格范围(见下方 _macdAsp), 这样:
-                //   - 同一刻度的【并集范围】 == 柱子范围, 线条更大极值不再撑大刻度 → 柱子更高;
-                //   - 线条超出部分裁切在副图边缘(不显示), 符合“线条可越界、不压制柱子”的需求。
+                // DIFF/DEA 线也挂同一 provider(见下方 _macdAsp), 与柱子共用同一价格范围。
+                // 范围 = 可见(柱子+DIFF+DEA)极值并强制含0 → 线条始终完整可见, 不再被裁切。
+                // 副图加高到180px 以补偿“含线条后柱子占比变小”的问题。
                 meta.primarySeries = _hist;
-                // ---- MACD 副图: autoscaleInfoProvider(序列级) 强制范围含 0, 同时收紧范围让柱子更高 ----
-                // v4.1.0 关键事实(已查 typings):
-                //   - IPriceScaleApi 只有 applyOptions/options/width, 没有 setVisiblePriceRange(那是 v5)。
-                //   - autoscaleInfoProvider 是【序列选项】, 入参是 () => AutoscaleInfo(返回库计算的默认范围)。
-                //   - autoScale 必须为 true 才会调用 provider; 之前 autoScale:false 让 provider 永不触发(探针证实)。
+                // ---- MACD 副图: autoscaleInfoProvider(序列级) 范围 = 可见(柱子+DIFF+DEA)极值, 强制含 0 ----
+                // v4.1.0 关键事实(已查 typings): IPriceScaleApi 只有 applyOptions/options/width, 无 setVisiblePriceRange(那是 v5)。
+                //   autoscaleInfoProvider 是【序列选项】, 入参 () => AutoscaleInfo; autoScale 必须为 true 才会调用。
                 // 反转根因: 库默认范围在“全正/全负”窗口不含 0 → 柱子翻转。这里强制 min≤0≤max 根除之。
-                // 柱高: 范围越窄柱越高。以柱子极值为基准并强制含 0; 再按需收窄(留 0.08 余量)。
+                // 线条可见性: 把 DIFF/DEA 极值也纳入范围 → 线条完整显示; 含线条后柱子占比变小, 用 180px 副图补偿。
                 const _lineMaps = {};
                 (macdData.lines || []).forEach(function (ln) { const m = {}; (ln.values || []).forEach(v => { m[v.time] = v.value; }); _lineMaps[ln.key] = m; });
                 function _macdAsp(base) {
@@ -585,7 +583,7 @@
                                 var t = candleData[i].time;
                                 var hv = _hmap[t];
                                 if (hv) { if (hv.v < mn) mn = hv.v; if (hv.v > mx) mx = hv.v; }
-                                // 纳入 DIFF/DEA, 但用柱子极值主导: 这里只统计柱子, 让线条贴边(柱子更高)
+                                Object.keys(_lineMaps).forEach(function (k) { var v = _lineMaps[k][t]; if (typeof v === 'number') { if (v < mn) mn = v; if (v > mx) mx = v; } });
                             }
                             if (isFinite(mn) && isFinite(mx)) { lo = mn; hi = mx; have = true; }
                         }
