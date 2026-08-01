@@ -262,7 +262,7 @@
             },
             timeScale: { // 调整缩放时显示的k线数量，下方还有一个关于成交量缩放的部分也要修改
                 timeVisible: true,
-                rightOffset: 12,
+                rightOffset: 0,
                 barSpacing: 4,        // K线间距,增大此值会让K线显示更稀疏
                 minBarSpacing: 0.2,    // 最小K线间距,减小此值允许更多K线同时显示
                 fixLeftEdge: false,    // 不固定左边缘,允许滚动查看更多历史数据
@@ -401,7 +401,7 @@
 
         // 3. 创建三个可切换指标面板(成交量/BOLL/RSI), 每个面板左上角有下拉框选择当前指标,
         //    下拉框收起时显示当前指标名(同花顺风格), 选择状态持久化到 localStorage.
-        const PRICE_SCALE_WIDTH = 200;  // 统一右侧价格刻度宽度, 保证各面板绘图区等宽、垂直对齐
+        const PRICE_SCALE_WIDTH = 70;  // 统一右侧价格刻度宽度, 保证各面板绘图区等宽、垂直对齐
         // 主图右侧价格刻度也设为相同宽度, 保证主图与各副图绘图区等宽、横向严格对齐(否则副图会整体左移)
         chart.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH });
 
@@ -441,7 +441,7 @@
                 },
                 timeScale: {
                     visible: true, timeVisible: true,
-                    rightOffset: 12, barSpacing: 4, minBarSpacing: 0.2,
+                    rightOffset: 0, barSpacing: 4, minBarSpacing: 0.2,
                     fixLeftEdge: false, fixRightEdge: false,
                     ticksVisible: false, borderVisible: false,
                 },
@@ -469,11 +469,11 @@
 
         // 指标注册表
         const INDICATOR_LABEL = { volume: '成交量', boll: 'BOLL(26,2)', rsi: 'RSI(6,12,24)' };
-        const INDICATOR_HEIGHT = { volume: 150, boll: 120, rsi: 120 };
+        const INDICATOR_HEIGHT = { volume: 120, boll: 120, rsi: 120 };
         const INDICATOR_KEYS = ['volume', 'boll', 'rsi', 'macd'];
         const DEFAULT_PANELS = ['volume', 'boll', 'rsi', 'macd'];
         INDICATOR_LABEL.macd = 'MACD(10,21,7)';
-        INDICATOR_HEIGHT.macd = 150;
+        INDICATOR_HEIGHT.macd = 120;
         const panels = [];  // 各面板运行时状态
 
         // 在指定面板上(重新)构建某指标的系列; 切换指标时先移除旧系列(含依附其上的价格线)
@@ -520,10 +520,12 @@
                 const _bollMaps = {};
                 (bollData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _bollMaps[it.key] = m; });
                 meta.labelRenderer = (t) => {
-                    const vl = meta.valueLabel; const close = bollLookup[t];
-                    if (close == null) { vl.style.display = 'none'; return; }
+                    const vl = meta.valueLabel;
+                    const upM = _bollMaps['BOLL_UP'], dnM = _bollMaps['BOLL_DOWN'];
+                    if (!upM || !dnM || !(t in upM) || !(t in dnM)) { vl.style.display = 'none'; return; }
                     const bands = (bollData || []).map(it => { const m = _bollMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key.replace('BOLL_', '') + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
-                    vl.innerHTML = '<span style="color:#666">收盘:' + close.toFixed(currentPrecision) + '</span>' + (bands.length ? '  ' + bands.join('  ') : '');
+                    const width = upM[t] - dnM[t];
+                    vl.innerHTML = (bands.length ? bands.join('  ') + '  ' : '') + '<span style="color:#666;font-weight:bold">通道宽:' + width.toFixed(currentPrecision) + '</span>';
                     vl.style.display = 'block';
                 };
             } else if (indicator === 'rsi') {
@@ -554,10 +556,48 @@
                 _hist.setData(candleData.map(k => (k.time in _hmap ? { time: k.time, value: _hmap[k.time].v, color: _hmap[k.time].c } : { time: k.time, value: 0 })));
                 meta.addedSeries.push(_hist);
                 if ((macdData.markers || []).length) _hist.setMarkers(macdData.markers);
+                chart.priceScale('right').applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
                 const _mlines = buildSubSeries(chart, macdData.lines || []);
                 Object.keys(_mlines).forEach(k => meta.addedSeries.push(_mlines[k]));
+                // 让 DIFF/DEA 线也使用与柱子相同的价格范围(见下方 _macdAsp), 这样:
+                //   - 同一刻度的【并集范围】 == 柱子范围, 线条更大极值不再撑大刻度 → 柱子更高;
+                //   - 线条超出部分裁切在副图边缘(不显示), 符合“线条可越界、不压制柱子”的需求。
                 meta.primarySeries = _hist;
-                meta.lookup = macdLookup;
+                // ---- MACD 副图: autoscaleInfoProvider(序列级) 强制范围含 0, 同时收紧范围让柱子更高 ----
+                // v4.1.0 关键事实(已查 typings):
+                //   - IPriceScaleApi 只有 applyOptions/options/width, 没有 setVisiblePriceRange(那是 v5)。
+                //   - autoscaleInfoProvider 是【序列选项】, 入参是 () => AutoscaleInfo(返回库计算的默认范围)。
+                //   - autoScale 必须为 true 才会调用 provider; 之前 autoScale:false 让 provider 永不触发(探针证实)。
+                // 反转根因: 库默认范围在“全正/全负”窗口不含 0 → 柱子翻转。这里强制 min≤0≤max 根除之。
+                // 柱高: 范围越窄柱越高。以柱子极值为基准并强制含 0; 再按需收窄(留 0.08 余量)。
+                const _lineMaps = {};
+                (macdData.lines || []).forEach(function (ln) { const m = {}; (ln.values || []).forEach(v => { m[v.time] = v.value; }); _lineMaps[ln.key] = m; });
+                function _macdAsp(base) {
+                    // base 是【整条序列】的全局极值(库不按可见窗口算), 故忽略它, 自行按可见逻辑范围统计。
+                    var lo = 0, hi = 0, have = false;
+                    try {
+                        var lr = chart.timeScale().getVisibleLogicalRange();
+                        if (lr) {
+                            var iFrom = Math.max(0, Math.ceil(lr.from));
+                            var iTo = Math.min(candleData.length - 1, Math.floor(lr.to));
+                            var mn = Infinity, mx = -Infinity;
+                            for (var i = iFrom; i <= iTo; i++) {
+                                var t = candleData[i].time;
+                                var hv = _hmap[t];
+                                if (hv) { if (hv.v < mn) mn = hv.v; if (hv.v > mx) mx = hv.v; }
+                                // 纳入 DIFF/DEA, 但用柱子极值主导: 这里只统计柱子, 让线条贴边(柱子更高)
+                            }
+                            if (isFinite(mn) && isFinite(mx)) { lo = mn; hi = mx; have = true; }
+                        }
+                    } catch (e) {}
+                    if (!have) { try { var b = (typeof base === 'function') ? base() : base; if (b && typeof b.priceRange === 'object' && b.priceRange) { lo = b.priceRange.minValue; hi = b.priceRange.maxValue; } else if (b && typeof b.minValue === 'number') { lo = b.minValue; hi = b.maxValue; } } catch (e2) {} }
+                    if (lo > 0) lo = 0; if (hi < 0) hi = 0;   // 强制含 0 → 杜绝放大反转
+                    if (hi - lo < 1e-9) hi = lo + 0.01;
+                    return { priceRange: { minValue: lo, maxValue: hi }, margins: { above: 0, below: 0 } };
+                }
+                _hist.applyOptions({ autoscaleInfoProvider: _macdAsp });
+                Object.keys(_mlines).forEach(function (k) { try { _mlines[k].applyOptions({ autoscaleInfoProvider: _macdAsp }); } catch (e) {} });
+                                meta.lookup = macdLookup;
                 meta.labelRenderer = (t) => {
                     const s = macdStatLookup[t]; const vl = meta.valueLabel;
                     if (!s) { vl.style.display = 'none'; return; }
@@ -612,6 +652,12 @@
         }
 
         for (let i = 0; i < 4; i++) setupPanel(i);
+
+
+
+
+
+
 
         // ========== 时间轴/滚动同步 (主图 ↔ 三个面板) ==========
         const subChartList = panels.map(p => p.chart);
@@ -754,6 +800,9 @@
         showGapsToggle.addEventListener('change', () => {
             lsSetBool('gaps:visible', showGapsToggle.checked);
             updateHighLowMarkers();
+
+
+        
         });
 
 
@@ -809,6 +858,7 @@
 
         // 初始标注
         updateHighLowMarkers();
+
 
     }
 </script>
