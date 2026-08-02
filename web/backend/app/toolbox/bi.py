@@ -212,7 +212,7 @@ class BiBase:
 
 
 @dataclass
-class FakeBiFirst(BiBase):
+class FakeBiFront(BiBase):
     """Fake first笔数据结构"""
     all_klines: Optional[List[MergedKLine]] = None
 
@@ -615,7 +615,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         else:
             raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
 
-    def make_fake_first_bi():
+    def make_fake_front_bi():
         nonlocal bi_finish_deque, all_klines
         # fake 第一笔
         if len(bi_finish_deque) <= 1:
@@ -635,11 +635,76 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             low_prices[local_min_idx] <= all_klines[origin_first_kline_index].low_price:
             first_kline_index = local_min_idx
 
-        # 如果没找到更早更极值的笔，则不变
+        # 如果没找到更早更极值的笔，则延长
+        first_bi_extend = False
         if first_kline_index != origin_first_kline_index:
+            first_bi_extend = True
+
+
+
+        ##### 考虑fake_earliest_bi存在的可能性
+        fake_earliest_bi_exist = False
+        # 在fake_first_bi之前，还有可能存在一笔更早的反向笔（如603533SH），这一笔的前提是first_kline_index（含）之前至少有3根k线（考虑跳空两次）
+        if first_kline_index < 2:
+            fake_earliest_bi_exist = False
+
+        if first_bi.is_up():
+            earliest_extrame_index = local_max_idx
+        else:
+            earliest_extrame_index = local_min_idx
+
+        if earliest_extrame_index >= first_kline_index:
+            fake_earliest_bi_exist = False
+
+        real_merged_kline_count = prefix_merged[first_kline_index + 1] - prefix_merged[earliest_extrame_index]
+        real_origin_kline_count = first_kline_index - earliest_extrame_index + 1
+        has_gap_count = prefix_gap[first_kline_index + 1] - prefix_gap[earliest_extrame_index + 1]
+        origin_kline_count = real_origin_kline_count + has_gap_count
+        merged_kline_count = real_merged_kline_count + has_gap_count
+
+        if origin_kline_count >= 5 and merged_kline_count >= 4 and real_merged_kline_count >= 3:
+            fake_earliest_bi_exist = True
+        
+        
+        def make_fake_earliest_bi():
+            nonlocal fake_earliest_bi, first_bi
+            fake_earliest_bi = FakeBiFront()
+            fake_earliest_bi.start_idx = earliest_extrame_index
+            fake_earliest_bi.end_idx = first_kline_index
+            fake_earliest_bi.start_price = high_prices[earliest_extrame_index] if first_bi.is_up() \
+                else low_prices[earliest_extrame_index]
+            fake_earliest_bi.end_price = first_bi.start_price
+            if isinstance(first_bi, Bi):
+                fake_earliest_bi.right_fx = first_bi.right_fx
+            fake_earliest_bi.start_time = all_klines[earliest_extrame_index].trade_datetime
+            fake_earliest_bi.end_time = first_bi.start_time
+            fake_earliest_bi.real_origin_kline_count = real_origin_kline_count
+            fake_earliest_bi.real_merged_kline_count = real_merged_kline_count
+            fake_earliest_bi.has_gap_count = has_gap_count
+            fake_earliest_bi.bi_type = BiDirectionType.DOWN if first_bi.is_up() else BiDirectionType.UP
+            
+            
+        fake_earliest_bi = None
+
+        if first_bi_extend and fake_earliest_bi_exist:
+            tx_datetime = all_klines[first_kline_index].trade_datetime
+            # first_bi_extend有左分型
+            new_fx = None
+            for ix in fenxing_list:
+                if ix.trade_datetime == tx_datetime:
+                    new_fx = ix
+                    break
+            if new_fx is None:
+                raise ValueError(f"没有找到笔的左分型:{tx_datetime}")
+
+            first_bi = Bi.from_fenxing(new_fx, first_bi.right_fx, all_klines, prefix_merged, prefix_gap)
+
+            make_fake_earliest_bi()
+        elif first_bi_extend and not fake_earliest_bi_exist:
+            # first_bi_extend无左分型
             first_kline = all_klines[first_kline_index]
 
-            fake_first_bi = FakeBiFirst()
+            fake_first_bi = FakeBiFront()
             fake_first_bi.start_idx = first_kline_index
             fake_first_bi.end_idx = first_bi.end_idx
             fake_first_bi.start_price = first_kline.low_price if first_bi.is_up() else first_kline.high_price
@@ -663,49 +728,19 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             fake_first_bi.bi_type = first_bi.bi_type
 
             first_bi = fake_first_bi
+        elif not first_bi_extend and fake_earliest_bi_exist:
+            make_fake_earliest_bi()
+        else:
+            return
 
         bi_finish_deque.appendleft(first_bi)
-
-
-        ##### 考虑fake_earliest_bi存在的可能性
-        # 在fake_first_bi之前，还有可能存在一笔更早的反向笔（如603533SH），这一笔的前提是first_kline_index（含）之前至少有3根k线（考虑跳空两次）
-        if first_kline_index < 2:
-            return
-
-        if first_bi.is_up():
-            earliest_extrame_index = local_max_idx
-
-        else:
-            earliest_extrame_index = local_min_idx
-
-        if earliest_extrame_index >= first_kline_index:
-            return
-
-        real_merged_kline_count = prefix_merged[first_kline_index + 1] - prefix_merged[earliest_extrame_index]
-        real_origin_kline_count = first_kline_index - earliest_extrame_index + 1
-        has_gap_count = prefix_gap[first_kline_index + 1] - prefix_gap[earliest_extrame_index + 1]
-        origin_kline_count = real_origin_kline_count + has_gap_count
-        merged_kline_count = real_merged_kline_count + has_gap_count
-
-        if origin_kline_count >= 5 and merged_kline_count >= 4 and real_merged_kline_count >= 3:
-            fake_earliest_bi = FakeBiFirst()
-            fake_earliest_bi.start_idx = earliest_extrame_index
-            fake_earliest_bi.end_idx = first_kline_index
-            fake_earliest_bi.start_price = high_prices[earliest_extrame_index] if first_bi.is_up() \
-                else low_prices[earliest_extrame_index]
-            fake_earliest_bi.end_price = first_bi.start_price
-            # fake_earliest_bi.right_fx = first_bi.right_fx
-            fake_earliest_bi.start_time = all_klines[earliest_extrame_index].trade_datetime
-            fake_earliest_bi.end_time = first_bi.start_time
-            fake_earliest_bi.real_origin_kline_count = real_origin_kline_count
-            fake_earliest_bi.real_merged_kline_count = real_merged_kline_count
-            fake_earliest_bi.has_gap_count = has_gap_count
-            fake_earliest_bi.bi_type = BiDirectionType.DOWN if first_bi.is_up() else BiDirectionType.UP
+        if fake_earliest_bi is not None:
             bi_finish_deque.appendleft(fake_earliest_bi)
 
 
 
-    make_fake_first_bi()
+
+    make_fake_front_bi()
 
     # 最后一笔lm
     if bi_lm.is_finished:
@@ -789,7 +824,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     ####################### 检查
     # 检查笔的极值在两端
     for bi in bi_list:
-        if type(bi) == FakeBiFirst or type(bi) == FakeBiLast:
+        if type(bi) == FakeBiFront or type(bi) == FakeBiLast:
             continue
         init_highest_price = max(bi.left_fx.high_price, bi.right_fx.high_price)
         init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
