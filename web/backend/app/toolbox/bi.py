@@ -620,7 +620,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         # fake 第一笔
         if len(bi_finish_deque) <= 1:
             return
-        first_bi: Bi = bi_finish_deque.popleft()
+        first_bi: BiBase = bi_finish_deque.popleft()
         origin_first_kline_index = first_bi.start_idx
         first_kline_index = origin_first_kline_index
         sl = slice(0, origin_first_kline_index + 1)
@@ -636,45 +636,77 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             first_kline_index = local_min_idx
 
         # 如果没找到更早更极值的笔，则不变
-        if first_kline_index == origin_first_kline_index:
-            bi_finish_deque.appendleft(first_bi)
+        if first_kline_index != origin_first_kline_index:
+            first_kline = all_klines[first_kline_index]
+
+            fake_first_bi = FakeBiFirst()
+            fake_first_bi.start_idx = first_kline_index
+            fake_first_bi.end_idx = first_bi.end_idx
+            fake_first_bi.start_price = first_kline.low_price if first_bi.is_up() else first_kline.high_price
+            fake_first_bi.end_price = first_bi.end_price
+            fake_first_bi.right_fx = first_bi.right_fx
+            fake_first_bi.start_time = first_kline.trade_datetime
+            fake_first_bi.end_time = first_bi.end_time
+
+
+            fake_first_bi.real_origin_kline_count = (first_bi.real_origin_kline_count + origin_first_kline_index -
+                                                     first_kline_index)
+
+            # 计算fake_first_bi 的real_merged_kline_count和has_gap_count
+            # 搜索截止到左分型的左边merged_kline末尾
+            end_kline_idx = first_bi.left_fx.end_idx_list[0]
+
+            fake_first_bi.real_merged_kline_count = (first_bi.real_merged_kline_count + prefix_merged[end_kline_idx + 1] -
+                                                     prefix_merged[first_kline_index])
+            fake_first_bi.has_gap_count = (first_bi.has_gap_count + prefix_gap[end_kline_idx + 1] -
+                                           prefix_gap[first_kline_index + 1])
+            fake_first_bi.bi_type = first_bi.bi_type
+
+            first_bi = fake_first_bi
+
+        bi_finish_deque.appendleft(first_bi)
+
+
+        ##### 考虑fake_earliest_bi存在的可能性
+        # 在fake_first_bi之前，还有可能存在一笔更早的反向笔（如603533SH），这一笔的前提是first_kline_index（含）之前至少有3根k线（考虑跳空两次）
+        if first_kline_index < 2:
             return
 
-        first_kline = all_klines[first_kline_index]
+        if first_bi.is_up():
+            earliest_extrame_index = local_max_idx
 
-        fake_first_bi = FakeBiFirst()
-        fake_first_bi.start_idx = first_kline_index
-        fake_first_bi.end_idx = first_bi.end_idx
-        fake_first_bi.start_price = first_kline.low_price if first_bi.is_up() else first_kline.high_price
-        fake_first_bi.end_price = first_bi.end_price
-        fake_first_bi.right_fx = first_bi.right_fx
-        fake_first_bi.start_time = first_kline.trade_datetime
-        fake_first_bi.end_time = first_bi.end_time
+        else:
+            earliest_extrame_index = local_min_idx
 
+        if earliest_extrame_index >= first_kline_index:
+            return
 
-        fake_first_bi.real_origin_kline_count = (first_bi.real_origin_kline_count + origin_first_kline_index -
-                                                 first_kline_index)
+        real_merged_kline_count = prefix_merged[first_kline_index + 1] - prefix_merged[earliest_extrame_index]
+        real_origin_kline_count = first_kline_index - earliest_extrame_index + 1
+        has_gap_count = prefix_gap[first_kline_index + 1] - prefix_gap[earliest_extrame_index + 1]
+        origin_kline_count = real_origin_kline_count + has_gap_count
+        merged_kline_count = real_merged_kline_count + has_gap_count
 
-        # 计算fake_first_bi 的real_merged_kline_count和has_gap_count
-        # 搜索截止到左分型的左边merged_kline末尾
-        end_kline_idx = first_bi.left_fx.end_idx_list[0]
-
-        fake_first_bi.real_merged_kline_count = (first_bi.real_merged_kline_count + prefix_merged[end_kline_idx + 1] -
-                                                 prefix_merged[first_kline_index])
-        fake_first_bi.has_gap_count = (first_bi.has_gap_count + prefix_gap[end_kline_idx + 1] -
-                                       prefix_gap[first_kline_index + 1])
-        fake_first_bi.bi_type = first_bi.bi_type
-
-
-        bi_finish_deque.appendleft(fake_first_bi)
-
-
-
-
+        if origin_kline_count >= 5 and merged_kline_count >= 4 and real_merged_kline_count >= 3:
+            fake_earliest_bi = FakeBiFirst()
+            fake_earliest_bi.start_idx = earliest_extrame_index
+            fake_earliest_bi.end_idx = first_kline_index
+            fake_earliest_bi.start_price = high_prices[earliest_extrame_index] if first_bi.is_up() \
+                else low_prices[earliest_extrame_index]
+            fake_earliest_bi.end_price = first_bi.start_price
+            # fake_earliest_bi.right_fx = first_bi.right_fx
+            fake_earliest_bi.start_time = all_klines[earliest_extrame_index].trade_datetime
+            fake_earliest_bi.end_time = first_bi.start_time
+            fake_earliest_bi.real_origin_kline_count = real_origin_kline_count
+            fake_earliest_bi.real_merged_kline_count = real_merged_kline_count
+            fake_earliest_bi.has_gap_count = has_gap_count
+            fake_earliest_bi.bi_type = BiDirectionType.DOWN if first_bi.is_up() else BiDirectionType.UP
+            bi_finish_deque.appendleft(fake_earliest_bi)
 
 
 
     make_fake_first_bi()
+
     # 最后一笔lm
     if bi_lm.is_finished:
         bi_finish_deque.append(bi_lm)
