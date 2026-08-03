@@ -730,8 +730,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             first_bi = fake_first_bi
         elif not first_bi_extend and fake_earliest_bi_exist:
             make_fake_earliest_bi()
-        else:
-            return
 
         bi_finish_deque.appendleft(first_bi)
         if fake_earliest_bi is not None:
