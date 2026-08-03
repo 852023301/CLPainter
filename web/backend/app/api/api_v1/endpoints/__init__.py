@@ -27,14 +27,15 @@ def load_raw_data(data_file=None) -> List[List]:
 
     if data_file is None:
         data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"  #最后一条线段没被破坏
+        # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  #没有fake最后一条线段？为什么线段没有微调成功？
         # data_file = Path(settings.DATA_DIR) / "all_etf/159816SZ.pkl"  #  数据有问题的地方债ETF,跳过
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"    # 0段
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # 需要延长
+        data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # 需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  # 需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl" # 需要延长
-        data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # 需要增加
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # 需要增加
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")

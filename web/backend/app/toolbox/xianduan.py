@@ -33,6 +33,8 @@ class XianDuanBase:
     end_price: float = field(init=False, default=0.0)  # 结束价格(顶/底特征序列的极值)
     xianduan_type: Optional[XianDuanDirectionType] = field(init=False, default=None)  # 线段的方向
 
+    idx: int = field(init=False, default=0)
+
     def is_up(self) -> bool:
         """判断当前线段是否为上升线段。"""
         return self.xianduan_type == XianDuanDirectionType.UP
@@ -62,14 +64,14 @@ class FakeXianDuanLast(XianDuanBase):
     """最末尾的假线段"""
 
     # xianduan索引(由 generate_xian_duan 事后填充)
-    idx: int = field(init=False, default=0)
+    left_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
 
 
 @dataclass
 class FakeXianDuanFirst(XianDuanBase):
     """最早的假线段"""
 
-    # 右侧特征序列(由 make_fake_first_xd 事后填充)
+    # 右侧特征序列(由 make_fake_first_xd_extend 事后填充)
     right_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
 
 
@@ -438,6 +440,60 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         xianduan_finish_deque.append(xd_lm)
         xd_lm = xd_mr
 
+    def make_fake_last_xd_extend():
+        """延长最后一条线段"""
+        nonlocal xianduan_finish_deque, bi_list
+
+        sinal = False
+
+        if len(xianduan_finish_deque) == 0:
+            sinal = True
+            return sinal
+
+        last_xd: XianDuanBase = xianduan_finish_deque.pop()
+
+        origin_first_bi_index = last_xd.end_bi_idx
+        end_bi_index = origin_first_bi_index
+        sl = slice(end_bi_index, len(bi_list))
+        bi_high_prices = np.array([bi.high_price for bi in bi_list[sl]])
+        bi_low_prices = np.array([bi.low_price for bi in bi_list[sl]])
+        local_max_idx = int(np.argmax(bi_high_prices))
+        local_min_idx = int(np.argmin(bi_low_prices))
+
+        if last_xd.is_up() and local_max_idx > 0 and bi_high_prices[
+            local_max_idx] > \
+            bi_list[end_bi_index].high_price:
+            end_bi_index = end_bi_index + local_max_idx
+        elif last_xd.is_down() and local_min_idx > 0 and bi_low_prices[
+            local_min_idx] < bi_list[end_bi_index].low_price:
+            end_bi_index = end_bi_index + local_min_idx
+
+        if end_bi_index != origin_first_bi_index:
+            # 最后一段能延长
+            sinal = True
+            start_bi_idx = last_xd.start_bi_idx
+            first_bi = bi_list[start_bi_idx]
+            end_bi = bi_list[end_bi_index]
+            if first_bi.is_up() != end_bi.is_up():
+                end_bi_index += 1
+                end_bi = bi_list[end_bi_index]
+
+            fake_last_xd = FakeXianDuanLast()
+            fake_last_xd.start_bi_idx = start_bi_idx
+            fake_last_xd.end_bi_idx = end_bi_index
+            fake_last_xd.start_idx = first_bi.start_idx
+            fake_last_xd.end_idx = end_bi.end_idx
+            fake_last_xd.start_time = first_bi.start_time
+            fake_last_xd.end_time = end_bi.end_time
+            fake_last_xd.start_price = first_bi.start_price
+            fake_last_xd.end_price = end_bi.end_price
+
+            fake_last_xd.xianduan_type = last_xd.xianduan_type
+
+            last_xd = fake_last_xd
+        xianduan_finish_deque.append(last_xd)
+        return sinal
+
     def make_fake_last_xd():
         """
         制造fake last线段
@@ -487,9 +543,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         xianduan_finish_deque.append(fake_last_xd)
 
-    def make_fake_first_xd():
+    def make_fake_first_xd_extend():
         """
-         制造fake first线段
+         fake延长first线段
         """
         nonlocal xianduan_finish_deque, bi_list
         if len(xianduan_finish_deque) == 0:
@@ -538,8 +594,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         xianduan_finish_deque.appendleft(fake_first_xd)
 
-    make_fake_first_xd()
-    make_fake_last_xd()
+    make_fake_first_xd_extend()
+
+    if not make_fake_last_xd_extend():
+        make_fake_last_xd()
 
     xianduan_list = list(xianduan_finish_deque)
 
