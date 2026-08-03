@@ -419,13 +419,15 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             for i, item in enumerate(ma_list_raw)
         ]
         boll_list_raw = calculate_boll_list(close_series)
-        boll_colors = calculate_ma_colors(["BOLL_UP", "BOLL_MID", "BOLL_DOWN"])
+        # BOLL 固定配色: 青/紫/深青 —— 与 MACD(橙+蓝)、RSI(粉/绿/棕) 互不冲突
+        boll_colors = ["#26A69A", "#AB47BC", "#00796B"]
         boll_list = [
             {"key": item["key"], "label": item["key"], "color": boll_colors[i], "values": item["values"]}
             for i, item in enumerate(boll_list_raw)
         ]
         rsi_list_raw = calculate_rsi_list(close_series)
-        rsi_colors = calculate_ma_colors(["RSI6", "RSI12", "RSI24"])
+        # RSI 固定配色: 粉/绿/棕 —— 三色高区分度, 不与 MACD/BOLL 撞色
+        rsi_colors = ["#E91E63", "#4CAF50", "#795548"]
         rsi_list = [
             {"key": item["key"], "label": item["key"], "color": rsi_colors[i], "values": item["values"]}
             for i, item in enumerate(rsi_list_raw)
