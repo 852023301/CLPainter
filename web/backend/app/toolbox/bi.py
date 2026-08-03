@@ -640,8 +640,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         if first_kline_index != origin_first_kline_index:
             first_bi_extend = True
 
-
-
         ##### 考虑fake_earliest_bi存在的可能性
         fake_earliest_bi_exist = False
         # 在fake_first_bi之前，还有可能存在一笔更早的反向笔（如603533SH），这一笔的前提是first_kline_index（含）之前至少有3根k线（考虑跳空两次）
@@ -664,8 +662,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
         if origin_kline_count >= 5 and merged_kline_count >= 4 and real_merged_kline_count >= 3:
             fake_earliest_bi_exist = True
-        
-        
+
         def make_fake_earliest_bi():
             nonlocal fake_earliest_bi, first_bi
             fake_earliest_bi = FakeBiFront()
@@ -682,8 +679,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             fake_earliest_bi.real_merged_kline_count = real_merged_kline_count
             fake_earliest_bi.has_gap_count = has_gap_count
             fake_earliest_bi.bi_type = BiDirectionType.DOWN if first_bi.is_up() else BiDirectionType.UP
-            
-            
+
         fake_earliest_bi = None
 
         if first_bi_extend and fake_earliest_bi_exist:
@@ -713,7 +709,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             fake_first_bi.start_time = first_kline.trade_datetime
             fake_first_bi.end_time = first_bi.end_time
 
-
             fake_first_bi.real_origin_kline_count = (first_bi.real_origin_kline_count + origin_first_kline_index -
                                                      first_kline_index)
 
@@ -721,8 +716,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             # 搜索截止到左分型的左边merged_kline末尾
             end_kline_idx = first_bi.left_fx.end_idx_list[0]
 
-            fake_first_bi.real_merged_kline_count = (first_bi.real_merged_kline_count + prefix_merged[end_kline_idx + 1] -
-                                                     prefix_merged[first_kline_index])
+            fake_first_bi.real_merged_kline_count = (
+                    first_bi.real_merged_kline_count + prefix_merged[end_kline_idx + 1] -
+                    prefix_merged[first_kline_index])
             fake_first_bi.has_gap_count = (first_bi.has_gap_count + prefix_gap[end_kline_idx + 1] -
                                            prefix_gap[first_kline_index + 1])
             fake_first_bi.bi_type = first_bi.bi_type
@@ -734,9 +730,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         bi_finish_deque.appendleft(first_bi)
         if fake_earliest_bi is not None:
             bi_finish_deque.appendleft(fake_earliest_bi)
-
-
-
 
     make_fake_front_bi()
 
