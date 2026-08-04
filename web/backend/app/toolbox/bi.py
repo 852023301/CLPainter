@@ -663,7 +663,38 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         if origin_kline_count >= 5 and merged_kline_count >= 4 and real_merged_kline_count >= 3:
             fake_earliest_bi_exist = True
 
-        def make_fake_earliest_bi():
+
+        def _make_first_bi_extend_by_extrema():
+            """用极值点来延长比"""
+            nonlocal first_bi, first_kline_index, all_klines, prefix_merged, prefix_gap
+            first_kline = all_klines[first_kline_index]
+
+            fake_first_bi = FakeBiFront()
+            fake_first_bi.start_idx = first_kline_index
+            fake_first_bi.end_idx = first_bi.end_idx
+            fake_first_bi.start_price = first_kline.low_price if first_bi.is_up() else first_kline.high_price
+            fake_first_bi.end_price = first_bi.end_price
+            fake_first_bi.right_fx = first_bi.right_fx
+            fake_first_bi.start_time = first_kline.trade_datetime
+            fake_first_bi.end_time = first_bi.end_time
+
+            fake_first_bi.real_origin_kline_count = (first_bi.real_origin_kline_count + origin_first_kline_index -
+                                                     first_kline_index)
+
+            # 计算fake_first_bi 的real_merged_kline_count和has_gap_count
+            # 搜索截止到左分型的左边merged_kline末尾
+            end_kline_idx = first_bi.left_fx.end_idx_list[0]
+
+            fake_first_bi.real_merged_kline_count = (
+                first_bi.real_merged_kline_count + prefix_merged[end_kline_idx + 1] -
+                prefix_merged[first_kline_index])
+            fake_first_bi.has_gap_count = (first_bi.has_gap_count + prefix_gap[end_kline_idx + 1] -
+                                           prefix_gap[first_kline_index + 1])
+            fake_first_bi.bi_type = first_bi.bi_type
+
+            first_bi = fake_first_bi
+
+        def _make_fake_earliest_bi():
             nonlocal fake_earliest_bi, first_bi
             fake_earliest_bi = FakeBiFront()
             fake_earliest_bi.start_idx = earliest_extrame_index
@@ -693,39 +724,17 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             if new_fx is None:
                 raise ValueError(f"没有找到笔的左分型:{tx_datetime}")
 
+            if first_bi.right_fx is None:
+                raise ValueError(f"笔的右分型不存在:{first_bi.right_fx}")
+
             first_bi = Bi.from_fenxing(new_fx, first_bi.right_fx, all_klines, prefix_merged, prefix_gap)
 
-            make_fake_earliest_bi()
+            _make_fake_earliest_bi()
         elif first_bi_extend and not fake_earliest_bi_exist:
             # first_bi_extend无左分型
-            first_kline = all_klines[first_kline_index]
-
-            fake_first_bi = FakeBiFront()
-            fake_first_bi.start_idx = first_kline_index
-            fake_first_bi.end_idx = first_bi.end_idx
-            fake_first_bi.start_price = first_kline.low_price if first_bi.is_up() else first_kline.high_price
-            fake_first_bi.end_price = first_bi.end_price
-            fake_first_bi.right_fx = first_bi.right_fx
-            fake_first_bi.start_time = first_kline.trade_datetime
-            fake_first_bi.end_time = first_bi.end_time
-
-            fake_first_bi.real_origin_kline_count = (first_bi.real_origin_kline_count + origin_first_kline_index -
-                                                     first_kline_index)
-
-            # 计算fake_first_bi 的real_merged_kline_count和has_gap_count
-            # 搜索截止到左分型的左边merged_kline末尾
-            end_kline_idx = first_bi.left_fx.end_idx_list[0]
-
-            fake_first_bi.real_merged_kline_count = (
-                    first_bi.real_merged_kline_count + prefix_merged[end_kline_idx + 1] -
-                    prefix_merged[first_kline_index])
-            fake_first_bi.has_gap_count = (first_bi.has_gap_count + prefix_gap[end_kline_idx + 1] -
-                                           prefix_gap[first_kline_index + 1])
-            fake_first_bi.bi_type = first_bi.bi_type
-
-            first_bi = fake_first_bi
+            _make_first_bi_extend_by_extrema()
         elif not first_bi_extend and fake_earliest_bi_exist:
-            make_fake_earliest_bi()
+            _make_fake_earliest_bi()
 
         bi_finish_deque.appendleft(first_bi)
         if fake_earliest_bi is not None:
