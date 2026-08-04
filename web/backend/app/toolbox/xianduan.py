@@ -441,7 +441,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         xd_lm = xd_mr
 
     def make_fake_last_xd():
-        """延长最后一条线段"""
+        """延长最后一条线段+fake一条线段"""
         nonlocal xianduan_finish_deque, bi_list
 
         if len(xianduan_finish_deque) == 0:
@@ -481,6 +481,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             extend_dest_time = bi_list[end_bi_index].end_time
 
             for ix in tzxl_list:
+                if ix.start_time <= last_xd.left_tzxl.start_time:
+                    continue
                 if ix.start_time == extend_dest_time:
                     fake_latest_xd_exist = True
                     last_xd_new_tzxl = ix
@@ -543,17 +545,35 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             first_bi = bi_list[first_bi_index]
             end_bi = bi_list[end_bi_index]
 
-            fake_latest_xd = FakeXianDuanLast()
-            fake_latest_xd.start_bi_idx = first_bi_index
-            fake_latest_xd.end_bi_idx = end_bi_index
-            fake_latest_xd.start_idx = first_bi.start_idx
-            fake_latest_xd.end_idx = end_bi.end_idx
-            fake_latest_xd.start_time = first_bi.start_time
-            fake_latest_xd.end_time = end_bi.end_time
-            fake_latest_xd.start_price = first_bi.start_price
-            fake_latest_xd.end_price = end_bi.end_price
+            fake_dest_time = end_bi.end_time
 
-            fake_latest_xd.xianduan_type = fake_last_xd_direction_type
+            # 有可能出现假线段变真线段的情况，例如all_etf/516700SH  20260611前后线段变真线段
+            fake_is_true = False
+            new_fx = None
+
+            for idx in tzxl_list:
+                if idx.start_time <= last_xd.left_tzxl.start_time:
+                    continue
+                if idx.start_time == fake_dest_time:
+                    new_fx = idx
+                    fake_is_true = True
+                    break
+            if fake_is_true and new_fx is not None:
+                fake_latest_xd = XianDuan.from_tzxl(last_xd.right_tzxl, new_fx, bi_list)
+
+
+            else:
+                fake_latest_xd = FakeXianDuanLast()
+                fake_latest_xd.start_bi_idx = first_bi_index
+                fake_latest_xd.end_bi_idx = end_bi_index
+                fake_latest_xd.start_idx = first_bi.start_idx
+                fake_latest_xd.end_idx = end_bi.end_idx
+                fake_latest_xd.start_time = first_bi.start_time
+                fake_latest_xd.end_time = end_bi.end_time
+                fake_latest_xd.start_price = first_bi.start_price
+                fake_latest_xd.end_price = end_bi.end_price
+
+                fake_latest_xd.xianduan_type = fake_last_xd_direction_type
 
         fake_latest_xd = None
 
@@ -571,6 +591,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         xianduan_finish_deque.append(last_xd)
         if fake_latest_xd is not None:
+            xianduan_finish_deque.append(fake_latest_xd)
+
+        if isinstance(fake_latest_xd, XianDuan):
+            last_xd = fake_latest_xd
+            fake_latest_xd = None
+            _make_fake_latest_xd()
             xianduan_finish_deque.append(fake_latest_xd)
 
     def make_fake_first_xd_extend():
