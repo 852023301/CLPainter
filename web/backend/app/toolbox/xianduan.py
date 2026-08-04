@@ -686,4 +686,5 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         if type(temp_xd_lm) == FakeXianDuanLast or type(temp_xd_mr) == FakeXianDuanLast:
             break
         xianduan_list[i], xianduan_list[i + 1] = _adjust_xian_duan(temp_xd_lm, temp_xd_mr)
+    print(xianduan_list[-1])
     return xianduan_list
