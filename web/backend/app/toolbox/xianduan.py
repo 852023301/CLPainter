@@ -74,6 +74,14 @@ class FakeXianDuanFirst(XianDuanBase):
     # 右侧特征序列(由 make_fake_first_xd_extend 事后填充)
     right_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
 
+    def extend(self, right_tzxl: TeZhengXuLie):
+        self.end_bi_idx = right_tzxl.mid_bi_idx
+        self.end_idx = right_tzxl.mid_bi.start_idx
+        self.end_time = right_tzxl.start_time
+        self.end_price = right_tzxl.start_price
+        self.right_tzxl = right_tzxl
+        return self
+
 
 @dataclass
 class XianDuan(XianDuanBase):
@@ -253,9 +261,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = False
+    log_switch = True
     trade_s = "2012-12-04"
-    trade_e = "2016-03-01"
+    trade_e = "2027-03-01"
 
     xianduan_list = []
 
@@ -447,7 +455,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         if len(xianduan_finish_deque) == 0:
             return
 
-        last_xd: Union[XianDuan, FakeXianDuanLast] = xianduan_finish_deque.pop()
+        last_xd: Union[XianDuan, FakeXianDuanLast, FakeXianDuanFirst] = xianduan_finish_deque.pop()
 
         origin_first_bi_index = last_xd.end_bi_idx
         end_bi_index = origin_first_bi_index
@@ -481,7 +489,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             extend_dest_time = bi_list[end_bi_index].end_time
 
             for ix in tzxl_list:
-                if ix.start_time <= last_xd.left_tzxl.start_time:
+                if isinstance(last_xd, XianDuan) and ix.start_time <= last_xd.left_tzxl.start_time:
                     continue
                 if ix.start_time == extend_dest_time:
                     fake_latest_xd_exist = True
@@ -552,13 +560,15 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             new_fx = None
 
             for idx in tzxl_list:
-                if idx.start_time <= last_xd.left_tzxl.start_time:
+                if isinstance(last_xd, XianDuan) and idx.start_time <= last_xd.left_tzxl.start_time:
                     continue
                 if idx.start_time == fake_dest_time:
                     new_fx = idx
                     fake_is_true = True
                     break
             if fake_is_true and new_fx is not None:
+                if not isinstance(last_xd.right_tzxl, TeZhengXuLie):
+                    raise ValueError(f"last_xd.right_tzxl不是TeZhengXuLie")
                 fake_latest_xd = XianDuan.from_tzxl(last_xd.right_tzxl, new_fx, bi_list)
 
 
@@ -578,11 +588,14 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         fake_latest_xd = None
 
         if last_xd_extend and fake_latest_xd_exist:
-            if last_xd.left_tzxl is None:
-                raise ValueError(f"last_xd.left_tzxl不能为None")
             if last_xd_new_tzxl is None:
                 raise ValueError(f"last_xd_extend和fake_latest_xd_exist为True时，last_xd_new_tzxl不能为None")
-            last_xd = XianDuan.from_tzxl(last_xd.left_tzxl, last_xd_new_tzxl, bi_list)
+            if isinstance(last_xd, XianDuan):
+                last_xd = XianDuan.from_tzxl(last_xd.left_tzxl, last_xd_new_tzxl, bi_list)
+            elif isinstance(last_xd, FakeXianDuanFirst):
+                last_xd = last_xd.extend(last_xd_new_tzxl)
+            else:
+                raise ValueError(f"last_xd类型错误")
             _make_fake_latest_xd()
         elif last_xd_extend and not fake_latest_xd_exist:
             _make_fake_last_xd_extend_by_extrema()
@@ -650,9 +663,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         xianduan_finish_deque.appendleft(fake_first_xd)
 
-    make_fake_first_xd_extend()
-
-    make_fake_last_xd()
+    # make_fake_first_xd_extend()
+    #
+    # make_fake_last_xd()
 
     xianduan_list = list(xianduan_finish_deque)
 
@@ -686,5 +699,4 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         if type(temp_xd_lm) == FakeXianDuanLast or type(temp_xd_mr) == FakeXianDuanLast:
             break
         xianduan_list[i], xianduan_list[i + 1] = _adjust_xian_duan(temp_xd_lm, temp_xd_mr)
-    print(xianduan_list[-1])
     return xianduan_list
