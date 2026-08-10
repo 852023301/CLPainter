@@ -261,7 +261,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = True
+    log_switch = False
     trade_s = "2012-12-04"
     trade_e = "2027-03-01"
 

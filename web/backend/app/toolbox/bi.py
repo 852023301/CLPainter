@@ -549,71 +549,74 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
             continue
 
-        if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-            print(f"lm和mr任一未完成：{is_bi_lm_finish=}   {is_bi_mr_finish=}")
-            print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
-            print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+        # if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+        #     print(f"lm和mr任一未完成：{is_bi_lm_finish=}   {is_bi_mr_finish=}")
+        #     print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
+        #     print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
 
-        if not is_bi_lm_finish and is_bi_mr_finish:
+        elif not is_bi_lm_finish and is_bi_mr_finish:
             if not find_first_bi_in_finish_deque():
                 _advance_both()
             continue
+        elif not is_bi_mr_finish:
 
-        x_fx, y_fx = fenxing_deque.popleft()
+            x_fx, y_fx = fenxing_deque.popleft()
 
-        bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
+            bi_xy = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
 
-        if bi_xy.bi_type == bi_lm.bi_type:
-            if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                print("@" * 50, "和lm同趋势,变更前")
-                print(f"bi_xy:{bi_xy.left_fx.trade_datetime}~{bi_xy.right_fx.trade_datetime}")
-                print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
-                print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
-            # 轻量级价格判断，避免创建完整 Bi 对象（O(n) → O(1)）
-            xy_bi_type = BiDirectionType.UP if y_fx.is_top() else BiDirectionType.DOWN
-            xy_end_price = y_fx.high_price if xy_bi_type == BiDirectionType.UP else y_fx.low_price
-            xy_start_price = bi_mr.right_fx.low_price if xy_bi_type == BiDirectionType.UP else bi_mr.right_fx.high_price
-            if bi_lm.extends_beyond_end(xy_end_price):
-                if bi_lm.extends_beyond_start(xy_start_price):
-                    # print(xy_start_price , xy_end_price)
-                    if not find_second_bi_in_finish_deque():
-                        bi_lm = bi_mr
-                        bi_mr = Bi.from_fenxing(bi_mr.right_fx, y_fx, all_klines, prefix_merged, prefix_gap)
-                        if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                            print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")
-                            print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
-                            print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
-                    continue
-
-                bi_lm = Bi.from_fenxing(bi_lm.left_fx, y_fx, all_klines, prefix_merged, prefix_gap)
-
-                if len(fenxing_deque) == 0:
-                    # 这里可能会导致lm和mr重叠，后续fake逻辑会处理，最后还会检查
-                    if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                        print("@" * 50, "和lm同趋势，fenxing_deque为空，退出")
-                    break
-                x_fx, y_fx = fenxing_deque.popleft()
-                bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
+            if bi_xy.bi_type == bi_lm.bi_type:
                 if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                    print("@" * 50, "和lm同趋势，变更后")
-                    print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
-                    print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
-
-
-        elif bi_xy.bi_type == bi_mr.bi_type:
-            if bi_mr.extends_beyond_end(bi_xy.end_price):
-                if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                    print("$" * 50, "和mr同趋势，变更前")
+                    print("@" * 50, "和lm同趋势,变更前")
                     print(f"bi_xy:{bi_xy.left_fx.trade_datetime}~{bi_xy.right_fx.trade_datetime}")
                     print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
                     print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
-                bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines, prefix_merged, prefix_gap)
-                if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                    print("$" * 50, "和mr同趋势，变更后")
-                    print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
-                    print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+                # 轻量级价格判断，避免创建完整 Bi 对象（O(n) → O(1)）
+                xy_bi_type = BiDirectionType.UP if y_fx.is_top() else BiDirectionType.DOWN
+                xy_end_price = y_fx.high_price if xy_bi_type == BiDirectionType.UP else y_fx.low_price
+                xy_start_price = bi_mr.right_fx.low_price if xy_bi_type == BiDirectionType.UP else bi_mr.right_fx.high_price
+                if bi_lm.extends_beyond_end(xy_end_price):
+                    if bi_lm.extends_beyond_start(xy_start_price):
+                        # print(xy_start_price , xy_end_price)
+                        if not find_second_bi_in_finish_deque():
+                            bi_lm = bi_mr
+                            bi_mr = Bi.from_fenxing(bi_mr.right_fx, y_fx, all_klines, prefix_merged, prefix_gap)
+                            if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+                                print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")
+                                print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
+                                print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+                        continue
+
+                    bi_lm = Bi.from_fenxing(bi_lm.left_fx, y_fx, all_klines, prefix_merged, prefix_gap)
+
+                    if len(fenxing_deque) == 0:
+                        # 这里可能会导致lm和mr重叠，后续fake逻辑会处理，最后还会检查
+                        if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+                            print("@" * 50, "和lm同趋势，fenxing_deque为空，退出")
+                        break
+                    x_fx, y_fx = fenxing_deque.popleft()
+                    bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
+                    if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+                        print("@" * 50, "和lm同趋势，变更后")
+                        print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
+                        print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+
+
+            elif bi_xy.bi_type == bi_mr.bi_type:
+                if bi_mr.extends_beyond_end(bi_xy.end_price):
+                    if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+                        print("$" * 50, "和mr同趋势，变更前")
+                        print(f"bi_xy:{bi_xy.left_fx.trade_datetime}~{bi_xy.right_fx.trade_datetime}")
+                        print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
+                        print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+                    bi_mr = Bi.from_fenxing(bi_mr.left_fx, bi_xy.right_fx, all_klines, prefix_merged, prefix_gap)
+                    if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+                        print("$" * 50, "和mr同趋势，变更后")
+                        print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
+                        print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+            else:
+                raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
         else:
-            raise ValueError(f"笔类型不符合预期:{bi_xy.bi_type}")
+            raise ValueError(f"{is_bi_lm_finish=}  {is_bi_mr_finish=}  出现意外情况")
 
     def make_fake_front_bi():
         nonlocal bi_finish_deque, all_klines
