@@ -277,7 +277,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             return xd_lm, xd_mr
         origin_type = xd_mr.left_tzxl.type
         origin_tzxl = xd_mr.left_tzxl
-        old_tzxl = xd_mr.left_tzxl
+        old_tzxl = xd_mr.left_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
         start_idx = xd_mr.left_tzxl.idx
         end_idx = xd_mr.right_tzxl.idx
 
