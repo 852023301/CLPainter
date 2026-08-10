@@ -458,7 +458,10 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         return False
 
     def find_second_bi_in_finish_deque():
-        """适合在mr未完成但xy已经能够包含lm的情况， 在已完成的队列中寻找笔"""
+        """适合在mr未完成但xy已经能够包含lm的情况（lm与xy同向）， 在已完成的队列中寻找笔
+
+        返回True指，能在last_bi_finish中找到lm的反向延长
+        """
         nonlocal bi_lm
         nonlocal bi_mr
         nonlocal bi_xy
@@ -475,38 +478,21 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                                             prefix_gap)
                     return False
             else:
-                if bi_mr.is_finished:
-                    if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_lm.start_price) or (
-                        bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_lm.start_price):
-                        bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines, prefix_merged,
-                                                prefix_gap)
-                        if len(bi_finish_deque) > 0:
-                            bi_mr = bi_lm
-                            bi_lm = bi_finish_deque.pop()
+                # bi_mr是未完成
+                if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_mr.end_price) or (
+                    bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_mr.end_price):
+                    bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines, prefix_merged,
+                                            prefix_gap)
+                    if len(bi_finish_deque) > 0:
+                        bi_lm = bi_finish_deque.pop()
 
-                        elif len(fenxing_deque) > 0:
-                            x_fx, y_fx = fenxing_deque.popleft()
-                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
-                        else:
-                            bi_mr = None
-                        return True
-
-
-                else:
-                    if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_mr.end_price) or (
-                        bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_mr.end_price):
-                        bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines, prefix_merged,
-                                                prefix_gap)
-                        if len(bi_finish_deque) > 0:
-                            bi_lm = bi_finish_deque.pop()
-
-                        elif len(fenxing_deque) > 0:
-                            bi_lm = bi_mr
-                            x_fx, y_fx = fenxing_deque.popleft()
-                            bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
-                        else:
-                            bi_mr = None
-                        return True
+                    elif len(fenxing_deque) > 0:
+                        bi_lm = bi_mr
+                        x_fx, y_fx = fenxing_deque.popleft()
+                        bi_mr = Bi.from_fenxing(x_fx, y_fx, all_klines, prefix_merged, prefix_gap)
+                    else:
+                        bi_mr = None
+                    return True
 
             if log_switch and (
                 (trade_e >= bi_mr.left_fx.trade_datetime >= trade_s) or (
