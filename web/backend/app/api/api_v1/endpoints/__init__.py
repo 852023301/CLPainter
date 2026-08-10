@@ -32,12 +32,13 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_etf/159816SZ.pkl"  # Fix:数据有问题的地方债ETF,跳过
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"    # TODO: 0段
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"  # TODO: 2021年7月线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl" # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # Fix:需要增加
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # TODO: 线段划分有问题
-        data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # TODO: 线段划分有问题
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # TODO: 线段划分有问题
 
 
     if not data_file.exists():

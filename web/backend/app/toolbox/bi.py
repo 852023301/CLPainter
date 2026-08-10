@@ -434,14 +434,14 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         nonlocal bi_lm
         nonlocal bi_mr
         while len(bi_finish_deque) > 0:
-            last_bi_finish = bi_finish_deque.pop()
+            last_bi_finish: Bi = bi_finish_deque.pop()
             if log_switch and trade_e >= last_bi_finish.left_fx.trade_datetime >= trade_s:
-                print("#" * 50, "lm弹出")
+                print("#" * 50, "old lm弹出")
                 print(last_bi_finish)
             if (last_bi_finish.bi_type == bi_lm.bi_type) and (
                 (
-                    last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_lm.start_price) or (
-                    last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_lm.start_price)):
+                    last_bi_finish.is_up() and last_bi_finish.start_price <= bi_lm.start_price) or (
+                    last_bi_finish.is_down() and last_bi_finish.start_price >= bi_lm.start_price)):
                 bi_lm = Bi.from_fenxing(last_bi_finish.left_fx, bi_lm.right_fx, all_klines, prefix_merged, prefix_gap)
                 if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
                     print("#" * 50, "lm被替换后")
@@ -451,8 +451,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             #  这行代码按理来说会触发，但从来没有遇到过触发的情况
             if (last_bi_finish.bi_type == bi_mr.bi_type) and (
                 (
-                    last_bi_finish.bi_type == BiDirectionType.UP and last_bi_finish.start_price <= bi_mr.start_price) or (
-                    last_bi_finish.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price >= bi_mr.start_price)):
+                    last_bi_finish.is_up() and last_bi_finish.start_price <= bi_mr.start_price) or (
+                    last_bi_finish.is_down() and last_bi_finish.start_price >= bi_mr.start_price)):
                 bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines, prefix_merged, prefix_gap)
                 raise ValueError(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
         return False
@@ -477,10 +477,11 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                     bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_mr.right_fx, all_klines, prefix_merged,
                                             prefix_gap)
                     return False
-            else:
+            elif (last_bi_finish.bi_type == bi_lm.bi_type):
                 # bi_mr是未完成
                 if (bi_mr.bi_type == BiDirectionType.UP and last_bi_finish.start_price >= bi_mr.end_price) or (
                     bi_mr.bi_type == BiDirectionType.DOWN and last_bi_finish.start_price <= bi_mr.end_price):
+
                     bi_mr = Bi.from_fenxing(last_bi_finish.left_fx, bi_xy.right_fx, all_klines, prefix_merged,
                                             prefix_gap)
                     if len(bi_finish_deque) > 0:
@@ -493,6 +494,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                     else:
                         bi_mr = None
                     return True
+            else:
+                raise ValueError(f"{last_bi_finish=} 是意外的方向")
 
             if log_switch and (
                 (trade_e >= bi_mr.left_fx.trade_datetime >= trade_s) or (
@@ -651,7 +654,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
         if origin_kline_count >= 5 and merged_kline_count >= 4 and real_merged_kline_count >= 3:
             fake_earliest_bi_exist = True
-
 
         def _make_first_bi_extend_by_extrema():
             """用极值点来延长比"""

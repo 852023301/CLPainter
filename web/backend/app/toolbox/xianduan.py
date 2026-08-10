@@ -312,8 +312,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找线段"""
         nonlocal xd_lm, xd_mr
         while len(xianduan_finish_deque) > 0:
-            last_xd_finish = xianduan_finish_deque.pop()
-            if last_xd_finish.xianduan_type == xd_lm.xianduan_type:
+            last_xd_finish: XianDuan = xianduan_finish_deque.pop()
+            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                print("#" * 50, "old lm弹出")
+                print(last_xd_finish)
+            if (last_xd_finish.xianduan_type == xd_lm.xianduan_type):
+                # 这个变动是因为线段十分灵活，极值对线段而言没那么重要，所以不需要像笔一样，需要指定左右分型来变更
                 xd_lm = last_xd_finish
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print("#" * 50, "finished lm弹出")
@@ -399,8 +403,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 print("%" * 50, f"{is_xd_lm_finished=}  mr未完成  ")
                 print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
             if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
-                (xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_lm.end_price) or (
-                xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_lm.end_price)):
+                (xd_xy.is_up() and xd_xy.end_price >= xd_lm.end_price) or
+                (xd_xy.is_down() and xd_xy.end_price <= xd_lm.end_price)):
                 xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl, bi_list)
                 if len(tzxl_deque) > 0:
                     x_tzxl, y_tzxl = tzxl_deque.popleft()
@@ -414,17 +418,20 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                         print("@" * 50, "和lm同趋势，tzxl_deque为空，退出")
                     break
+                continue
 
             if (xd_xy.xianduan_type == xd_mr.xianduan_type):
                 new_xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl, bi_list)
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print("@" * 50, "mr未完成,xy与mr同趋势")
                     # print(f"{new_xd_mr.has_enough_bi()=}  {new_xd_mr.is_fanbao()=}")
-                if ((xd_xy.xianduan_type == XianDuanDirectionType.UP and xd_xy.end_price >= xd_mr.end_price) or (
-                    xd_xy.xianduan_type == XianDuanDirectionType.DOWN and xd_xy.end_price <= xd_mr.end_price)) or new_xd_mr.is_finished:
+                if new_xd_mr.is_finished or (
+                    (xd_xy.is_up() and xd_xy.end_price >= xd_mr.end_price) or
+                    (xd_xy.is_down() and xd_xy.end_price <= xd_mr.end_price)):
                     xd_mr = new_xd_mr
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                         print(f"new xd_mr:{xd_lm.start_time}~{xd_lm.end_time}")
+                continue
 
             continue
         else:
