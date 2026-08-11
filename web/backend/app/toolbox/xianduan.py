@@ -43,6 +43,26 @@ class XianDuanBase:
         """判断当前线段是否为下降线段。"""
         return self.xianduan_type == XianDuanDirectionType.DOWN
 
+    def extends_beyond_end(self, price: float) -> bool:
+        """判断给定价格是否在本线段方向上超越了本线段终点价格
+
+        UP线段: price > end_price (向上超越顶分型)
+        DOWN线段: price < end_price (向下超越底分型)
+        """
+        if self.is_up():
+            return price > self.end_price
+        return price < self.end_price
+
+    def extends_beyond_start(self, price: float) -> bool:
+        """判断给定价格是否在本线段反方向上超越了本线段起点价格
+
+        UP线段: price < start_price (向下超越底分型)
+        DOWN线段: price > start_price (向上超越顶分型)
+        """
+        if self.is_up():
+            return price < self.start_price
+        return price > self.start_price
+
     @property
     def bi_count(self) -> int:
         """返回线段覆盖的笔数量。"""
@@ -261,9 +281,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = False
-    trade_s = "2012-12-04"
-    trade_e = "2027-03-01"
+    log_switch = True
+    trade_s = "2021-07-04"
+    trade_e = "2024-07-10"
 
     xianduan_list = []
 
@@ -272,30 +292,30 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """
         在lm和mr都完成的前提下，追寻lm延伸到更极值的价格
         """
-        nonlocal tzxl_list
-        if xd_lm is None or xd_mr is None:
-            return xd_lm, xd_mr
-        origin_type = xd_mr.left_tzxl.type
-        origin_tzxl = xd_mr.left_tzxl
-        old_tzxl = xd_mr.left_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
-        start_idx = xd_mr.left_tzxl.idx
-        end_idx = xd_mr.right_tzxl.idx
-
-        for i in range(start_idx + 1, end_idx):
-            new_tzxl = tzxl_list[i]
-            if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
-                                                 or (new_tzxl.is_bottom() and new_tzxl.low_price < old_tzxl.low_price)):
-                new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
-                new_xd_mr = XianDuan.from_tzxl(new_tzxl, xd_mr.right_tzxl, bi_list)
-                if new_xd_lm.is_finished and new_xd_mr.is_finished:
-                    xd_lm = new_xd_lm
-                    xd_mr = new_xd_mr
-                    old_tzxl = new_tzxl
-
-        if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
-            print("#" * 50, "微调后")
-            print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-            print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+        # nonlocal tzxl_list
+        # if xd_lm is None or xd_mr is None:
+        #     return xd_lm, xd_mr
+        # origin_type = xd_mr.left_tzxl.type
+        # origin_tzxl = xd_mr.left_tzxl
+        # old_tzxl = xd_mr.left_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
+        # start_idx = xd_mr.left_tzxl.idx
+        # end_idx = xd_mr.right_tzxl.idx
+        #
+        # for i in range(start_idx + 1, end_idx):
+        #     new_tzxl = tzxl_list[i]
+        #     if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
+        #                                          or (new_tzxl.is_bottom() and new_tzxl.low_price < old_tzxl.low_price)):
+        #         new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
+        #         new_xd_mr = XianDuan.from_tzxl(new_tzxl, xd_mr.right_tzxl, bi_list)
+        #         if new_xd_lm.is_finished and new_xd_mr.is_finished:
+        #             xd_lm = new_xd_lm
+        #             xd_mr = new_xd_mr
+        #             old_tzxl = new_tzxl
+        #
+        # if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
+        #     print("#" * 50, "微调后")
+        #     print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+        #     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
         return xd_lm, xd_mr
 
     def _advance_both():
@@ -314,8 +334,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         while len(xianduan_finish_deque) > 0:
             last_xd_finish: XianDuan = xianduan_finish_deque.pop()
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                print("#" * 50, "old lm弹出")
-                print(last_xd_finish)
+                print("#" * 50, "old lm弹出(find_first_xd_in_finish_deque)")
+                print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
             if (last_xd_finish.xianduan_type == xd_lm.xianduan_type):
                 # 这个变动是因为线段十分灵活，极值对线段而言没那么重要，所以不需要像笔一样，需要指定左右分型来变更
                 xd_lm = last_xd_finish
@@ -328,9 +348,49 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 if xd_lm.is_finished and xd_mr.is_finished:
                     return True
                 continue
+            # TODO: 是不是应该考虑last_xd_finish.xianduan_type == xd_mr.xianduan_type
 
         if log_switch:
             print("#" * 50, "find_first_xd_in_finish_deque没找到，退出")
+
+        return False
+
+    def find_second_xd_in_finish_deque():
+        """适合在mr未完成但xy已经能够包含lm的情况（lm与xy同向）， 在已完成的队列中寻找线段
+
+        返回True指，能在last_xd_finish中找到lm的反向延长
+        """
+        nonlocal xd_lm, xd_mr, xd_xy, tzxl_deque
+        while len(xianduan_finish_deque) > 0:
+            last_xd_finish: XianDuan = xianduan_finish_deque.pop()
+            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                print("#" * 50, "old lm弹出(find_second_xd_in_finish_deque)")
+                print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
+            if (last_xd_finish.xianduan_type == xd_mr.xianduan_type):
+                temp_xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl, bi_list)
+                if temp_xd_mr.is_finished:
+                    xd_mr = temp_xd_mr
+                    return False
+
+            elif (last_xd_finish.xianduan_type == xd_lm.xianduan_type):
+                temp_xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_xy.right_tzxl, bi_list)
+                if temp_xd_mr.is_finished:
+
+                    if len(xianduan_finish_deque) > 0:
+                        xd_mr = temp_xd_mr
+                        xd_lm = xianduan_finish_deque.pop()
+                    elif len(tzxl_deque) > 0:
+                        xd_lm = temp_xd_mr
+                        x_tzxl, y_tzxl = tzxl_deque.popleft()
+                        # TODO: xd_mr = XianDuan.from_tzxl(temp_xd_mr.right_tzxl, y_tzxl, bi_list)
+                        xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
+                    else:
+                        xd_mr = None
+
+                    return True
+
+            else:
+                raise ValueError(f"find_second_xd_in_finish_deque 发现意外的线段")
 
         return False
 
@@ -402,25 +462,33 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                 print("%" * 50, f"{is_xd_lm_finished=}  mr未完成  ")
                 print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
-            if (xd_xy.xianduan_type == xd_lm.xianduan_type) and (
-                (xd_xy.is_up() and xd_xy.end_price >= xd_lm.end_price) or
-                (xd_xy.is_down() and xd_xy.end_price <= xd_lm.end_price)):
-                xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl, bi_list)
-                if len(tzxl_deque) > 0:
+            if (xd_xy.xianduan_type == xd_lm.xianduan_type):
+                if xd_lm.extends_beyond_end(xd_xy.end_price):
+                    if xd_lm.extends_beyond_start(xd_xy.start_price):
+                        if not find_second_xd_in_finish_deque():
+                            xd_lm = xd_mr
+                            xd_mr = XianDuan.from_tzxl(xd_mr.right_tzxl, y_tzxl, bi_list)
+                        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                            print("@" * 50, "和lm同趋势，find_second_xd_in_finish_deque后")
+                            print(f"new xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                            print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+                        continue
+                    xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl, bi_list)
+
+                    if len(tzxl_deque) == 0:
+                        xd_mr = None
+                        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                            print("@" * 50, "和lm同趋势，tzxl_deque为空，退出")
+                        break
                     x_tzxl, y_tzxl = tzxl_deque.popleft()
                     xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                         print("@" * 50, "mr未完成,xy与lm同趋势")
                         print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                         print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
-                else:
-                    xd_mr = None
-                    if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                        print("@" * 50, "和lm同趋势，tzxl_deque为空，退出")
-                    break
-                continue
+                    continue
 
-            if (xd_xy.xianduan_type == xd_mr.xianduan_type):
+            elif (xd_xy.xianduan_type == xd_mr.xianduan_type):
                 new_xd_mr = XianDuan.from_tzxl(xd_mr.left_tzxl, xd_xy.right_tzxl, bi_list)
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print("@" * 50, "mr未完成,xy与mr同趋势")
@@ -432,6 +500,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                         print(f"new xd_mr:{xd_lm.start_time}~{xd_lm.end_time}")
                 continue
+            else:
+                raise RuntimeError("不应该存在其他情况")
 
             continue
         else:

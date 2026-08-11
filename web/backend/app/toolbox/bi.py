@@ -216,9 +216,6 @@ class FakeBiFront(BiBase):
     """Fake first笔数据结构"""
     all_klines: Optional[List[MergedKLine]] = None
 
-    def __post_init__(self):
-        # 确定起始和结束索引
-        ...
 
 
 @dataclass
@@ -369,7 +366,7 @@ class Bi(BiBase):
         UP笔: price > end_price (向上超越顶分型)
         DOWN笔: price < end_price (向下超越底分型)
         """
-        if self.bi_type == BiDirectionType.UP:
+        if self.is_up():
             return price > self.end_price
         return price < self.end_price
 
@@ -379,7 +376,7 @@ class Bi(BiBase):
         UP笔: price < start_price (向下超越底分型)
         DOWN笔: price > start_price (向上超越顶分型)
         """
-        if self.bi_type == BiDirectionType.UP:
+        if self.is_up():
             return price < self.start_price
         return price > self.start_price
 
@@ -560,19 +557,20 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                     print(f"bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
                     print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
                 # 轻量级价格判断，避免创建完整 Bi 对象（O(n) → O(1)）
-                xy_bi_type = BiDirectionType.UP if y_fx.is_top() else BiDirectionType.DOWN
-                xy_end_price = y_fx.high_price if xy_bi_type == BiDirectionType.UP else y_fx.low_price
-                xy_start_price = bi_mr.right_fx.low_price if xy_bi_type == BiDirectionType.UP else bi_mr.right_fx.high_price
+                xy_end_price = y_fx.high_price if bi_xy.is_up() else y_fx.low_price
+                # TODO:为什么用bi_mr.right_fx而不是bi_xy.left_fx呢
+                xy_start_price = bi_mr.right_fx.low_price if bi_xy.is_up() else bi_mr.right_fx.high_price
                 if bi_lm.extends_beyond_end(xy_end_price):
                     if bi_lm.extends_beyond_start(xy_start_price):
                         # print(xy_start_price , xy_end_price)
                         if not find_second_bi_in_finish_deque():
                             bi_lm = bi_mr
+                            # TODO:什么情况下bi_mr.right_fx不等于bi_xy.left_fx？
                             bi_mr = Bi.from_fenxing(bi_mr.right_fx, y_fx, all_klines, prefix_merged, prefix_gap)
-                            if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
-                                print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")
-                                print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
-                                print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
+                        if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
+                            print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")
+                            print(f"new bi_lm:{bi_lm.left_fx.trade_datetime}~{bi_lm.right_fx.trade_datetime}")
+                            print(f"new bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
                         continue
 
                     bi_lm = Bi.from_fenxing(bi_lm.left_fx, y_fx, all_klines, prefix_merged, prefix_gap)
