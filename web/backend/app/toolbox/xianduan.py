@@ -157,6 +157,9 @@ class XianDuan(XianDuanBase):
             return False
         return True
 
+    def print_is_finished(self):
+        return f"{self.has_enough_bi()=}  {self.is_fanbao()=}  {self.left_tzxl.is_second_category()=}   {self.is_second_bi_contain_first_bi()}"
+
     def has_enough_bi(self) -> bool:
         """缠论线段至少由三笔构成。"""
         return self.bi_count >= 3
@@ -191,8 +194,9 @@ class XianDuan(XianDuanBase):
         end_bi_idx = self.right_tzxl.mid_bi_idx
         merged_deque = deque([])
         bi = target_bi_list[start_bi_idx]
-        merged_low = bi.end_price
-        merged_high = bi.start_price
+        # print(f"{bi.start_time=}")
+        merged_low = bi.low_price
+        merged_high = bi.high_price
 
         # 第二段线段向上的情况
         if self.xianduan_type == XianDuanDirectionType.UP:
@@ -236,7 +240,7 @@ class XianDuan(XianDuanBase):
             forward_up = False
             # 笔向上
             assert bi.is_up(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
-
+            # print(f"{list(range(start_bi_idx + 2, end_bi_idx + 1, 2))=}")
             for idx in range(start_bi_idx + 2, end_bi_idx + 1, 2):
                 bi = target_bi_list[idx]
                 if (bi.start_price > merged_low and bi.end_price > merged_high):
@@ -460,7 +464,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             x_tzxl, y_tzxl = tzxl_deque.popleft()
             xd_xy = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
             if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                print("%" * 50, f"{is_xd_lm_finished=}  mr未完成  ")
+                print("%" * 50, f"{is_xd_lm_finished=}  mr未完成：{xd_mr.print_is_finished()}  ")
                 print(f"xd_xy:{xd_xy.start_time}~{xd_xy.end_time}")
             if (xd_xy.xianduan_type == xd_lm.xianduan_type):
                 if xd_lm.extends_beyond_end(xd_xy.end_price):
