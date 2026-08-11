@@ -286,8 +286,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
     # 初始化
     log_switch = True
-    trade_s = "2021-07-04"
-    trade_e = "2024-07-10"
+    trade_s = "2022-07-04"
+    trade_e = "2027-07-10"
 
     xianduan_list = []
 
@@ -296,30 +296,30 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """
         在lm和mr都完成的前提下，追寻lm延伸到更极值的价格
         """
-        # nonlocal tzxl_list
-        # if xd_lm is None or xd_mr is None:
-        #     return xd_lm, xd_mr
-        # origin_type = xd_mr.left_tzxl.type
-        # origin_tzxl = xd_mr.left_tzxl
-        # old_tzxl = xd_mr.left_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
-        # start_idx = xd_mr.left_tzxl.idx
-        # end_idx = xd_mr.right_tzxl.idx
-        #
-        # for i in range(start_idx + 1, end_idx):
-        #     new_tzxl = tzxl_list[i]
-        #     if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
-        #                                          or (new_tzxl.is_bottom() and new_tzxl.low_price < old_tzxl.low_price)):
-        #         new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
-        #         new_xd_mr = XianDuan.from_tzxl(new_tzxl, xd_mr.right_tzxl, bi_list)
-        #         if new_xd_lm.is_finished and new_xd_mr.is_finished:
-        #             xd_lm = new_xd_lm
-        #             xd_mr = new_xd_mr
-        #             old_tzxl = new_tzxl
-        #
-        # if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
-        #     print("#" * 50, "微调后")
-        #     print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-        #     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+        nonlocal tzxl_list
+        if xd_lm is None or xd_mr is None:
+            return xd_lm, xd_mr
+        origin_type = xd_mr.left_tzxl.type
+        origin_tzxl = xd_mr.left_tzxl
+        old_tzxl = xd_mr.left_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
+        start_idx = xd_mr.left_tzxl.idx
+        end_idx = xd_mr.right_tzxl.idx
+
+        for i in range(start_idx + 1, end_idx):
+            new_tzxl = tzxl_list[i]
+            if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
+                                                 or (new_tzxl.is_bottom() and new_tzxl.low_price < old_tzxl.low_price)):
+                new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
+                new_xd_mr = XianDuan.from_tzxl(new_tzxl, xd_mr.right_tzxl, bi_list)
+                if new_xd_lm.is_finished and new_xd_mr.is_finished:
+                    xd_lm = new_xd_lm
+                    xd_mr = new_xd_mr
+                    old_tzxl = new_tzxl
+
+        if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
+            print("#" * 50, "微调后")
+            print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+            print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
         return xd_lm, xd_mr
 
     def _advance_both():
@@ -514,7 +514,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         # print(xd_lm)
         # print("##########")
         # print(xd_mr)
-
     if xd_lm.is_finished and xd_mr is not None and xd_mr.is_finished:
         if log_switch and trade_e >= xd_lm.start_time >= trade_s:
             print("#" * 50, "加入前")
@@ -525,7 +524,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         xianduan_finish_deque.append(xd_mr)
         xd_lm = None
         xd_mr = None
-    elif xd_lm.is_finished and xd_mr is not None and not xd_mr.is_finished:
+    elif xd_lm.is_finished and ((xd_mr is not None and not xd_mr.is_finished) or (xd_mr is None)):
         xianduan_finish_deque.append(xd_lm)
         xd_lm = xd_mr
 
@@ -744,9 +743,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         xianduan_finish_deque.appendleft(fake_first_xd)
 
-    # make_fake_first_xd_extend()
-    #
-    # make_fake_last_xd()
+    make_fake_first_xd_extend()
+
+    make_fake_last_xd()
 
     xianduan_list = list(xianduan_finish_deque)
 
