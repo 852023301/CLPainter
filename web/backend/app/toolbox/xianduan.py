@@ -149,7 +149,7 @@ class XianDuan(XianDuanBase):
         """判断候选线段是否满足线段成立条件。"""
         if not self.has_enough_bi():
             return False
-        if not self.is_fanbao():
+        if self.is_fanbao():
             return False
 
         # 判断第二种特征序列时，要考虑第一笔和第二笔的包含关系
@@ -158,7 +158,7 @@ class XianDuan(XianDuanBase):
         return True
 
     def print_is_finished(self):
-        return f"{self.has_enough_bi()=}  {self.is_fanbao()=}  {self.left_tzxl.is_second_category()=}   {self.is_second_bi_contain_first_bi()}"
+        return f"{self.has_enough_bi()=}  {self.is_fanbao()=}  {self.left_tzxl.is_second_category()=}   {self.is_second_bi_contain_first_bi()=}"
 
     def has_enough_bi(self) -> bool:
         """缠论线段至少由三笔构成。"""
@@ -180,10 +180,10 @@ class XianDuan(XianDuanBase):
     def is_fanbao(self) -> bool:
         """若特征序列完成前已经反包原趋势，则前一个特征序列只是中继"""
         if self.is_up() and self.right_tzxl.right_bi.end_price < self.left_tzxl.low_price:
-            return False
+            return True
         elif self.is_down() and self.right_tzxl.right_bi.end_price > self.left_tzxl.high_price:
-            return False
-        return True
+            return True
+        return False
 
     def is_second_bi_contain_first_bi(self) -> bool:
         """判断在第二种特征序列中，第二条线段的结束特征序列中，第二笔是否包含第一笔（以此来判断第二段是否无效）"""
