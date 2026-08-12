@@ -285,7 +285,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = True
+    log_switch = False
     trade_s = "2022-07-04"
     trade_e = "2027-07-10"
 
@@ -605,9 +605,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             制造fake latest线段
             """
             nonlocal xianduan_finish_deque, bi_list, fake_latest_xd, last_xd
-            if len(xianduan_finish_deque) == 0:
-                return
-
+            # 函数外部将xianduan_finish_deque pop出一个后才进入这个函数，所以xianduan_finish_deque长度可能为0，不需要判断
             if last_xd.is_up():
                 fake_last_xd_direction_type = XianDuanDirectionType.DOWN
             else:
@@ -639,6 +637,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             fake_is_true = False
             new_fx = None
 
+            if log_switch:
+                print(f"{first_bi=}")
+                print(f"{end_bi=}")
+                print(f"{fake_dest_time=}")
+
             for idx in tzxl_list:
                 if isinstance(last_xd, XianDuan) and idx.start_time <= last_xd.left_tzxl.start_time:
                     continue
@@ -646,6 +649,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                     new_fx = idx
                     fake_is_true = True
                     break
+
+            if log_switch:
+                print(f"{fake_is_true=}")
+                print(f"{new_fx=}")
             if fake_is_true and new_fx is not None:
                 if not isinstance(last_xd.right_tzxl, TeZhengXuLie):
                     raise ValueError(f"last_xd.right_tzxl不是TeZhengXuLie")
@@ -667,6 +674,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         fake_latest_xd: Optional[Union[XianDuan, FakeXianDuanLast]] = None
 
+        if log_switch:
+            print("$"*50, "make_fake_last_xd")
+            print(f"{last_xd_extend=}   {fake_latest_xd_exist=}")
+
         if last_xd_extend and fake_latest_xd_exist:
             if last_xd_new_tzxl is None:
                 raise ValueError(f"last_xd_extend和fake_latest_xd_exist为True时，last_xd_new_tzxl不能为None")
@@ -682,6 +693,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         elif not last_xd_extend and fake_latest_xd_exist:
             _make_fake_latest_xd()
 
+        if log_switch:
+            print(f"{fake_latest_xd=}")
         xianduan_finish_deque.append(last_xd)
         if fake_latest_xd is not None:
             xianduan_finish_deque.append(fake_latest_xd)
