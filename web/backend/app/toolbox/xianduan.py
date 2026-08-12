@@ -665,7 +665,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
                 fake_latest_xd.xianduan_type = fake_last_xd_direction_type
 
-        fake_latest_xd = None
+        fake_latest_xd: Optional[Union[XianDuan, FakeXianDuanLast]] = None
 
         if last_xd_extend and fake_latest_xd_exist:
             if last_xd_new_tzxl is None:
@@ -718,14 +718,27 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             first_bi_index = local_min_idx
 
         first_bi = bi_list[first_bi_index]
+        if log_switch:
+            print("%%%%"*50, "make_fake_first_xd_extend")
+
+            print(f"{origin_first_bi_index=},{first_bi_index=}")
+            print(f"{local_max_idx=},{local_min_idx=}")
+            print(f"{first_bi=}")
+            print("%%%%" * 50)
         if first_bi.is_up() != bi_list[origin_first_bi_index].is_up():
+            if log_switch:
+                print("first_bi_index += 1")
             first_bi_index += 1
             first_bi = bi_list[first_bi_index]
 
         # 如果没找到更早更极值的笔，则不变
         if first_bi_index == origin_first_bi_index:
+            if log_switch:
+                print("first bi没找到更早更极值的笔，则不变")
             xianduan_finish_deque.appendleft(first_xd)
             return
+
+        # TODO： 可能存在更早的反向段，例如all_etf/159831SZ.pkl
 
         end_bi = bi_list[first_xd.end_bi_idx]
 

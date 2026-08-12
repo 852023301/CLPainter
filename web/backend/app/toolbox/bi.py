@@ -625,7 +625,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             low_prices[local_min_idx] <= all_klines[origin_first_kline_index].low_price:
             first_kline_index = local_min_idx
 
-        # 如果没找到更早更极值的笔，则延长
+        # 如果能找到更早更极值的笔，则延长
         first_bi_extend = False
         if first_kline_index != origin_first_kline_index:
             first_bi_extend = True
