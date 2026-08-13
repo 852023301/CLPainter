@@ -285,9 +285,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = False
-    trade_s = "2022-10-11"
-    trade_e = "2024-07-10"
+    log_switch = True
+    trade_s = "2010-10-11"
+    trade_e = "2014-07-10"
 
     xianduan_list = []
 
@@ -354,11 +354,13 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
                 if xd_lm.is_finished and xd_mr.is_finished:
                     return True
+                continue
 
             if (last_xd_finish.xianduan_type == xd_mr.xianduan_type):
                 xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl, bi_list)
                 if xd_mr.is_finished:
                     return False
+                continue
 
         if log_switch:
             print("#" * 50, "find_first_xd_in_finish_deque没找到，退出")
@@ -483,19 +485,48 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                             print(f"new xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
                             print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
                         continue
-                    xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl, bi_list)
+
+                    temp_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, xd_xy.right_tzxl, bi_list)
 
                     if len(tzxl_deque) == 0:
+                        xd_lm = temp_xd_lm
                         xd_mr = None
                         if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                             print("@" * 50, "和lm同趋势，tzxl_deque为空，退出")
                         break
+
                     x_tzxl, y_tzxl = tzxl_deque.popleft()
-                    xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
+                    temp_xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
                     if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                         print("@" * 50, "mr未完成,xy与lm同趋势")
-                        print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
-                        print(f"new xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+                        print(f"temp xd_lm:{temp_xd_lm.start_time}~{temp_xd_lm.end_time}")
+                        print(f"temp xd_mr:{temp_xd_mr.start_time}~{temp_xd_mr.end_time}")
+                        print(f"{temp_xd_lm.is_finished=} {temp_xd_mr.is_finished=}")
+
+                    # 方案一
+                    if temp_xd_lm.is_finished and temp_xd_mr.is_finished:
+                        xd_lm = temp_xd_lm
+                        xd_mr = temp_xd_mr
+                    else:
+                        # 方案一失败的话尝试往后寻找方案二
+                        temp_xd_lm2 = xd_lm
+                        temp_xd_mr2 = XianDuan.from_tzxl(temp_xd_lm2.right_tzxl, temp_xd_mr.right_tzxl, bi_list)
+                        # 方案二成功就选方案二
+                        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                            print("@" * 50, "mr未完成,xy与lm同趋势,方案二：")
+                            print(f"temp xd_lm2:{temp_xd_lm2.start_time}~{temp_xd_lm2.end_time}")
+                            print(f"temp xd_mr2:{temp_xd_mr2.start_time}~{temp_xd_mr2.end_time}")
+                            print(f"{temp_xd_lm2.is_finished=} {temp_xd_mr2.is_finished=}")
+                        if temp_xd_lm2.is_finished and temp_xd_mr2.is_finished:
+                            xd_lm = temp_xd_lm2
+                            xd_mr = temp_xd_mr2
+                            # raise Exception('测试')
+                        else:
+                            # # 方案二失败就选方案一
+                            xd_lm = temp_xd_lm
+                            xd_mr = temp_xd_mr
+
+
                     continue
 
             elif (xd_xy.xianduan_type == xd_mr.xianduan_type):
