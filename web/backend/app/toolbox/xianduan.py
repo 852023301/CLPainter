@@ -285,7 +285,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = True
+    log_switch = False
     trade_s = "2010-10-11"
     trade_e = "2014-07-10"
 
@@ -379,22 +379,22 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 print("#" * 50, "old lm弹出(find_second_xd_in_finish_deque)")
                 print(f"last_xd_finish:{last_xd_finish.start_time}~{last_xd_finish.end_time}")
             if (last_xd_finish.xianduan_type == xd_mr.xianduan_type):
-                temp_xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl, bi_list)
-                if temp_xd_mr.is_finished:
-                    xd_mr = temp_xd_mr
+                tmp_xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl, bi_list)
+                if tmp_xd_mr.is_finished:
+                    xd_mr = tmp_xd_mr
                     return False
 
             elif (last_xd_finish.xianduan_type == xd_lm.xianduan_type):
-                temp_xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_xy.right_tzxl, bi_list)
-                if temp_xd_mr.is_finished:
+                tmp_xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_xy.right_tzxl, bi_list)
+                if tmp_xd_mr.is_finished:
 
                     if len(xianduan_finish_deque) > 0:
-                        xd_mr = temp_xd_mr
+                        xd_mr = tmp_xd_mr
                         xd_lm = xianduan_finish_deque.pop()
                     elif len(tzxl_deque) > 0:
-                        xd_lm = temp_xd_mr
+                        xd_lm = tmp_xd_mr
                         x_tzxl, y_tzxl = tzxl_deque.popleft()
-                        # TODO: xd_mr = XianDuan.from_tzxl(temp_xd_mr.right_tzxl, y_tzxl, bi_list)
+                        # 已经验证：tmp_xd_mr.right_tzxl 就是 x_tzxl
                         xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
                     else:
                         xd_mr = None
