@@ -286,8 +286,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
     # 初始化
     log_switch = False
-    trade_s = "2022-07-04"
-    trade_e = "2027-07-10"
+    trade_s = "2022-10-11"
+    trade_e = "2024-07-10"
 
     xianduan_list = []
 
@@ -333,7 +333,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             xd_mr = None
 
     def find_first_xd_in_finish_deque():
-        """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找线段"""
+        """适合在lm未完成但mr已完成的情况下，在已完成的队列中寻找线段
+
+        返回True指，能在last_xd_finish中找到完成的lm
+        """
         nonlocal xd_lm, xd_mr
         while len(xianduan_finish_deque) > 0:
             last_xd_finish: XianDuan = xianduan_finish_deque.pop()
@@ -351,8 +354,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
                 if xd_lm.is_finished and xd_mr.is_finished:
                     return True
-                continue
-            # TODO: 是不是应该考虑last_xd_finish.xianduan_type == xd_mr.xianduan_type
+
+            if (last_xd_finish.xianduan_type == xd_mr.xianduan_type):
+                xd_mr = XianDuan.from_tzxl(last_xd_finish.left_tzxl, xd_mr.right_tzxl, bi_list)
+                if xd_mr.is_finished:
+                    return False
 
         if log_switch:
             print("#" * 50, "find_first_xd_in_finish_deque没找到，退出")
