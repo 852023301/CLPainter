@@ -217,7 +217,6 @@ class FakeBiFront(BiBase):
     all_klines: Optional[List[MergedKLine]] = None
 
 
-
 @dataclass
 class FakeBiLast(BiBase):
     """Fake last笔数据结构"""
@@ -558,14 +557,14 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                     print(f"bi_mr:{bi_mr.left_fx.trade_datetime}~{bi_mr.right_fx.trade_datetime}")
                 # 轻量级价格判断，避免创建完整 Bi 对象（O(n) → O(1)）
                 xy_end_price = y_fx.high_price if bi_xy.is_up() else y_fx.low_price
-                # TODO:为什么用bi_mr.right_fx而不是bi_xy.left_fx呢
+                # 必须用bi_mr.right_fx而不是bi_xy.left_fx，因为要保持lm和mr的连贯性
                 xy_start_price = bi_mr.right_fx.low_price if bi_xy.is_up() else bi_mr.right_fx.high_price
                 if bi_lm.extends_beyond_end(xy_end_price):
                     if bi_lm.extends_beyond_start(xy_start_price):
                         # print(xy_start_price , xy_end_price)
                         if not find_second_bi_in_finish_deque():
                             bi_lm = bi_mr
-                            # TODO:什么情况下bi_mr.right_fx不等于bi_xy.left_fx？
+                            # 必须用bi_mr.right_fx而不是bi_xy.left_fx，因为要保持lm和mr的连贯性
                             bi_mr = Bi.from_fenxing(bi_mr.right_fx, y_fx, all_klines, prefix_merged, prefix_gap)
                         if log_switch and trade_e >= bi_lm.left_fx.trade_datetime >= trade_s:
                             print("@" * 50, "和lm同趋势，find_second_bi_in_finish_deque后")

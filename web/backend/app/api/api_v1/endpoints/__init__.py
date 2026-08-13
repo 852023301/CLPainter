@@ -28,9 +28,9 @@ def load_raw_data(data_file=None) -> List[List]:
     if data_file is None:
         data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
-        data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
+        # data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
         # data_file = Path(settings.DATA_DIR) / "all_etf/159816SZ.pkl"  # Fix:数据有问题的地方债ETF,跳过
-        data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"    # Fix:0段
+        # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"    # Fix:0段
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"  # Fix:2021年7月线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
