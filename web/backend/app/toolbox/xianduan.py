@@ -23,10 +23,10 @@ class XianDuanBase:
     所有字段均为 init=False + 默认值: 由子类的 __post_init__ 或外部构造逻辑
     (如 make_fake_last_xd) 事后填充
     """
-    start_idx: int = field(init=False, default=0)  # 线段起始位置索引(特征序列所在 K 线索引)
-    end_idx: int = field(init=False, default=0)  # 线段结束位置索引(特征序列所在 K 线索引)
-    start_bi_idx: int = field(init=False, default=0)  # 线段起始位置的笔索引(特征序列所在笔索引)
-    end_bi_idx: int = field(init=False, default=0)  # 线段结束位置的笔索引(特征序列所在笔索引)
+    start_idx: int = field(init=False, default=0)  # 线段起始位置索引(特征序列极值点所在 K 线索引)
+    end_idx: int = field(init=False, default=0)  # 线段结束位置索引(特征序列极值点所在 K 线索引)
+    start_bi_idx: int = field(init=False, default=0)  # 线段起始位置的笔索引(特征序列极值点中间笔索引)
+    end_bi_idx: int = field(init=False, default=0)  # 线段结束位置的笔索引(特征序列中间笔索引)
     start_time: str = field(init=False, default='')  # 起始时间
     end_time: str = field(init=False, default='')  # 结束时间
     start_price: float = field(init=False, default=0.0)  # 起始价格(顶/底特征序列的极值)
@@ -78,6 +78,10 @@ class XianDuanBase:
             "end_price": self.end_price,
         }
 
+    def has_enough_bi(self) -> bool:
+        """缠论线段至少由三笔构成。"""
+        return self.bi_count >= 3
+
 
 @dataclass
 class FakeXianDuanLast(XianDuanBase):
@@ -101,6 +105,24 @@ class FakeXianDuanFirst(XianDuanBase):
         self.end_price = right_tzxl.start_price
         self.right_tzxl = right_tzxl
         return self
+
+    @cached_property
+    def is_finished(self) -> bool:
+        """判断候选线段是否满足线段成立条件。"""
+        if not self.has_enough_bi():
+            return False
+        if self.is_fanbao():
+            return False
+
+        return True
+
+    def is_fanbao(self) -> bool:
+        """若特征序列完成前已经反包原趋势，则前一个特征序列只是中继"""
+        if self.is_up() and self.right_tzxl.right_bi.end_price < self.start_price:
+            return True
+        elif self.is_down() and self.right_tzxl.right_bi.end_price > self.start_price:
+            return True
+        return False
 
 
 @dataclass
@@ -160,10 +182,6 @@ class XianDuan(XianDuanBase):
     def print_is_finished(self):
         return f"{self.has_enough_bi()=}  {self.is_fanbao()=}  {self.left_tzxl.is_second_category()=}   {self.is_second_bi_contain_first_bi()=}"
 
-    def has_enough_bi(self) -> bool:
-        """缠论线段至少由三笔构成。"""
-        return self.bi_count >= 3
-
     # def is_broken(self) -> bool:
     #     """第三笔要超出第一笔"""
     #     if self.is_up():
@@ -190,8 +208,8 @@ class XianDuan(XianDuanBase):
         # 使用完整的 bi_list，如果未提供则回退到 right_tzxl.bi_list
         target_bi_list = self.bi_list
 
-        start_bi_idx = self.left_tzxl.mid_bi_idx + 1
-        end_bi_idx = self.right_tzxl.mid_bi_idx
+        start_bi_idx = self.start_bi_idx + 1
+        end_bi_idx = self.end_bi_idx
         merged_deque = deque([])
         bi = target_bi_list[start_bi_idx]
         # print(f"{bi.start_time=}")
@@ -286,8 +304,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
     # 初始化
     log_switch = False
-    trade_s = "2010-10-11"
-    trade_e = "2014-07-10"
+    trade_s = "2009-01-01"
+    trade_e = "2010-08-10"
 
     xianduan_list = []
 
@@ -299,24 +317,43 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         nonlocal tzxl_list
         if xd_lm is None or xd_mr is None:
             return xd_lm, xd_mr
-        origin_type = xd_mr.left_tzxl.type
         origin_tzxl = xd_mr.left_tzxl
-        old_tzxl = xd_mr.left_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
-        start_idx = xd_mr.left_tzxl.idx
+        origin_type = origin_tzxl.type
+        old_tzxl = origin_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
+        start_idx = -1 if isinstance(xd_lm, FakeXianDuanFirst) else xd_lm.left_tzxl.idx
         end_idx = xd_mr.right_tzxl.idx
 
         for i in range(start_idx + 1, end_idx):
             new_tzxl = tzxl_list[i]
             if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
                                                  or (new_tzxl.is_bottom() and new_tzxl.low_price < old_tzxl.low_price)):
-                new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
+                if isinstance(xd_lm, FakeXianDuanFirst):
+                    import copy
+                    new_xd_lm = copy.copy(xd_lm)
+                    new_xd_lm.right_tzxl = new_tzxl
+                    if new_xd_lm.right_tzxl is xd_lm.right_tzxl:
+                        raise ValueError("new_xd_lm的right_tzxl和xd_lm不可能相等")
+                    new_xd_lm.end_bi_idx = new_tzxl.mid_bi_idx
+                    new_xd_lm.end_idx = new_tzxl.mid_bi.start_idx
+                    new_xd_lm.end_time = new_tzxl.start_time
+                    new_xd_lm.end_price = new_tzxl.start_price
+                    if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                        print(f"{new_xd_lm.is_finished=} {new_xd_lm.has_enough_bi()=}  {new_xd_lm.is_fanbao()=} ")
+                else:
+                    new_xd_lm = XianDuan.from_tzxl(xd_lm.left_tzxl, new_tzxl, bi_list)
                 new_xd_mr = XianDuan.from_tzxl(new_tzxl, xd_mr.right_tzxl, bi_list)
+
                 if new_xd_lm.is_finished and new_xd_mr.is_finished:
+                    if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                        print("#" * 50, "微调前")
+                        print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
+                        print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
                     xd_lm = new_xd_lm
                     xd_mr = new_xd_mr
                     old_tzxl = new_tzxl
 
-        if log_switch and xd_mr.left_tzxl is not origin_tzxl and trade_e >= xd_lm.start_time >= trade_s:
+
+        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
             print("#" * 50, "微调后")
             print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
             print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
@@ -746,6 +783,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """
          fake延长first线段
         """
+        # TODO: 000008SZ显示不出第一段
         nonlocal xianduan_finish_deque, bi_list
         if len(xianduan_finish_deque) == 0:
             return
@@ -836,8 +874,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         temp_xd_lm = xianduan_list[i]
         temp_xd_mr = xianduan_list[i + 1]
 
-        if type(temp_xd_lm) == FakeXianDuanFirst:
-            continue
 
         if type(temp_xd_lm) == FakeXianDuanLast or type(temp_xd_mr) == FakeXianDuanLast:
             break
