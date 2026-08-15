@@ -30,10 +30,15 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
         # data_file = Path(settings.DATA_DIR) / "all_etf/159816SZ.pkl"  # Fix:数据有问题的地方债ETF,跳过
-        # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"    # TODO: 0段;存在更早的反向段
+        # FIX: 0段;
+        # TODO: 存在更早的反向段
+        # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
+
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
-        data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"  # TODO: 2021年7月线段划分有问题;第一段fake显示不出来
+        # FIX: 2021年7月线段划分有问题;
+        # TODO: 存在更早的反向段
+        data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长

@@ -786,7 +786,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         nonlocal xianduan_finish_deque, bi_list
         if len(xianduan_finish_deque) == 0:
             return
-        first_xd: XianDuan = xianduan_finish_deque.popleft()
+        first_xd: Union[XianDuan, FakeXianDuanFirst] = xianduan_finish_deque.popleft()
 
         origin_first_bi_index = first_xd.left_tzxl.mid_bi_idx
         first_bi_index = origin_first_bi_index
@@ -871,8 +871,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         temp_xd_lm = xianduan_list[i]
         temp_xd_mr = xianduan_list[i + 1]
 
-
-        if type(temp_xd_lm) == FakeXianDuanLast or type(temp_xd_mr) == FakeXianDuanLast:
+        if isinstance(temp_xd_lm, FakeXianDuanLast) or isinstance(temp_xd_mr, FakeXianDuanLast):
             break
         xianduan_list[i], xianduan_list[i + 1] = _adjust_xian_duan(temp_xd_lm, temp_xd_mr)
     return xianduan_list
