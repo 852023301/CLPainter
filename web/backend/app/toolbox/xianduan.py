@@ -319,7 +319,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             return xd_lm, xd_mr
         origin_tzxl = xd_mr.left_tzxl
         origin_type = origin_tzxl.type
-        old_tzxl = origin_tzxl  # TODO: 是否可以从xd_lm.left_tzxl开始？但这会导致缺失部分线段，例如000008SZ的2022年4月26
+        old_tzxl = origin_tzxl
         start_idx = -1 if isinstance(xd_lm, FakeXianDuanFirst) else xd_lm.left_tzxl.idx
         end_idx = xd_mr.right_tzxl.idx
 
@@ -783,7 +783,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """
          fake延长first线段
         """
-        # TODO: 000008SZ显示不出第一段
         nonlocal xianduan_finish_deque, bi_list
         if len(xianduan_finish_deque) == 0:
             return
@@ -825,8 +824,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 print("first bi没找到更早更极值的笔，则不变")
             xianduan_finish_deque.appendleft(first_xd)
             return
-
-        # TODO： 可能存在更早的反向段，例如all_etf/159831SZ.pkl
 
         end_bi = bi_list[first_xd.end_bi_idx]
 
