@@ -729,6 +729,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             bi_finish_deque.appendleft(fake_earliest_bi)
 
     make_fake_front_bi()
+    # TODO: 最后一笔的逻辑函数化
 
     # 最后一笔lm
     if bi_lm.is_finished:

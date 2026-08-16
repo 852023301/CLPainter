@@ -656,6 +656,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             start_bi_idx = last_xd.start_bi_idx
             first_bi = bi_list[start_bi_idx]
             end_bi = bi_list[end_bi_index]
+            # TODO： end_bi_index+1的逻辑应该往上移
             if first_bi.is_up() != end_bi.is_up():
                 end_bi_index += 1
                 end_bi = bi_list[end_bi_index]
@@ -676,7 +677,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
         def _make_fake_latest_xd():
             """
-            制造fake latest线段
+            制造fake latest xd线段
             """
             nonlocal xianduan_finish_deque, bi_list, fake_latest_xd, last_xd
             # 函数外部将xianduan_finish_deque pop出一个后才进入这个函数，所以xianduan_finish_deque长度可能为0，不需要判断
@@ -811,7 +812,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             print(f"{origin_first_bi_index=},{first_bi_index=}")
             print(f"{local_max_idx=},{local_min_idx=}")
             print(f"{first_bi=}")
-            print("%%%%" * 50)
+
         if first_bi.is_up() != bi_list[origin_first_bi_index].is_up():
             if log_switch:
                 print("first_bi_index += 1")
@@ -819,27 +820,51 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             first_bi = bi_list[first_bi_index]
 
         # 如果没找到更早更极值的笔，则不变
-        if first_bi_index == origin_first_bi_index:
-            if log_switch:
-                print("first bi没找到更早更极值的笔，则不变")
-            xianduan_finish_deque.appendleft(first_xd)
-            return
+        first_xd_reverse_extend = False
+        if first_bi_index != origin_first_bi_index:
+            first_xd_reverse_extend = True
+            # xianduan_finish_deque.appendleft(first_xd)
 
-        end_bi = bi_list[first_xd.end_bi_idx]
+        # 考虑fake_earliest_xd存在的可能性
+        fake_earliest_xd_exist = False
+        earliest_xd_new_tzxl = None
 
-        fake_first_xd = FakeXianDuanFirst()
-        fake_first_xd.start_bi_idx = first_bi_index
-        fake_first_xd.end_bi_idx = first_xd.end_bi_idx
-        fake_first_xd.start_idx = first_bi.start_idx
-        fake_first_xd.end_idx = end_bi.start_idx
-        fake_first_xd.start_time = first_bi.start_time
-        fake_first_xd.end_time = end_bi.start_time
-        fake_first_xd.start_price = first_bi.start_price
-        fake_first_xd.end_price = end_bi.start_price
-        fake_first_xd.xianduan_type = first_xd.xianduan_type
-        fake_first_xd.right_tzxl = first_xd.right_tzxl
+        extend_dest_time = first_bi.start_time
+        for ix in tzxl_list:
+            if ix.start_time == extend_dest_time:
+                fake_earliest_xd_exist = True
+                earliest_xd_new_tzxl = ix
+                break
 
-        xianduan_finish_deque.appendleft(fake_first_xd)
+        def _make_fake_earliest_xd_extend_by_extrema():
+            """用极值点来延长线段"""
+            nonlocal first_xd, first_bi_index, bi_list
+            end_bi = bi_list[first_xd.end_bi_idx]
+
+            fake_first_xd = FakeXianDuanFirst()
+            fake_first_xd.start_bi_idx = first_bi_index
+            fake_first_xd.end_bi_idx = first_xd.end_bi_idx
+            fake_first_xd.start_idx = first_bi.start_idx
+            fake_first_xd.end_idx = end_bi.start_idx
+            fake_first_xd.start_time = first_bi.start_time
+            fake_first_xd.end_time = end_bi.start_time
+            fake_first_xd.start_price = first_bi.start_price
+            fake_first_xd.end_price = end_bi.start_price
+            fake_first_xd.xianduan_type = first_xd.xianduan_type
+            fake_first_xd.right_tzxl = first_xd.right_tzxl
+
+        def _make_fake_earliest_xd():
+            """
+            制造fake earliest线段
+            """
+            ...
+
+        fake_earliest_xd: Optional[Union[XianDuan, FakeXianDuanFirst]] = None
+        if log_switch:
+            print("$" * 50, "make_fake_first_xd_extend")
+            print(f"{first_xd_reverse_extend=}   {fake_earliest_xd_exist=}")
+
+        # xianduan_finish_deque.appendleft(fake_first_xd)
 
     make_fake_first_xd_extend()
 
