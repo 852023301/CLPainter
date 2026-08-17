@@ -869,11 +869,13 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             bi_low_prices = np.array([bi.low_price for bi in bi_list[sl]])
             local_max_idx = int(np.argmax(bi_high_prices))
             local_min_idx = int(np.argmin(bi_low_prices))
+            if log_switch:
+                print(f"{local_max_idx=},{local_min_idx=},{fake_earliest_xd_direction_type=}")
 
-            if fake_earliest_xd_direction_type == XianDuanDirectionType.UP and local_max_idx < origin_first_bi_index and \
+            if fake_earliest_xd_direction_type == XianDuanDirectionType.DOWN and local_max_idx < origin_first_bi_index and \
                 bi_high_prices[local_max_idx] > bi_list[origin_first_bi_index].high_price:
                 first_bi_index = local_max_idx
-            elif fake_earliest_xd_direction_type == XianDuanDirectionType.DOWN and local_min_idx < origin_first_bi_index and \
+            elif fake_earliest_xd_direction_type == XianDuanDirectionType.UP and local_min_idx < origin_first_bi_index and \
                 bi_low_prices[local_min_idx] < bi_list[origin_first_bi_index].low_price:
                 first_bi_index = local_min_idx
 
@@ -883,7 +885,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             if first_bi.is_up() != end_bi.is_up():
                 first_bi_index += 1
                 first_bi = bi_list[first_bi_index]
-
+            if log_switch:
+                print(f"{first_bi_index=},{origin_first_bi_index=},{first_xd.is_up()=}")
             # 如果没变化，或者变化量小于2，则不进行fake线段的制造
             if first_bi_index == origin_first_bi_index or (origin_first_bi_index - first_bi_index) < 2:
                 return
@@ -917,11 +920,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 fake_earliest_xd.xianduan_type = fake_earliest_xd_direction_type
                 fake_earliest_xd.right_tzxl = first_xd.left_tzxl
 
-        if first_xd_reverse_extend and earliest_xd_new_tzxl is not None:
-            if isinstance(first_xd, XianDuan):
+        if first_xd_reverse_extend:
+            if isinstance(first_xd, XianDuan) and earliest_xd_new_tzxl is not None:
                 first_xd = XianDuan.from_tzxl(earliest_xd_new_tzxl, first_xd.right_tzxl, bi_list)
-        else:
-            _make_fake_earliest_xd_extend_by_extrema()
+            else:
+                _make_fake_earliest_xd_extend_by_extrema()
 
         fake_earliest_xd: Optional[Union[XianDuan, FakeXianDuanFirst]] = None
 
