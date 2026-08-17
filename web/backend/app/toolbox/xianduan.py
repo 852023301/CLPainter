@@ -303,9 +303,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = False
+    log_switch = True
     trade_s = "2009-01-01"
-    trade_e = "2010-08-10"
+    trade_e = "2017-08-10"
 
     xianduan_list = []
 
@@ -654,7 +654,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             start_bi_idx = last_xd.start_bi_idx
             first_bi = bi_list[start_bi_idx]
             end_bi = bi_list[end_bi_index]
-            # TODO： end_bi_index+1的逻辑应该往上移
+            # end_bi_index+1的逻辑不需要往上移，因为end_bi_index的初值源自origin_first_bi_index，比较起来比较直观
             if first_bi.is_up() != end_bi.is_up():
                 end_bi_index += 1
                 end_bi = bi_list[end_bi_index]
@@ -772,11 +772,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         if fake_latest_xd is not None:
             xianduan_finish_deque.append(fake_latest_xd)
 
-        if isinstance(fake_latest_xd, XianDuan):
-            last_xd = fake_latest_xd
-            fake_latest_xd = None
-            _make_fake_latest_xd()
-            xianduan_finish_deque.append(fake_latest_xd)
+            while isinstance(fake_latest_xd, XianDuan):
+                last_xd = fake_latest_xd
+                fake_latest_xd = None
+                _make_fake_latest_xd()
+                xianduan_finish_deque.append(fake_latest_xd)
 
     def make_fake_first_xd_extend():
         """
@@ -904,7 +904,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
             if fake_is_true and new_fx is not None:
                 fake_earliest_xd = XianDuan.from_tzxl(new_fx, first_xd.left_tzxl, bi_list)
-                raise ValueError(f"还真有啊")
+                # raise ValueError(f"还真有啊")
 
             else:
                 # TODO: 这里需要细化合并情况
@@ -931,12 +931,19 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         # 反向延长段完成后，如果始于一个普通分析，那么才能考虑fake_earliest_xd存在的可能性
         if isinstance(first_xd, XianDuan):
             _make_fake_earliest_xd()
-
+        # TODO: 是否需要考虑is_finished
         xianduan_finish_deque.appendleft(first_xd)
+        # print(f"{first_xd.start_time=},{first_xd.end_time=}")
         if fake_earliest_xd is not None:
             xianduan_finish_deque.appendleft(fake_earliest_xd)
+            # print(f"{fake_earliest_xd.start_time=},{fake_earliest_xd.end_time=}")
+            while isinstance(fake_earliest_xd, XianDuan):
+                first_xd = fake_earliest_xd
+                fake_earliest_xd = None
+                _make_fake_earliest_xd()
+                xianduan_finish_deque.appendleft(fake_earliest_xd)
 
-    make_fake_first_xd_extend()
+    # make_fake_first_xd_extend()
 
     make_fake_last_xd()
 
