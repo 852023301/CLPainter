@@ -759,6 +759,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             if last_xd_new_tzxl is None:
                 raise ValueError(f"last_xd_extend和fake_latest_xd_exist为True时，last_xd_new_tzxl不能为None")
             if isinstance(last_xd, XianDuan):
+
                 last_xd = XianDuan.from_tzxl(last_xd.left_tzxl, last_xd_new_tzxl, bi_list)
             elif isinstance(last_xd, FakeXianDuanFirst):
                 last_xd = last_xd.extend(last_xd_new_tzxl)
@@ -851,7 +852,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             fake_first_xd.end_price = end_bi.end_price
             fake_first_xd.xianduan_type = first_xd.xianduan_type
             fake_first_xd.right_tzxl = first_xd.right_tzxl
-            first_xd = fake_first_xd
+
+            # 需要考虑is_finished
+            if fake_first_xd.is_finished:
+                first_xd = fake_first_xd
 
         def _make_fake_earliest_xd():
             """
@@ -936,17 +940,17 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         # 反向延长段完成后，如果始于一个普通分析，那么才能考虑fake_earliest_xd存在的可能性
         if isinstance(first_xd, XianDuan):
             _make_fake_earliest_xd()
-        # 不需要考虑is_finished，因为数量很少
+
         xianduan_finish_deque.appendleft(first_xd)
         # print(f"{first_xd.start_time=},{first_xd.end_time=}")
-        if fake_earliest_xd is not None:
+        if fake_earliest_xd is not None and fake_earliest_xd.is_finished:
             xianduan_finish_deque.appendleft(fake_earliest_xd)
             # print(f"{fake_earliest_xd.start_time=},{fake_earliest_xd.end_time=}")
             while isinstance(fake_earliest_xd, XianDuan):
                 first_xd = fake_earliest_xd
                 fake_earliest_xd = None
                 _make_fake_earliest_xd()
-                if fake_earliest_xd is not None:
+                if fake_earliest_xd is not None and fake_earliest_xd.is_finished:
                     xianduan_finish_deque.appendleft(fake_earliest_xd)
 
     make_fake_first_xd_extend()
