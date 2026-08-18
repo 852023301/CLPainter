@@ -39,8 +39,8 @@ def load_raw_data(data_file=None) -> List[List]:
         # FIX: 2021年7月线段划分有问题;
         # FIX: 存在更早的反向段
         data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"
-        # TODO: 作为一个典型例子，研究fake earliest线段
-        # TODO: 研究为什么会前面会缺少那么多线段？
+        # FIX: 研究为什么会前面会缺少那么多线段？
+        # FIX: 研究为什么2015-12~2017-05中间的两条线段缺少一个顶点没有_adjust_xian_duan的效果
         data_file = Path(settings.DATA_DIR) / "all_stocks/000605SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长

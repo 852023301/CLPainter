@@ -303,9 +303,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
     """
 
     # 初始化
-    log_switch = True
-    trade_s = "2009-01-01"
-    trade_e = "2017-08-10"
+    log_switch = False
+    trade_s = "2015-12-01"
+    trade_e = "2017-01-10"
 
     xianduan_list = []
 
@@ -322,7 +322,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         old_tzxl = origin_tzxl
         start_idx = -1 if isinstance(xd_lm, FakeXianDuanFirst) else xd_lm.left_tzxl.idx
         end_idx = xd_mr.right_tzxl.idx
-
+        # print([tzxl_list[i].start_time for i in range(start_idx + 1, end_idx)])
         for i in range(start_idx + 1, end_idx):
             new_tzxl = tzxl_list[i]
             if new_tzxl.type == origin_type and ((new_tzxl.is_top() and new_tzxl.high_price > old_tzxl.high_price)
@@ -715,8 +715,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
             new_fx = None
 
             if log_switch:
-                print(f"{first_bi=}")
-                print(f"{end_bi=}")
+                # print(f"{first_bi=}")
+                # print(f"{end_bi=}")
                 print(f"{fake_dest_time=}")
 
             for idx in tzxl_list:
@@ -786,7 +786,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """
          fake延长first线段
         """
-        # TODO: 是否需要同时寻找同向和反向的极值，然后找到离最近的那个？
         nonlocal xianduan_finish_deque, bi_list
         if len(xianduan_finish_deque) == 0:
             return
@@ -814,7 +813,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
             print(f"{origin_first_bi_index=},{first_bi_index=}")
             print(f"{local_max_idx=},{local_min_idx=}")
-            print(f"{first_bi=}")
+            # print(f"{first_bi=}")
 
         if first_bi.is_up() != bi_list[origin_first_bi_index].is_up():
             if log_switch:
@@ -936,7 +935,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         # 反向延长段完成后，如果始于一个普通分析，那么才能考虑fake_earliest_xd存在的可能性
         if isinstance(first_xd, XianDuan):
             _make_fake_earliest_xd()
-        # TODO: 是否需要考虑is_finished
+        # 不需要考虑is_finished，因为数量很少
         xianduan_finish_deque.appendleft(first_xd)
         # print(f"{first_xd.start_time=},{first_xd.end_time=}")
         if fake_earliest_xd is not None:
@@ -948,7 +947,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 _make_fake_earliest_xd()
                 xianduan_finish_deque.appendleft(fake_earliest_xd)
 
-    # make_fake_first_xd_extend()
+    make_fake_first_xd_extend()
 
     make_fake_last_xd()
 
