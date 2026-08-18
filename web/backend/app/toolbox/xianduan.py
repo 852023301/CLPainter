@@ -780,7 +780,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 last_xd = fake_latest_xd
                 fake_latest_xd = None
                 _make_fake_latest_xd()
-                xianduan_finish_deque.append(fake_latest_xd)
+                if fake_latest_xd is not None:
+                    xianduan_finish_deque.append(fake_latest_xd)
 
     def make_fake_first_xd_extend():
         """
@@ -945,7 +946,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 first_xd = fake_earliest_xd
                 fake_earliest_xd = None
                 _make_fake_earliest_xd()
-                xianduan_finish_deque.appendleft(fake_earliest_xd)
+                if fake_earliest_xd is not None:
+                    xianduan_finish_deque.appendleft(fake_earliest_xd)
 
     make_fake_first_xd_extend()
 

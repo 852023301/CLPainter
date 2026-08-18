@@ -42,6 +42,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # FIX: 研究为什么会前面会缺少那么多线段？
         # FIX: 研究为什么2015-12~2017-05中间的两条线段缺少一个顶点没有_adjust_xian_duan的效果
         data_file = Path(settings.DATA_DIR) / "all_stocks/000605SZ.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_stocks/001282SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长
