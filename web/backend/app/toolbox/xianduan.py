@@ -388,6 +388,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 xd_mr = XianDuan.from_tzxl(xd_lm.right_tzxl, xd_mr.right_tzxl, bi_list)
                 if log_switch and trade_e >= xd_lm.start_time >= trade_s:
                     print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
+                    print(f"{xd_lm.is_finished=} {xd_mr.is_finished=} ")
+                xd_lm, xd_mr = _adjust_xian_duan(xd_lm, xd_mr)
                 if xd_lm.is_finished and xd_mr.is_finished:
                     return True
                 continue
@@ -533,11 +535,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
 
                     x_tzxl, y_tzxl = tzxl_deque.popleft()
                     temp_xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
-                    if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                        print("@" * 50, "mr未完成,xy与lm同趋势")
-                        print(f"temp xd_lm:{temp_xd_lm.start_time}~{temp_xd_lm.end_time}")
-                        print(f"temp xd_mr:{temp_xd_mr.start_time}~{temp_xd_mr.end_time}")
-                        print(f"{temp_xd_lm.is_finished=} {temp_xd_mr.is_finished=}")
 
                     # 方案一
                     if temp_xd_lm.is_finished and temp_xd_mr.is_finished:
@@ -548,19 +545,26 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                         temp_xd_lm2 = xd_lm
                         temp_xd_mr2 = XianDuan.from_tzxl(temp_xd_lm2.right_tzxl, temp_xd_mr.right_tzxl, bi_list)
                         # 方案二成功就选方案二
-                        if log_switch and trade_e >= xd_lm.start_time >= trade_s:
-                            print("@" * 50, "mr未完成,xy与lm同趋势,方案二：")
-                            print(f"temp xd_lm2:{temp_xd_lm2.start_time}~{temp_xd_lm2.end_time}")
-                            print(f"temp xd_mr2:{temp_xd_mr2.start_time}~{temp_xd_mr2.end_time}")
-                            print(f"{temp_xd_lm2.is_finished=} {temp_xd_mr2.is_finished=}")
+
                         if temp_xd_lm2.is_finished and temp_xd_mr2.is_finished:
                             xd_lm = temp_xd_lm2
                             xd_mr = temp_xd_mr2
+                            if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                                print("@" * 50, "mr未完成,xy与lm同趋势,方案二：")
+                                print(f"temp xd_lm2:{temp_xd_lm2.start_time}~{temp_xd_lm2.end_time}")
+                                print(f"temp xd_mr2:{temp_xd_mr2.start_time}~{temp_xd_mr2.end_time}")
+                                print(f"{temp_xd_lm2.is_finished=} {temp_xd_mr2.is_finished=}")
+                                continue
                             # raise Exception('测试')
                         else:
                             # # 方案二失败就选方案一
                             xd_lm = temp_xd_lm
                             xd_mr = temp_xd_mr
+                    if log_switch and trade_e >= xd_lm.start_time >= trade_s:
+                        print("@" * 50, "mr未完成,xy与lm同趋势,方案一：")
+                        print(f"temp xd_lm:{temp_xd_lm.start_time}~{temp_xd_lm.end_time}")
+                        print(f"temp xd_mr:{temp_xd_mr.start_time}~{temp_xd_mr.end_time}")
+                        print(f"{temp_xd_lm.is_finished=} {temp_xd_mr.is_finished=}")
 
                     continue
 
@@ -782,6 +786,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
         """
          fake延长first线段
         """
+        # TODO: 是否需要同时寻找同向和反向的极值，然后找到离最近的那个？
         nonlocal xianduan_finish_deque, bi_list
         if len(xianduan_finish_deque) == 0:
             return
