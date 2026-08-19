@@ -869,6 +869,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 elif fake_type == BiDirectionType.DOWN and local_min_idx > 0:
                     start_kline_idx += local_min_idx
 
+                if start_kline_idx == origin_kline_index:
+                    return
+
                 new_bi = FakeBiLast.from_fenxing(
                     left_fx=last_bi.right_fx, right_fx_mid_idx=start_kline_idx,
                     start_price=last_bi.end_price,

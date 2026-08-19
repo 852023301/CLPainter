@@ -49,6 +49,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # Fix:需要增加
         data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
+        data_file = Path(settings.DATA_DIR) / "all_stocks//000908SZ.pkl"  # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # Fix:线段划分有问题
 
 
