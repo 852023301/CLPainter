@@ -26,10 +26,9 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl" # TODO ： bi新的延长算法
         # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
-        # data_file = Path(settings.DATA_DIR) / "all_etf/159816SZ.pkl"  # Fix:数据有问题的地方债ETF,跳过
         # FIX: 0段;
         # FIX: 存在更早的反向段
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
@@ -38,17 +37,20 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
         # FIX: 2021年7月线段划分有问题;
         # FIX: 存在更早的反向段
-        data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"
         # FIX: 研究为什么会前面会缺少那么多线段？
         # FIX: 研究为什么2015-12~2017-05中间的两条线段缺少一个顶点没有_adjust_xian_duan的效果
-        data_file = Path(settings.DATA_DIR) / "all_stocks/000605SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/000605SZ.pkl"
         data_file = Path(settings.DATA_DIR) / "all_stocks/001282SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl" # Fix:需要延长
+        # Fix:需要延长
+        # TODO ： bi新的延长算法
+        data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # Fix:需要增加
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
+        # TODO ： bi新的延长算法
+        data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # Fix:线段划分有问题
 
 
