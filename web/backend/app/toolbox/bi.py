@@ -924,13 +924,20 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         init_lowest_price = min(bi.left_fx.low_price, bi.right_fx.low_price)
         start_idx = bi.left_fx.right_idx
         end_idx = bi.end_idx
-        # print(init_highest_price, init_lowest_price, start_idx, end_idx)
-        # TODO: 可以简化
-        highest_price, lowest_price, highest_idx, lowest_idx = BiBase.get_highest_lowest_price(init_highest_price,
-                                                                                               init_lowest_price,
-                                                                                               start_idx,
-                                                                                               end_idx, all_klines,
-                                                                                               high_prices, low_prices)
+        sl = slice(bi.left_fx.high_idx if bi.is_up() else bi.left_fx.low_idx, end_idx + 1)
+        # highest_price, lowest_price, highest_idx, lowest_idx = BiBase.get_highest_lowest_price(init_highest_price,
+        #                                                                                        init_lowest_price,
+        #                                                                                        start_idx,
+        #                                                                                        end_idx, all_klines,
+        #                                                                                        high_prices, low_prices)
+        temp_high_prices = high_prices[sl]
+        temp_low_prices = low_prices[sl]
+        _highest_idx = int(np.argmax(temp_high_prices))
+        _lowest_idx = int(np.argmin(temp_low_prices))
+        highest_price = temp_high_prices[_highest_idx]
+        lowest_price = temp_low_prices[_lowest_idx]
+
+
         if highest_price > init_highest_price:
             text = f"顶分型最高价不是一笔中的最高价: {highest_price=}>[{min(bi.left_fx.low_price, bi.right_fx.low_price)},{init_highest_price}],{bi.left_fx.trade_datetime=}~{bi.right_fx.trade_datetime=}"
             print(text)
