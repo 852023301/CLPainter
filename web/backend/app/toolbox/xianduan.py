@@ -916,18 +916,20 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 # raise ValueError(f"还真有啊")
 
             else:
-                # TODO: 这里需要细化合并情况
-                fake_earliest_xd = FakeXianDuanFirst()
-                fake_earliest_xd.start_bi_idx = first_bi_index
-                fake_earliest_xd.end_bi_idx = origin_first_bi_index
-                fake_earliest_xd.start_idx = first_bi.start_idx
-                fake_earliest_xd.end_idx = end_bi.end_idx
-                fake_earliest_xd.start_time = first_bi.start_time
-                fake_earliest_xd.end_time = end_bi.end_time
-                fake_earliest_xd.start_price = first_bi.start_price
-                fake_earliest_xd.end_price = end_bi.end_price
-                fake_earliest_xd.xianduan_type = fake_earliest_xd_direction_type
-                fake_earliest_xd.right_tzxl = first_xd.left_tzxl
+                temp_fake_earliest_xd = FakeXianDuanFirst()
+                temp_fake_earliest_xd.start_bi_idx = first_bi_index
+                temp_fake_earliest_xd.end_bi_idx = origin_first_bi_index
+                temp_fake_earliest_xd.start_idx = first_bi.start_idx
+                temp_fake_earliest_xd.end_idx = end_bi.end_idx
+                temp_fake_earliest_xd.start_time = first_bi.start_time
+                temp_fake_earliest_xd.end_time = end_bi.end_time
+                temp_fake_earliest_xd.start_price = first_bi.start_price
+                temp_fake_earliest_xd.end_price = end_bi.end_price
+                temp_fake_earliest_xd.xianduan_type = fake_earliest_xd_direction_type
+                temp_fake_earliest_xd.right_tzxl = first_xd.left_tzxl
+
+                if temp_fake_earliest_xd.is_finished:
+                    fake_earliest_xd = temp_fake_earliest_xd
 
         if first_xd_reverse_extend:
             if isinstance(first_xd, XianDuan) and earliest_xd_new_tzxl is not None:
