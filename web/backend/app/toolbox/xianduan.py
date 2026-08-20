@@ -207,6 +207,12 @@ class XianDuan(XianDuanBase):
         """判断在第二种特征序列中，第二条线段的结束特征序列中，第二笔是否包含第一笔（以此来判断第二段是否无效）"""
         # 使用完整的 bi_list，如果未提供则回退到 right_tzxl.bi_list
         target_bi_list = self.bi_list
+        if not target_bi_list:
+            target_bi_list = self.right_tzxl.bi_list
+            if not target_bi_list:
+                target_bi_list = self.left_tzxl.bi_list
+                if not target_bi_list:
+                    raise ValueError("无法获取特征序列的笔列表")
 
         start_bi_idx = self.start_bi_idx + 1
         end_bi_idx = self.end_bi_idx
