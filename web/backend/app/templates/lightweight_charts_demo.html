@@ -741,11 +741,11 @@
                 return;
             }
 
+            const isUp = data.close >= data.open;
             const open = data.open.toFixed(currentPrecision);
             const high = data.high.toFixed(currentPrecision);
             const low = data.low.toFixed(currentPrecision);
             const close = data.close.toFixed(currentPrecision);
-            const isUp = close >= open;
             const priceClass = isUp ? 'up' : 'down';
             const arrow = isUp ? '↑' : '↓';
 
