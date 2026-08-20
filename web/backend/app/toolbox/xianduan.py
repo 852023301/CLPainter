@@ -1,7 +1,6 @@
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from functools import cached_property
 from typing import List, Optional, Union
 
 import numpy as np
@@ -34,6 +33,12 @@ class XianDuanBase:
     xianduan_type: Optional[XianDuanDirectionType] = field(init=False, default=None)  # 线段的方向
 
     idx: int = field(init=False, default=0)
+
+    _is_finished_cache: Optional[bool] = field(
+        init=False,
+        default=None,
+        repr=False,
+    )
 
     def is_up(self) -> bool:
         """判断当前线段是否为上升线段。"""
@@ -82,6 +87,9 @@ class XianDuanBase:
         """缠论线段至少由三笔构成。"""
         return self.bi_count >= 3
 
+    def invalidate_cache(self):
+        self._is_finished_cache = None
+
 
 @dataclass
 class FakeXianDuanLast(XianDuanBase):
@@ -104,11 +112,17 @@ class FakeXianDuanFirst(XianDuanBase):
         self.end_time = right_tzxl.start_time
         self.end_price = right_tzxl.start_price
         self.right_tzxl = right_tzxl
+        self.invalidate_cache()
         return self
 
-    @cached_property
+    @property
     def is_finished(self) -> bool:
         """判断候选线段是否满足线段成立条件。"""
+        if self._is_finished_cache is None:
+            self._is_finished_cache = self._is_finished()
+        return self._is_finished_cache
+
+    def _is_finished(self) -> bool:
         if not self.has_enough_bi():
             return False
         if self.is_fanbao():
@@ -166,8 +180,14 @@ class XianDuan(XianDuanBase):
             bi_list = []
         return cls(left_tzxl=left_tzxl, right_tzxl=right_tzxl, bi_list=bi_list)
 
-    @cached_property
+    @property
     def is_finished(self) -> bool:
+        """判断候选线段是否满足线段成立条件。"""
+        if self._is_finished_cache is None:
+            self._is_finished_cache = self._is_finished()
+        return self._is_finished_cache
+
+    def _is_finished(self) -> bool:
         """判断候选线段是否满足线段成立条件。"""
         if not self.has_enough_bi():
             return False
@@ -336,6 +356,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 if isinstance(xd_lm, FakeXianDuanFirst):
                     import copy
                     new_xd_lm = copy.copy(xd_lm)
+                    new_xd_lm.invalidate_cache()
                     new_xd_lm.right_tzxl = new_tzxl
                     if new_xd_lm.right_tzxl is xd_lm.right_tzxl:
                         raise ValueError("new_xd_lm的right_tzxl和xd_lm不可能相等")
