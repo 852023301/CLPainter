@@ -774,6 +774,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase
                 fake_latest_xd.start_price = first_bi.start_price
                 fake_latest_xd.end_price = end_bi.end_price
 
+
                 fake_latest_xd.xianduan_type = fake_last_xd_direction_type
 
         fake_latest_xd: Optional[Union[XianDuan, FakeXianDuanLast]] = None
