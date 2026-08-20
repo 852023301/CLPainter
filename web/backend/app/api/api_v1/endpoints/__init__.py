@@ -97,6 +97,9 @@ class _DataCache:
 
         # 加载原始数据
         self._raw_data = load_raw_data(self.special_path)
+
+        if len(self._raw_data) == 0:
+            raise ValueError("数据文件为空")
         # print(self._raw_data)
 
         # 生成原始K线数据类
