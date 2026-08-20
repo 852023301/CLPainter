@@ -49,7 +49,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # Fix:需要增加
         data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
-        data_file = Path(settings.DATA_DIR) / "all_stocks//000908SZ.pkl"  # Fix:线段划分有问题
+        # data_file = Path(settings.DATA_DIR) / "all_stocks//000908SZ.pkl"  # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # Fix:线段划分有问题
 
 
@@ -198,17 +198,17 @@ all_etf = sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.n
 all_index = sorted(Path(settings.DATA_DIR, "all_index").iterdir(), key=lambda p: p.name)
 
 # 测试
-for target in [all_stocks, all_etf, all_index]:
-    # _data_cache = _DataCache(target)
-    for i, stk_p in enumerate(target):
-        if stk_p.name in ['159816SZ.pkl']:
-            continue
-        print(f"{i}:{stk_p}")
-        _data_cache = _DataCache(stk_p)
-        # 强制加载数据以验证
-        _ = _data_cache.raw_data
-        # 重置单例以便下一个股票使用
-        _DataCache.reset_instance()
+# for target in [all_stocks, all_etf, all_index]:
+#     # _data_cache = _DataCache(target)
+#     for i, stk_p in enumerate(target):
+#         if stk_p.name in ['159816SZ.pkl']:
+#             continue
+#         print(f"{i}:{stk_p}")
+#         _data_cache = _DataCache(stk_p)
+#         # 强制加载数据以验证
+#         _ = _data_cache.raw_data
+#         # 重置单例以便下一个股票使用
+#         _DataCache.reset_instance()
 
 
 # 保持向后兼容的接口
