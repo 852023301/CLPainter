@@ -1,5 +1,7 @@
 from fastapi import FastAPI, APIRouter
+from fastapi.staticfiles import StaticFiles
 from .api.api_v1.api import api_router
+from pathlib import Path
 
 root_router = APIRouter()
 app = FastAPI(title="DMS Backend API")
@@ -13,6 +15,9 @@ def root() -> str:
 # app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(root_router)
+
+static_dir = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 if __name__ == '__main__':
     import uvicorn

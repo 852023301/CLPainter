@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lightweight Charts Demo</title>
-    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/js/lightweight-charts.standalone.production.js"></script>
     <style>
         body {
             margin: 0;
@@ -235,7 +235,11 @@
     } else {
         const chartContainer = document.getElementById('chart');
         const tooltip = document.getElementById('ohlcTooltip');
-
+        if (!window.LightweightCharts) {
+            document.getElementById('chart').innerHTML =
+                '<p style="color:red;text-align:center;padding-top:250px;">图表组件加载失败，请联系管理员</p>';
+            throw new Error('Lightweight Charts 加载失败');
+        }
         const chart = LightweightCharts.createChart(chartContainer, {
             width: chartContainer.clientWidth,
             height: 600,
