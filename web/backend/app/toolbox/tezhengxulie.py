@@ -24,22 +24,22 @@ class TeZhengXuLie:
     """笔的特征序列"""
     type: TeZhengXuLieType = field(default=TeZhengXuLieType.DING)
     category: TeZhengXuLieCategory = field(default=TeZhengXuLieCategory.First)  # 默认第一类
-    bi_list: List[Union[BiBase]] = field(default_factory=list)  # 内部三笔列表
+    bi_list: List[BiBase] = field(default_factory=list)  # 内部三笔列表
     bi_idx_list: List[int] = field(default_factory=list)  # 特征序列组件三笔在原始笔列表中的索引
 
     # tzxl索引(generate_te_zheng_xu_lie 事后填充)
     idx: Optional[int] = None
 
     @property
-    def left_bi(self) -> Union[BiBase]:
+    def left_bi(self) -> BiBase:
         return self.bi_list[0]
 
     @property
-    def mid_bi(self) -> Union[BiBase]:
+    def mid_bi(self) -> BiBase:
         return self.bi_list[1]
 
     @property
-    def right_bi(self) -> Union[BiBase]:
+    def right_bi(self) -> BiBase:
         return self.bi_list[2]
 
     @property
@@ -91,7 +91,7 @@ class TeZhengXuLie:
         return min(self.mid_bi.start_price, self.mid_bi.end_price)
 
 
-def generate_te_zheng_xu_lie(bi_list: List[Union[BiBase]]) -> List[TeZhengXuLie]:
+def generate_te_zheng_xu_lie(bi_list: List[BiBase]) -> List[TeZhengXuLie]:
     """生成特征序列"""
     te_zheng_xu_lie_list: List[TeZhengXuLie] = []
     bi_idx_length = len(bi_list)

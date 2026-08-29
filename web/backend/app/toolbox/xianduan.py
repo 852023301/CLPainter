@@ -146,7 +146,7 @@ class XianDuan(XianDuanBase):
     right_tzxl: TeZhengXuLie
 
     # 完整的笔列表引用（用于第二种特征序列判断等场景）
-    bi_list: List[Union[BiBase]] = field(default_factory=list, repr=False)
+    bi_list: List[BiBase] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
         """根据左右两个特征序列分型初始化线段端点、方向和价格。"""
@@ -174,7 +174,7 @@ class XianDuan(XianDuanBase):
 
     @classmethod
     def from_tzxl(cls, left_tzxl: TeZhengXuLie, right_tzxl: TeZhengXuLie,
-                  bi_list: Optional[List[Union[BiBase]]] = None) -> "XianDuan":
+                  bi_list: Optional[List[BiBase]] = None) -> "XianDuan":
         """从一左一右两个特征序列分型构造候选线段。"""
         if bi_list is None:
             bi_list = []
@@ -319,7 +319,7 @@ class XianDuan(XianDuanBase):
         return True
 
 
-def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[Union[BiBase]]) -> List[XianDuanBase]:
+def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> List[XianDuanBase]:
     """
     根据特征序列分型划分线段。
 
