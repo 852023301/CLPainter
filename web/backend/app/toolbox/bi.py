@@ -214,13 +214,13 @@ class BiBase:
 @dataclass
 class FakeBiFront(BiBase):
     """Fake first笔数据结构"""
-    all_klines: Optional[List[MergedKLine]] = None
+    all_klines: Optional[List[MergedKLine]] = field(init=True, default_factory=list, repr=False)
 
 
 @dataclass
 class FakeBiLast(BiBase):
     """Fake last笔数据结构"""
-    all_klines: Optional[List[MergedKLine]] = None
+    all_klines: Optional[List[MergedKLine]] = field(init=True, default_factory=list, repr=False)
 
     def __post_init__(self):
         # 确定起始和结束索引
