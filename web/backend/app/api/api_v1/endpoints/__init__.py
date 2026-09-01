@@ -10,6 +10,7 @@ from CLPainter.web.backend.app.toolbox.tezhengxulie import generate_te_zheng_xu_
 from CLPainter.web.backend.app.toolbox.xianduan import generate_xian_duan, XianDuan
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
+from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
@@ -48,7 +49,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # Fix:需要增加
-        data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks//000908SZ.pkl"  # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # Fix:线段划分有问题
 
@@ -86,6 +87,7 @@ class _DataCache:
         self._fenxing_list = None
         self._trade_dates = None
         self._bi_list = None
+        self._bi_zhongshu_list = None
         self._te_zheng_xu_lie = None
         self._xianduan_list = None
         self._initialized = True
@@ -115,6 +117,8 @@ class _DataCache:
 
         # 基于分型列表划分笔
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
+
+        self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
@@ -153,6 +157,11 @@ class _DataCache:
         return self._bi_list
 
     @property
+    def bi_zhongshu_list(self) -> List[ZhongShuBase]:
+        self.ensure_loaded()
+        return self._bi_zhongshu_list
+
+    @property
     def te_zheng_xu_lie_list(self) -> List[TeZhengXuLie]:
         self.ensure_loaded()
         return self._te_zheng_xu_lie
@@ -180,6 +189,7 @@ class _DataCache:
             cls._instance._fenxing_list = None
             cls._instance._trade_dates = None
             cls._instance._bi_list = None
+            cls._instance._bi_zhongshu_list = None
             cls._instance._te_zheng_xu_lie = None
             cls._instance._xianduan_list = None
             cls._instance._initialized = False
