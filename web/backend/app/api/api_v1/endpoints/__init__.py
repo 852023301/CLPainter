@@ -244,6 +244,7 @@ fenxing_data_list = _data_cache.fenxing_list
 trade_date_list = _data_cache.trade_dates
 origin_kline_data = _data_cache.origin_kline_data
 bi_data_list = _data_cache.bi_list
+bi_zhongshu_list = _data_cache.bi_zhongshu_list
 te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 xian_duan_list = _data_cache.xian_duan_list
 gaps_list = _data_cache.gaps_list

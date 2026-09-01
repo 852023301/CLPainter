@@ -89,10 +89,12 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
         if len(zhongshu_list) > 0:
             last_zhongshu = zhongshu_list[-1]
 
+        # 中枢进入段
+        tmp_zhongshu_entry_bi = bi_list[idx - 4]
         tmp_zhongshu_first_bi = bi_list[idx - 3]
         tmp_zhongshu_third_bi = bi_list[idx - 1]
         if last_zhongshu is None or (
-                last_zhongshu.is_finished and tmp_zhongshu_first_bi.start_time >= last_zhongshu.end_time):
+                last_zhongshu.is_finished and tmp_zhongshu_entry_bi.start_time >= last_zhongshu.end_time):
             if (
                     tmp_zhongshu_first_bi.is_down() and tmp_zhongshu_third_bi.is_down() and tmp_zhongshu_first_bi.high_price >= tmp_zhongshu_third_bi.low_price
             ) or (
@@ -100,8 +102,7 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
 
                 zhongshu = ZhongShuBase(start_bi_idx=tmp_zhongshu_first_bi.idx, end_bi_idx=tmp_zhongshu_third_bi.idx,
                                         bi_list=bi_list)
-                # 中枢进入段
-                tmp_zhongshu_entry_bi = bi_list[idx - 4]
+
                 if (
                         zhongshu.is_up() and tmp_zhongshu_entry_bi.is_up() and tmp_zhongshu_entry_bi.low_price < zhongshu.low_price) or (
                         zhongshu.is_down() and tmp_zhongshu_entry_bi.is_down() and tmp_zhongshu_entry_bi.high_price > zhongshu.high_price):
@@ -113,13 +114,13 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
             continue
         if last_zhongshu.is_finished:
             continue
-        if (last_zhongshu.is_up() and bi.is_down() and bi.low_price <= last_zhongshu.high_price) or (
-                last_zhongshu.is_down() and bi.is_up() and bi.high_price >= last_zhongshu.low_price):
+        if last_zhongshu.low_price  <= bi.high_price  and last_zhongshu.high_price  >= bi.low_price :
             continue
         else:
-            print(last_zhongshu)
+
             last_zhongshu.extend(bi_list[idx - 2])
             last_zhongshu.set_finished()
+            print(last_zhongshu)
             zhongshu_list[-1] = last_zhongshu
 
     print(f"{len(zhongshu_list)=}")
