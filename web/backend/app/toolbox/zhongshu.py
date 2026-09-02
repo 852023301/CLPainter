@@ -42,12 +42,11 @@ class ZhongShuBase:
 
         if self.bi_list[self.start_bi_idx].is_up():
             self.forward = ZhongShuForward.DOWN
-            self.high_price = self.bi_list[self.end_bi_idx].high_price
-            self.low_price = self.bi_list[self.start_bi_idx].low_price
         else:
             self.forward = ZhongShuForward.UP
-            self.high_price = self.bi_list[self.start_bi_idx].high_price
-            self.low_price = self.bi_list[self.end_bi_idx].low_price
+
+        self.high_price = min(self.bi_list[self.start_bi_idx].high_price, self.bi_list[self.end_bi_idx].high_price)
+        self.low_price = max(self.bi_list[self.start_bi_idx].low_price, self.bi_list[self.end_bi_idx].low_price)
 
     @property
     def is_finished(self):
@@ -65,10 +64,18 @@ class ZhongShuBase:
         return self.forward == ZhongShuForward.DOWN
 
     def valid_finished(self):
-        return self.bi_list[self.start_bi_idx].is_up() == self.bi_list[self.end_bi_idx].is_up()
+        if self.bi_list[self.start_bi_idx].is_up() != self.bi_list[self.end_bi_idx].is_up():
+            return False
+        return True
+
+    def is_in_zhongshu(self, high_price, low_price):
+        """判断笔是否进入中枢的范围"""
+        if self.low_price <= high_price and self.high_price >= low_price:
+            return True
+        return False
 
     def extend(self, new_bi: BiBase):
-        if self.end_bi_idx != new_bi.idx:
+        if self.end_bi_idx <= new_bi.idx:
             self.end_bi_idx = new_bi.idx
             self.end_idx = new_bi.end_idx
             self.end_time = new_bi.end_time
@@ -78,6 +85,8 @@ class ZhongShuBase:
 
 
 def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
+    log_switch = False
+
     zhongshu_list: List[ZhongShuBase] = []
     last_zhongshu: Optional[ZhongShuBase] = None
 
@@ -93,12 +102,12 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
         tmp_zhongshu_entry_bi = bi_list[idx - 4]
         tmp_zhongshu_first_bi = bi_list[idx - 3]
         tmp_zhongshu_third_bi = bi_list[idx - 1]
+        tmp_zhongshu_exit_bi = bi_list[idx]
         if last_zhongshu is None or (
                 last_zhongshu.is_finished and tmp_zhongshu_entry_bi.start_time >= last_zhongshu.end_time):
-            if (
-                    tmp_zhongshu_first_bi.is_down() and tmp_zhongshu_third_bi.is_down() and tmp_zhongshu_first_bi.high_price >= tmp_zhongshu_third_bi.low_price
-            ) or (
-                    tmp_zhongshu_first_bi.is_up() and tmp_zhongshu_third_bi.is_up() and tmp_zhongshu_first_bi.low_price <= tmp_zhongshu_third_bi.high_price):
+            zhongshu_high_price = min(tmp_zhongshu_first_bi.high_price, tmp_zhongshu_third_bi.high_price)
+            zhongshu_low_price = max(tmp_zhongshu_first_bi.low_price, tmp_zhongshu_third_bi.low_price)
+            if tmp_zhongshu_exit_bi.high_price >= zhongshu_low_price and tmp_zhongshu_exit_bi.low_price <= zhongshu_high_price:
 
                 zhongshu = ZhongShuBase(start_bi_idx=tmp_zhongshu_first_bi.idx, end_bi_idx=tmp_zhongshu_third_bi.idx,
                                         bi_list=bi_list)
@@ -107,21 +116,38 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
                         zhongshu.is_up() and tmp_zhongshu_entry_bi.is_up() and tmp_zhongshu_entry_bi.low_price < zhongshu.low_price) or (
                         zhongshu.is_down() and tmp_zhongshu_entry_bi.is_down() and tmp_zhongshu_entry_bi.high_price > zhongshu.high_price):
                     zhongshu_list.append(zhongshu)
+                    if log_switch:
+                        print(f"中枢建立:{tmp_zhongshu_first_bi.start_time=} ,{tmp_zhongshu_third_bi.start_time=}", )
+                        print(zhongshu)
                 continue
 
         # 前一个中枢未完成时
         if last_zhongshu is None:
+            if log_switch:
+                print("中枢为空", bi.start_time, bi.end_time)
             continue
         if last_zhongshu.is_finished:
+            if log_switch:
+                print("前一中枢完成，新中枢未出现：", bi.start_time, bi.end_time)
             continue
-        if last_zhongshu.low_price  <= bi.high_price  and last_zhongshu.high_price  >= bi.low_price :
+        if last_zhongshu.is_in_zhongshu(bi.high_price, bi.low_price):
+            if log_switch:
+                print("中枢内：", bi.start_time, bi.end_time)
             continue
         else:
 
             last_zhongshu.extend(bi_list[idx - 2])
             last_zhongshu.set_finished()
-            print(last_zhongshu)
+            if log_switch:
+                print("中枢完成:", bi.start_time, bi.end_time)
+                print(last_zhongshu)
             zhongshu_list[-1] = last_zhongshu
-
-    print(f"{len(zhongshu_list)=}")
+    if last_zhongshu is not None and not last_zhongshu.is_finished:
+        last_zhongshu.extend(bi_list[-1])
+        last_zhongshu.set_finished()
+        if log_switch:
+            print(last_zhongshu)
+        zhongshu_list[-1] = last_zhongshu
+    if log_switch:
+        print(f"{len(zhongshu_list)=}")
     return zhongshu_list

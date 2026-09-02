@@ -214,6 +214,7 @@
     const candleData = {{ candle_data | safe }};
     const biData = {{ bi_data | safe }};
     const xdData = {{ xd_data | safe }};
+    const zhongshuData = {{ zhongshu_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
         const macdData = {{ macd_data | safe }};  // MACD(10,21,7): {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
@@ -293,6 +294,77 @@
             wickDownColor: '#26a69a',
         });
         candlestickSeries.setData(candleData);
+
+        // 使用 Series Primitive 绘制中枢框，保持缩放和滚动时与图表同步
+        function createZhongshuPrimitive(chart, series, items) {
+            const state = { chart, series, items, views: items.map(createPaneView) };
+
+            function createPaneView(item) {
+                let rectangle = null;
+
+                return {
+                    zOrder() {
+                        return 'bottom';
+                    },
+                    renderer() {
+                        return {
+                            draw(target) {
+                                if (!rectangle) {
+                                    return;
+                                }
+
+                                target.useMediaCoordinateSpace(scope => {
+                                    const ctx = scope.context;
+                                    ctx.save();
+                                    ctx.beginPath();
+                                    ctx.rect(
+                                        rectangle.left,
+                                        rectangle.top,
+                                        rectangle.width,
+                                        rectangle.height
+                                    );
+                                    ctx.fillStyle = 'rgba(255, 255, 0, 0.18)';
+                                    ctx.fill();
+                                    ctx.lineWidth = 1.5;
+                                    ctx.strokeStyle = '#ffff00';
+                                    ctx.setLineDash([]);
+                                    ctx.stroke();
+                                    ctx.restore();
+                                });
+                            },
+                        };
+                    },
+                    update() {
+                        const chartApi = state.chart;
+                        const seriesApi = state.series;
+                        const left = chartApi.timeScale().timeToCoordinate(item.start_time);
+                        const right = chartApi.timeScale().timeToCoordinate(item.end_time);
+                        const top = seriesApi.priceToCoordinate(item.high_price);
+                        const bottom = seriesApi.priceToCoordinate(item.low_price);
+
+                        rectangle = left === null || right === null || top === null || bottom === null ? null : {
+                            left: Math.min(left, right),
+                            top: Math.min(top, bottom),
+                            width: Math.abs(right - left),
+                            height: Math.abs(bottom - top),
+                        };
+                    },
+                };
+            }
+
+            return {
+                updateAllViews() {
+                    state.views.forEach(view => view.update());
+                },
+                paneViews() {
+                    return state.views;
+                },
+            };
+        }
+
+        if (zhongshuData.length && typeof candlestickSeries.attachPrimitive === 'function') {
+            candlestickSeries.attachPrimitive(createZhongshuPrimitive(chart, candlestickSeries, zhongshuData));
+        }
 
         // 2. 创建笔的折线系列
         const biSeries = chart.addLineSeries({
