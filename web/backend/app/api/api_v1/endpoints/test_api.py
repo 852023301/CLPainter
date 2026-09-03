@@ -8,6 +8,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
 from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list, bi_zhongshu_list
+from ..endpoints import bi_zhongshu_in_xianduan_list
 from ....toolbox.calculate import calculate_boll_list, calculate_macd_indicator, calculate_ma_colors, calculate_ma_list, calculate_rsi_list
 
 import pandas as pd
@@ -405,6 +406,16 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             for zhongshu in bi_zhongshu_list
         ]
 
+        zhongshu_in_xianduan_data = [
+            {
+                "start_time": zhongshu.start_time,
+                "end_time": zhongshu.end_time,
+                "high_price": float(zhongshu.high_price),
+                "low_price": float(zhongshu.low_price),
+            }
+            for zhongshu in bi_zhongshu_in_xianduan_list
+        ]
+
         # 3.成交量数据
         volume_data = [
             {
@@ -454,6 +465,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 bi_data=json.dumps(bi_line_data, ensure_ascii=False),
                 xd_data=json.dumps(xd_line_data, ensure_ascii=False),
                 zhongshu_data=json.dumps(zhongshu_data, ensure_ascii=False),
+                zhongshu_in_xianduan_data=json.dumps(zhongshu_in_xianduan_data, ensure_ascii=False),
                 candle_count=len(candle_data),
                 gaps_data=json.dumps([i.to_kwargs() for i in sample_gaps], ensure_ascii=False),
                 volume_data=json.dumps(volume_data, ensure_ascii=False),

@@ -97,13 +97,7 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start=None, bi_idx_e
         if idx < 4:
             continue
 
-        if bi_idx_start is not None:
-            if idx < bi_idx_start:
-                continue
 
-        if bi_idx_end is not None:
-            if idx > bi_idx_end:
-                break
 
         if len(zhongshu_list) > 0:
             last_zhongshu = zhongshu_list[-1]
@@ -113,6 +107,16 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start=None, bi_idx_e
         tmp_zhongshu_first_bi = bi_list[idx - 3]
         tmp_zhongshu_third_bi = bi_list[idx - 1]
         tmp_zhongshu_exit_bi = bi_list[idx]
+
+        if bi_idx_start is not None:
+            if (idx - 3) < bi_idx_start:
+                continue
+
+        if bi_idx_end is not None:
+            if (idx - 1) > bi_idx_end:
+                break
+
+
         if last_zhongshu is None or (
                 last_zhongshu.is_finished and tmp_zhongshu_entry_bi.start_time >= last_zhongshu.end_time):
             zhongshu_high_price = min(tmp_zhongshu_first_bi.high_price, tmp_zhongshu_third_bi.high_price)
@@ -145,18 +149,22 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start=None, bi_idx_e
                 print("中枢内：", bi.start_time, bi.end_time)
             continue
         else:
-
             last_zhongshu.extend(bi_list[idx - 2])
             last_zhongshu.set_finished()
             if log_switch:
+                print(last_zhongshu)
                 print("中枢完成:", bi.start_time, bi.end_time)
                 print(last_zhongshu)
             zhongshu_list[-1] = last_zhongshu
     if last_zhongshu is not None and not last_zhongshu.is_finished:
-        last_zhongshu.extend(bi_list[-1])
+        last_bi = bi_list[-1]
+        if bi_idx_end is not None:
+            last_bi = bi_list[bi_idx_end]
+        last_zhongshu.extend(last_bi)
         last_zhongshu.set_finished()
         if log_switch:
-            print(last_zhongshu)
+            print(f"强迫完成：{bi_idx_end=}",last_zhongshu)
+
         zhongshu_list[-1] = last_zhongshu
     if log_switch:
         print(f"{len(zhongshu_list)=}")
@@ -164,8 +172,13 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start=None, bi_idx_e
 
 
 def generate_zhongshu_in_xianduan_from_bi(bi_list: List[BiBase], xianduan_s_e_list: List[Tuple[int, int]]) -> List[
-    List[ZhongShuBase]]:
+    ZhongShuBase]:
+    log_switch = False
     if len(xianduan_s_e_list) == 0:
         return []
-
-    return [generate_zhongshu_from_bi(bi_list, i, j) for i, j in xianduan_s_e_list]
+    from itertools import chain
+    l = list(chain(*(generate_zhongshu_from_bi(bi_list, i, j) for i, j in xianduan_s_e_list)))
+    if log_switch:
+        for i in l:
+            print(i.start_time, i.end_time)
+    return l

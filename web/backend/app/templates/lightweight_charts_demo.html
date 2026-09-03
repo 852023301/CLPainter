@@ -215,6 +215,7 @@
     const biData = {{ bi_data | safe }};
     const xdData = {{ xd_data | safe }};
     const zhongshuData = {{ zhongshu_data | safe }};
+    const zhongshuInXianduanData = {{ zhongshu_in_xianduan_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
         const macdData = {{ macd_data | safe }};  // MACD(10,21,7): {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
@@ -296,7 +297,7 @@
         candlestickSeries.setData(candleData);
 
         // 使用 Series Primitive 绘制中枢框，保持缩放和滚动时与图表同步
-        function createZhongshuPrimitive(chart, series, items) {
+        function createZhongshuPrimitive(chart, series, items, fillColor, borderColor) {
             const state = { chart, series, items, views: items.map(createPaneView) };
 
             function createPaneView(item) {
@@ -323,10 +324,10 @@
                                         rectangle.width,
                                         rectangle.height
                                     );
-                                    ctx.fillStyle = 'rgba(255, 255, 0, 0.50)';
+                                    ctx.fillStyle = fillColor;
                                     ctx.fill();
                                     ctx.lineWidth = 1.5;
-                                    ctx.strokeStyle = '#ffff00';
+                                    ctx.strokeStyle = borderColor;
                                     ctx.setLineDash([]);
                                     ctx.stroke();
                                     ctx.restore();
@@ -362,8 +363,24 @@
             };
         }
 
-        if (zhongshuData.length && typeof candlestickSeries.attachPrimitive === 'function') {
-            candlestickSeries.attachPrimitive(createZhongshuPrimitive(chart, candlestickSeries, zhongshuData));
+        if (typeof candlestickSeries.attachPrimitive === 'function') {
+            if (zhongshuData.length) {
+                candlestickSeries.attachPrimitive(
+                    createZhongshuPrimitive(chart, candlestickSeries, zhongshuData, 'rgba(255, 255, 0, 0.50)', '#ffff00')
+                );
+            }
+
+            if (zhongshuInXianduanData.length) {
+                candlestickSeries.attachPrimitive(
+                    createZhongshuPrimitive(
+                        chart,
+                        candlestickSeries,
+                        zhongshuInXianduanData,
+                        'rgba(255, 0, 0, 0.50)',
+                        '#ff0000'
+                    )
+                );
+            }
         }
 
         // 2. 创建笔的折线系列

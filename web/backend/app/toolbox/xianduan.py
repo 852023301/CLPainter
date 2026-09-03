@@ -107,7 +107,8 @@ class FakeXianDuanFirst(XianDuanBase):
     right_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
 
     def extend(self, right_tzxl: TeZhengXuLie):
-        self.end_bi_idx = right_tzxl.mid_bi_idx
+        """向后延长"""
+        self.end_bi_idx =  right_tzxl.mid_bi_idx
         self.end_idx = right_tzxl.mid_bi.start_idx
         self.end_time = right_tzxl.start_time
         self.end_price = right_tzxl.start_price

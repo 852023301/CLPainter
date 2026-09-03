@@ -121,11 +121,15 @@ class _DataCache:
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
         # 笔中枢（含扩张中枢）
-        self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
+        # self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
+
+        self._bi_zhongshu_list = []
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
         self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
+
+        # print([(i.start_bi_idx,i.end_bi_idx,type(i)) for i in self._xianduan_list])
 
         # 笔中枢（仅限线段内）
         self._bi_zhongshu_in_xianduan_list = generate_zhongshu_in_xianduan_from_bi(
@@ -261,4 +265,5 @@ bi_data_list = _data_cache.bi_list
 bi_zhongshu_list = _data_cache.bi_zhongshu_list
 te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 xian_duan_list = _data_cache.xian_duan_list
+bi_zhongshu_in_xianduan_list = _data_cache.bi_zhongshu_in_xianduan_list
 gaps_list = _data_cache.gaps_list
