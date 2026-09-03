@@ -10,7 +10,8 @@ from CLPainter.web.backend.app.toolbox.tezhengxulie import generate_te_zheng_xu_
 from CLPainter.web.backend.app.toolbox.xianduan import generate_xian_duan, XianDuan
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
-from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi
+from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi, \
+    generate_zhongshu_in_xianduan_from_bi
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
@@ -27,13 +28,13 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl" # TODO ： bi新的延长算法
+        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
         # FIX: 0段;
         # FIX: 存在更早的反向段
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
-        data_file = Path(settings.DATA_DIR) / "all_etf/159326SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_etf/159326SZ.pkl"
 
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
@@ -53,7 +54,6 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks//000908SZ.pkl"  # Fix:线段划分有问题
         # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # Fix:线段划分有问题
-
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
@@ -91,6 +91,7 @@ class _DataCache:
         self._bi_zhongshu_list = None
         self._te_zheng_xu_lie = None
         self._xianduan_list = None
+        self._bi_zhongshu_in_xianduan_list = None
         self._initialized = True
 
     def ensure_loaded(self):
@@ -119,11 +120,16 @@ class _DataCache:
         # 基于分型列表划分笔
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
+        # 笔中枢（含扩张中枢）
         self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
         self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
+
+        # 笔中枢（仅限线段内）
+        self._bi_zhongshu_in_xianduan_list = generate_zhongshu_in_xianduan_from_bi(
+            self._bi_list, [(j.start_bi_idx, j.end_bi_idx) for j in self._xianduan_list])
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
 
@@ -163,6 +169,11 @@ class _DataCache:
         return self._bi_zhongshu_list
 
     @property
+    def bi_zhongshu_in_xianduan_list(self) -> List[ZhongShuBase]:
+        self.ensure_loaded()
+        return self._bi_zhongshu_in_xianduan_list
+
+    @property
     def te_zheng_xu_lie_list(self) -> List[TeZhengXuLie]:
         self.ensure_loaded()
         return self._te_zheng_xu_lie
@@ -193,6 +204,7 @@ class _DataCache:
             cls._instance._bi_zhongshu_list = None
             cls._instance._te_zheng_xu_lie = None
             cls._instance._xianduan_list = None
+            cls._instance._bi_zhongshu_in_xianduan_list = None
             cls._instance._initialized = False
             cls._instance.special_path = None
             cls._instance = None
@@ -207,6 +219,7 @@ _data_cache = _DataCache()
 all_stocks = sorted(Path(settings.DATA_DIR, "all_stocks").iterdir(), key=lambda p: p.name)
 all_etf = sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.name)
 all_index = sorted(Path(settings.DATA_DIR, "all_index").iterdir(), key=lambda p: p.name)
+
 
 # 测试
 # for target in [all_stocks, all_etf, all_index]:

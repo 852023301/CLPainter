@@ -84,8 +84,10 @@ class ZhongShuBase:
         return self.end_bi_idx - self.start_bi_idx
 
 
-def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
+def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start=None, bi_idx_end=None) -> List[ZhongShuBase]:
     log_switch = False
+    if len(bi_list) == 0:
+        return []
 
     zhongshu_list: List[ZhongShuBase] = []
     last_zhongshu: Optional[ZhongShuBase] = None
@@ -94,6 +96,14 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
 
         if idx < 4:
             continue
+
+        if bi_idx_start is not None:
+            if idx < bi_idx_start:
+                continue
+
+        if bi_idx_end is not None:
+            if idx > bi_idx_end:
+                break
 
         if len(zhongshu_list) > 0:
             last_zhongshu = zhongshu_list[-1]
@@ -151,3 +161,11 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase]) -> List[ZhongShuBase]:
     if log_switch:
         print(f"{len(zhongshu_list)=}")
     return zhongshu_list
+
+
+def generate_zhongshu_in_xianduan_from_bi(bi_list: List[BiBase], xianduan_s_e_list: List[Tuple[int, int]]) -> List[
+    List[ZhongShuBase]]:
+    if len(xianduan_s_e_list) == 0:
+        return []
+
+    return [generate_zhongshu_from_bi(bi_list, i, j) for i, j in xianduan_s_e_list]
