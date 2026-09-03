@@ -33,6 +33,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # FIX: 0段;
         # FIX: 存在更早的反向段
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
+        data_file = Path(settings.DATA_DIR) / "all_etf/159326SZ.pkl"
 
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
