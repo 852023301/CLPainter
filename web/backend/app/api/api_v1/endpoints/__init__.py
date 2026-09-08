@@ -133,7 +133,7 @@ class _DataCache:
 
         # 笔中枢（仅限线段内）
         self._bi_zhongshu_in_xianduan_list = generate_zhongshu_in_xianduan_from_bi(
-            self._bi_list, [(j.start_bi_idx, j.end_bi_idx) for j in self._xianduan_list])
+            self._bi_list, [(j.start_bi_idx + 1, j.end_bi_idx) for j in self._xianduan_list])
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
 
