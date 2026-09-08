@@ -2,7 +2,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Union
-
+from abc import ABC, abstractmethod
 import numpy as np
 
 from .bi import BiBase
@@ -16,7 +16,7 @@ class XianDuanDirectionType(str, Enum):
 
 
 @dataclass
-class XianDuanBase:
+class XianDuanBase(ABC):
     """线段数据结构基类
 
     所有字段均为 init=False + 默认值: 由子类的 __post_init__ 或外部构造逻辑
@@ -25,7 +25,7 @@ class XianDuanBase:
     start_idx: int = field(init=False, default=0)  # 线段起始位置索引(特征序列极值点所在 K 线索引)
     end_idx: int = field(init=False, default=0)  # 线段结束位置索引(特征序列极值点所在 K 线索引)
     start_bi_idx: int = field(init=False, default=0)  # 线段起始位置的笔索引(特征序列极值点中间笔索引)
-    end_bi_idx: int = field(init=False, default=0)  # 线段结束位置的笔索引(特征序列中间笔索引)
+    end_bi_idx: int = field(init=False, default=0)  # 线段真实覆盖到的最后一笔索引（(特征序列中间笔索引-1）
     start_time: str = field(init=False, default='')  # 起始时间
     end_time: str = field(init=False, default='')  # 结束时间
     start_price: float = field(init=False, default=0.0)  # 起始价格(顶/底特征序列的极值)
@@ -97,6 +97,7 @@ class FakeXianDuanLast(XianDuanBase):
 
     # xianduan索引(由 generate_xian_duan 事后填充)
     left_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
+    # end_bi_idx这个属性是被赋值的
 
 
 @dataclass
@@ -106,9 +107,11 @@ class FakeXianDuanFirst(XianDuanBase):
     # 右侧特征序列(由 make_fake_first_xd_extend 事后填充)
     right_tzxl: Optional[TeZhengXuLie] = field(init=False, default=None)
 
+    # end_bi_idx这个属性是被赋值的
+
     def extend(self, right_tzxl: TeZhengXuLie):
         """向后延长"""
-        self.end_bi_idx =  right_tzxl.mid_bi_idx
+        self.end_bi_idx = right_tzxl.mid_bi_idx - 1
         self.end_idx = right_tzxl.mid_bi.start_idx
         self.end_time = right_tzxl.start_time
         self.end_price = right_tzxl.start_price
@@ -164,7 +167,7 @@ class XianDuan(XianDuanBase):
             raise ValueError(f"线段结束索引不能小于起始索引:{self.end_idx=}<={self.start_idx=}")
 
         self.start_bi_idx = self.left_tzxl.mid_bi_idx
-        self.end_bi_idx = self.right_tzxl.mid_bi_idx
+        self.end_bi_idx = self.right_tzxl.mid_bi_idx - 1
         self.start_time = self.left_tzxl.start_time
         self.end_time = self.right_tzxl.start_time
         self.start_price = self.left_tzxl.start_price
@@ -236,7 +239,7 @@ class XianDuan(XianDuanBase):
                     raise ValueError("无法获取特征序列的笔列表")
 
         start_bi_idx = self.start_bi_idx + 1
-        end_bi_idx = self.end_bi_idx
+        end_bi_idx = self.right_tzxl.mid_bi_idx
         merged_deque = deque([])
         bi = target_bi_list[start_bi_idx]
         # print(f"{bi.start_time=}")
@@ -361,7 +364,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                     new_xd_lm.right_tzxl = new_tzxl
                     if new_xd_lm.right_tzxl is xd_lm.right_tzxl:
                         raise ValueError("new_xd_lm的right_tzxl和xd_lm不可能相等")
-                    new_xd_lm.end_bi_idx = new_tzxl.mid_bi_idx
+                    new_xd_lm.end_bi_idx = new_tzxl.mid_bi_idx - 1
                     new_xd_lm.end_idx = new_tzxl.mid_bi.start_idx
                     new_xd_lm.end_time = new_tzxl.start_time
                     new_xd_lm.end_price = new_tzxl.start_price
@@ -641,8 +644,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
 
         last_xd: Union[XianDuan, FakeXianDuanLast, FakeXianDuanFirst] = xianduan_finish_deque.pop()
 
-        origin_first_bi_index = last_xd.end_bi_idx
-        end_bi_index = origin_first_bi_index
+        if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
+            origin_end_cursor_bi_index = last_xd.right_tzxl.mid_bi_idx
+        else:
+            # 只有FakeXianDuanLast
+            origin_end_cursor_bi_index = last_xd.end_bi_idx
+        end_bi_index = origin_end_cursor_bi_index
         sl = slice(end_bi_index, len(bi_list))
         bi_high_prices = np.array([bi.high_price for bi in bi_list[sl]])
         bi_low_prices = np.array([bi.low_price for bi in bi_list[sl]])
@@ -658,7 +665,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             end_bi_index = end_bi_index + local_min_idx
 
         last_xd_extend = False
-        if end_bi_index != origin_first_bi_index:
+        if end_bi_index != origin_end_cursor_bi_index:
             # 最后一段能延长
             last_xd_extend = True
 
@@ -686,7 +693,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             start_bi_idx = last_xd.start_bi_idx
             first_bi = bi_list[start_bi_idx]
             end_bi = bi_list[end_bi_index]
-            # end_bi_index+1的逻辑不需要往上移，因为end_bi_index的初值源自origin_first_bi_index，比较起来比较直观
+            # end_bi_index+1的逻辑不需要往上移，因为end_bi_index的初值源自右侧特征序列游标，比较起来比较直观
             if first_bi.is_up() != end_bi.is_up():
                 end_bi_index += 1
                 end_bi = bi_list[end_bi_index]
@@ -716,7 +723,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             else:
                 fake_last_xd_direction_type = XianDuanDirectionType.UP
 
-            first_bi_index = last_xd.end_bi_idx
+            if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
+                first_bi_index = last_xd.right_tzxl.mid_bi_idx
+            else:
+                # 只有FakeXianDuanLast
+                first_bi_index = last_xd.end_bi_idx + 1
             end_bi_index = last_xd.right_tzxl.right_bi_idx
             sl = slice(end_bi_index, len(bi_list))
 
@@ -868,11 +879,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         def _make_fake_earliest_xd_extend_by_extrema():
             """用极值点来延长线段"""
             nonlocal first_xd, first_bi_index, bi_list
-            end_bi = bi_list[first_xd.end_bi_idx - 1]
+            end_bi_idx = first_xd.end_bi_idx
+            end_bi = bi_list[end_bi_idx]
 
             fake_first_xd = FakeXianDuanFirst()
             fake_first_xd.start_bi_idx = first_bi_index
-            fake_first_xd.end_bi_idx = first_xd.end_bi_idx
+            fake_first_xd.end_bi_idx = end_bi_idx
             fake_first_xd.start_idx = first_bi.start_idx
             fake_first_xd.end_idx = end_bi.end_idx
             fake_first_xd.start_time = first_bi.start_time
