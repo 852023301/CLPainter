@@ -1,8 +1,8 @@
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Union
-from abc import ABC, abstractmethod
+from typing import List, Optional, TypedDict, Union
+from abc import ABC
 import numpy as np
 
 from .bi import BiBase
@@ -13,6 +13,16 @@ class XianDuanDirectionType(str, Enum):
     """线段的类型"""
     UP = 'up'  # 上升段：底→顶
     DOWN = 'down'  # 下降段：顶→底
+
+
+class ExtremeBoundary(TypedDict):
+    """线段极值修复时的真实边界点"""
+
+    price: float
+    time: str
+    kline_idx: int
+    prev_end_bi_idx: int
+    next_start_bi_idx: int
 
 
 # 特征序列分界可能存在小偏差；只有起点严重偏离真实极值时才做后置修复。
@@ -393,9 +403,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
         return xd_lm, xd_mr
 
-    def _find_extreme_boundary(segment: XianDuanBase, extreme_type: str) -> Optional[dict]:
+    def _find_extreme_boundary(segment: XianDuanBase, extreme_type: str) -> ExtremeBoundary:
         """在线段覆盖范围内找到可作为相邻线段分界的真实极值点。"""
-        points = []
+        points: List[ExtremeBoundary] = []
         for bi_idx in range(segment.start_bi_idx, segment.end_bi_idx + 1):
             bi = bi_list[bi_idx]
             points.append({
@@ -438,7 +448,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 return tzxl
         return None
 
-    def _set_boundary(segment: XianDuanBase, boundary: dict, boundary_side: str):
+    def _set_boundary(segment: XianDuanBase, boundary: ExtremeBoundary, boundary_side: str):
         boundary_bi_idx = (
             boundary["next_start_bi_idx"] if boundary_side == "start" else boundary["prev_end_bi_idx"]
         )
@@ -503,24 +513,18 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 continue
 
             previous = repaired_list[index - 1]
-            previous_boundary = {
-                "price": boundary["price"],
-                "time": boundary["time"],
-                "kline_idx": boundary["kline_idx"],
-                "prev_end_bi_idx": boundary["prev_end_bi_idx"],
-                "next_start_bi_idx": boundary["next_start_bi_idx"],
-            }
-            _set_boundary(previous, previous_boundary, "end")
+            _set_boundary(previous, boundary, "end")
             _set_boundary(segment, boundary, "start")
 
             final_segment = repaired_list[absorb_stop]
-            _set_boundary(segment, {
+            final_boundary: ExtremeBoundary = {
                 "price": segment.end_price,
                 "time": segment.end_time,
                 "kline_idx": segment.end_idx,
                 "prev_end_bi_idx": final_segment.end_bi_idx,
                 "next_start_bi_idx": final_segment.end_bi_idx + 1,
-            }, "end")
+            }
+            _set_boundary(segment, final_boundary, "end")
 
             boundary_tzxl = _find_tzxl_by_time(boundary["time"], segment.is_down())
             final_tzxl = getattr(final_segment, "right_tzxl", None)
