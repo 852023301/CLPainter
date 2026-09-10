@@ -121,9 +121,9 @@ class _DataCache:
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
         # 笔中枢（含扩张中枢）
-        # self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
+        self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
 
-        self._bi_zhongshu_list = []
+        # self._bi_zhongshu_list = []
 
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 

@@ -1,7 +1,7 @@
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, TypedDict, Union
+from typing import Dict, List, Literal, Optional, Tuple, TypedDict, Union
 from abc import ABC
 import numpy as np
 
@@ -27,6 +27,8 @@ class ExtremeBoundary(TypedDict):
 
 # 特征序列分界可能存在小偏差；只有起点严重偏离真实极值时才做后置修复。
 EXTREMUM_REPAIR_THRESHOLD = 0.20
+BoundarySide = Literal["start", "end"]
+ExtremeType = Literal["low", "high"]
 
 
 @dataclass
@@ -403,29 +405,42 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             print(f"xd_mr:{xd_mr.start_time}~{xd_mr.end_time}")
         return xd_lm, xd_mr
 
-    def _find_extreme_boundary(segment: XianDuanBase, extreme_type: str) -> ExtremeBoundary:
+    def _find_extreme_boundary(segment: XianDuanBase, extreme_type: ExtremeType) -> ExtremeBoundary:
         """在线段覆盖范围内找到可作为相邻线段分界的真实极值点。"""
-        points: List[ExtremeBoundary] = []
+        best_boundary: Optional[ExtremeBoundary] = None
+        best_key: Optional[Tuple[float, str]] = None
         for bi_idx in range(segment.start_bi_idx, segment.end_bi_idx + 1):
             bi = bi_list[bi_idx]
-            points.append({
+            start_boundary: ExtremeBoundary = {
                 "price": bi.start_price,
                 "time": bi.start_time,
                 "kline_idx": bi.start_idx,
                 "prev_end_bi_idx": bi_idx - 1,
                 "next_start_bi_idx": bi_idx,
-            })
-            points.append({
+            }
+            end_boundary: ExtremeBoundary = {
                 "price": bi.end_price,
                 "time": bi.end_time,
                 "kline_idx": bi.end_idx,
                 "prev_end_bi_idx": bi_idx,
                 "next_start_bi_idx": bi_idx + 1,
-            })
+            }
+            for boundary in (
+                start_boundary,
+                end_boundary,
+            ):
+                key = (boundary["price"], boundary["time"])
+                if (
+                    best_key is None
+                    or (extreme_type == "low" and key < best_key)
+                    or (extreme_type == "high" and key > best_key)
+                ):
+                    best_boundary = boundary
+                    best_key = key
 
-        if extreme_type == "low":
-            return min(points, key=lambda point: (point["price"], point["time"]))
-        return max(points, key=lambda point: (point["price"], point["time"]))
+        if best_boundary is None:
+            raise ValueError("线段覆盖的笔为空，无法寻找极值边界")
+        return best_boundary
 
     def _start_extremum_error(segment: XianDuanBase) -> float:
         """计算线段起点偏离真实反向极值的比例。"""
@@ -442,11 +457,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             deviation = true_high - segment.start_price
         return max(0.0, deviation / true_range)
 
-    def _find_tzxl_by_time(time: str, is_top: bool) -> Optional[TeZhengXuLie]:
-        for tzxl in tzxl_list:
-            if tzxl.start_time == time and tzxl.is_top() == is_top:
-                return tzxl
-        return None
+    def _find_tzxl_by_time(
+        tzxl_by_time_and_type: Dict[Tuple[str, bool], TeZhengXuLie],
+        time: str,
+        is_top: bool,
+    ) -> Optional[TeZhengXuLie]:
+        return tzxl_by_time_and_type.get((time, is_top))
 
     def _get_right_tzxl(segment: XianDuanBase) -> Optional[TeZhengXuLie]:
         if isinstance(segment, (XianDuan, FakeXianDuanFirst)):
@@ -461,7 +477,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         if isinstance(segment, (XianDuan, FakeXianDuanFirst)):
             segment.right_tzxl = tzxl
 
-    def _set_boundary(segment: XianDuanBase, boundary: ExtremeBoundary, boundary_side: str):
+    def _set_boundary(segment: XianDuanBase, boundary: ExtremeBoundary, boundary_side: BoundarySide):
         boundary_bi_idx = (
             boundary["next_start_bi_idx"] if boundary_side == "start" else boundary["prev_end_bi_idx"]
         )
@@ -485,6 +501,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         使修复后的线段重新满足最少笔数且终点仍是覆盖区间内的真实极值。
         """
         repaired_list = list(xianduan_list)
+        tzxl_by_time_and_type: Dict[Tuple[str, bool], TeZhengXuLie] = {}
+        for tzxl in tzxl_list:
+            tzxl_by_time_and_type.setdefault((tzxl.start_time, tzxl.is_top()), tzxl)
         index = 1
         while index < len(repaired_list):
             segment = repaired_list[index]
@@ -499,15 +518,30 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 index += 1
                 continue
 
+            previous = repaired_list[index - 1]
+            previous_bi_count = boundary["prev_end_bi_idx"] - previous.start_bi_idx + 1
+            if previous_bi_count < 3:
+                index += 1
+                continue
+
             absorb_stop = None
+            scan_end_bi_idx = new_start_bi_idx - 1
+            true_high = float("-inf")
+            true_low = float("inf")
             for stop_index in range(index, len(repaired_list), 2):
+                if stop_index != index and isinstance(repaired_list[stop_index], FakeXianDuanLast):
+                    continue
+
                 candidate_end_bi_idx = repaired_list[stop_index].end_bi_idx
                 if candidate_end_bi_idx < new_start_bi_idx + 2:
                     continue
 
-                covered_bi_list = bi_list[new_start_bi_idx:candidate_end_bi_idx + 1]
-                true_high = max(bi.high_price for bi in covered_bi_list)
-                true_low = min(bi.low_price for bi in covered_bi_list)
+                while scan_end_bi_idx < candidate_end_bi_idx:
+                    scan_end_bi_idx += 1
+                    scan_bi = bi_list[scan_end_bi_idx]
+                    true_high = max(true_high, scan_bi.high_price)
+                    true_low = min(true_low, scan_bi.low_price)
+
                 endpoint_bi = bi_list[candidate_end_bi_idx]
                 endpoint_extreme = (
                     endpoint_bi.end_price >= true_high if segment.is_up()
@@ -525,30 +559,47 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 index += 1
                 continue
 
-            previous = repaired_list[index - 1]
             _set_boundary(previous, boundary, "end")
             _set_boundary(segment, boundary, "start")
 
             final_segment = repaired_list[absorb_stop]
+            final_bi = bi_list[final_segment.end_bi_idx]
+            final_tzxl = _get_right_tzxl(final_segment)
+            if final_tzxl is None and not (
+                isinstance(final_segment, FakeXianDuanLast) and final_segment is segment
+            ):
+                raise RuntimeError("极值修复候选段缺少右侧特征序列")
+
             final_boundary: ExtremeBoundary = {
-                "price": segment.end_price,
-                "time": segment.end_time,
-                "kline_idx": segment.end_idx,
+                "price": final_bi.end_price,
+                "time": final_bi.end_time,
+                "kline_idx": final_bi.end_idx,
                 "prev_end_bi_idx": final_segment.end_bi_idx,
                 "next_start_bi_idx": final_segment.end_bi_idx + 1,
             }
             _set_boundary(segment, final_boundary, "end")
 
-            boundary_tzxl = _find_tzxl_by_time(boundary["time"], segment.is_down())
-            final_tzxl = _get_right_tzxl(final_segment)
-            if boundary_tzxl is not None:
-                _set_left_tzxl(segment, boundary_tzxl)
-                _set_right_tzxl(previous, boundary_tzxl)
+            boundary_tzxl = _find_tzxl_by_time(
+                tzxl_by_time_and_type,
+                boundary["time"],
+                segment.is_down(),
+            )
+            if boundary_tzxl is None:
+                raise RuntimeError(f"极值修复边界缺少特征序列: {boundary['time']}")
+            _set_left_tzxl(segment, boundary_tzxl)
+            _set_right_tzxl(previous, boundary_tzxl)
             if final_tzxl is not None:
                 _set_right_tzxl(segment, final_tzxl)
 
             del repaired_list[index + 1:absorb_stop + 1]
             index += 1
+
+        for segment in repaired_list:
+            if not segment.has_enough_bi():
+                raise RuntimeError(
+                    f"极值修复后线段笔数不足:"
+                    f"{segment.start_time} -> {segment.end_time}"
+                )
 
         for index in range(len(repaired_list) - 1):
             if repaired_list[index].end_time != repaired_list[index + 1].start_time:
