@@ -448,6 +448,19 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 return tzxl
         return None
 
+    def _get_right_tzxl(segment: XianDuanBase) -> Optional[TeZhengXuLie]:
+        if isinstance(segment, (XianDuan, FakeXianDuanFirst)):
+            return segment.right_tzxl
+        return None
+
+    def _set_left_tzxl(segment: XianDuanBase, tzxl: TeZhengXuLie):
+        if isinstance(segment, (XianDuan, FakeXianDuanLast)):
+            segment.left_tzxl = tzxl
+
+    def _set_right_tzxl(segment: XianDuanBase, tzxl: TeZhengXuLie):
+        if isinstance(segment, (XianDuan, FakeXianDuanFirst)):
+            segment.right_tzxl = tzxl
+
     def _set_boundary(segment: XianDuanBase, boundary: ExtremeBoundary, boundary_side: str):
         boundary_bi_idx = (
             boundary["next_start_bi_idx"] if boundary_side == "start" else boundary["prev_end_bi_idx"]
@@ -527,14 +540,12 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             _set_boundary(segment, final_boundary, "end")
 
             boundary_tzxl = _find_tzxl_by_time(boundary["time"], segment.is_down())
-            final_tzxl = getattr(final_segment, "right_tzxl", None)
+            final_tzxl = _get_right_tzxl(final_segment)
             if boundary_tzxl is not None:
-                if hasattr(segment, "left_tzxl"):
-                    segment.left_tzxl = boundary_tzxl
-                if hasattr(previous, "right_tzxl"):
-                    previous.right_tzxl = boundary_tzxl
-            if final_tzxl is not None and hasattr(segment, "right_tzxl"):
-                segment.right_tzxl = final_tzxl
+                _set_left_tzxl(segment, boundary_tzxl)
+                _set_right_tzxl(previous, boundary_tzxl)
+            if final_tzxl is not None:
+                _set_right_tzxl(segment, final_tzxl)
 
             del repaired_list[index + 1:absorb_stop + 1]
             index += 1
