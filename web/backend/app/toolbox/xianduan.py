@@ -559,6 +559,15 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 index += 1
                 continue
 
+            boundary_tzxl = _find_tzxl_by_time(
+                tzxl_by_time_and_type,
+                boundary["time"],
+                segment.is_down(),
+            )
+            if boundary_tzxl is None:
+                index += 1
+                continue
+
             _set_boundary(previous, boundary, "end")
             _set_boundary(segment, boundary, "start")
 
@@ -579,13 +588,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             }
             _set_boundary(segment, final_boundary, "end")
 
-            boundary_tzxl = _find_tzxl_by_time(
-                tzxl_by_time_and_type,
-                boundary["time"],
-                segment.is_down(),
-            )
-            if boundary_tzxl is None:
-                raise RuntimeError(f"极值修复边界缺少特征序列: {boundary['time']}")
             _set_left_tzxl(segment, boundary_tzxl)
             _set_right_tzxl(previous, boundary_tzxl)
             if final_tzxl is not None:
