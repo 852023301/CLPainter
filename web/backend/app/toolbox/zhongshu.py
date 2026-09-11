@@ -74,11 +74,19 @@ class ZhongShuBase:
             return True
         return False
 
-    def extend(self, new_bi: BiBase):
-        if self.end_bi_idx <= new_bi.idx:
-            self.end_bi_idx = new_bi.idx
-            self.end_idx = new_bi.end_idx
-            self.end_time = new_bi.end_time
+    def extend(self, new_bi: BiBase) -> bool:
+        """向后延伸中枢边界；重复传入当前末端笔时不修改状态。"""
+        if new_bi.idx < self.end_bi_idx:
+            raise ValueError(
+                f"中枢只能向后延伸: end_bi_idx={self.end_bi_idx}, new_bi.idx={new_bi.idx}"
+            )
+        if new_bi.idx == self.end_bi_idx:
+            return False
+
+        self.end_bi_idx = new_bi.idx
+        self.end_idx = new_bi.end_idx
+        self.end_time = new_bi.end_time
+        return True
 
     def zhongshu_length(self) -> int:
         return self.end_bi_idx - self.start_bi_idx + 1

@@ -12,6 +12,7 @@ from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi, \
     generate_zhongshu_in_xianduan_from_bi, remove_bi_zhongshu_duplicates
+from CLPainter.web.backend.app.toolbox.xianduan_zhongshu import generate_zhongshu_from_xianduan
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
@@ -92,6 +93,7 @@ class _DataCache:
         self._bi_zhongshu_list = None
         self._te_zheng_xu_lie = None
         self._xianduan_list = None
+        self._xianduan_zhongshu_list = None
         self._bi_zhongshu_in_xianduan_list = None
         self._initialized = True
 
@@ -142,6 +144,10 @@ class _DataCache:
                 self._bi_zhongshu_list,
                 self._bi_zhongshu_in_xianduan_list,
             )
+
+        if len(self._xianduan_list) > 5:
+            self._xianduan_zhongshu_list = generate_zhongshu_from_xianduan(self._xianduan_list)
+
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
 
@@ -216,6 +222,7 @@ class _DataCache:
             cls._instance._bi_zhongshu_list = None
             cls._instance._te_zheng_xu_lie = None
             cls._instance._xianduan_list = None
+            cls._instance._xianduan_zhongshu_list = None
             cls._instance._bi_zhongshu_in_xianduan_list = None
             cls._instance._initialized = False
             cls._instance.special_path = None
@@ -274,4 +281,5 @@ bi_zhongshu_list = _data_cache.bi_zhongshu_list
 te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 xian_duan_list = _data_cache.xian_duan_list
 bi_zhongshu_in_xianduan_list = _data_cache.bi_zhongshu_in_xianduan_list
+xianduan_zhongshu_list = _data_cache._xianduan_zhongshu_list
 gaps_list = _data_cache.gaps_list
