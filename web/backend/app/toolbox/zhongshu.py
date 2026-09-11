@@ -182,3 +182,19 @@ def generate_zhongshu_in_xianduan_from_bi(bi_list: List[BiBase], xianduan_s_e_li
         for i in l:
             print(i.start_time, i.end_time)
     return l
+
+
+def remove_bi_zhongshu_duplicates(
+    bi_zhongshu_list: List[ZhongShuBase],
+    bi_zhongshu_in_xianduan_list: List[ZhongShuBase],
+) -> List[ZhongShuBase]:
+    """删除与线段内中枢完全同区间的笔中枢，避免两类中枢重复显示。"""
+    xianduan_zhongshu_keys = {
+        (zhongshu.start_time, zhongshu.end_time, zhongshu.high_price, zhongshu.low_price)
+        for zhongshu in bi_zhongshu_in_xianduan_list
+    }
+    return [
+        zhongshu for zhongshu in bi_zhongshu_list
+        if (zhongshu.start_time, zhongshu.end_time, zhongshu.high_price, zhongshu.low_price)
+        not in xianduan_zhongshu_keys
+    ]
