@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional
 from enum import Enum
-import numpy as np
+from itertools import chain
 
 from .bi import BiBase
 
@@ -80,11 +80,11 @@ class ZhongShuBase:
             self.end_idx = new_bi.end_idx
             self.end_time = new_bi.end_time
 
-    def bi_length(self) -> int:
-        return self.end_bi_idx - self.start_bi_idx
+    def zhongshu_length(self) -> int:
+        return self.end_bi_idx - self.start_bi_idx + 1
 
 
-def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start=None, bi_idx_end=None) -> List[ZhongShuBase]:
+def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start: Optional[int]=None, bi_idx_end: Optional[int]=None) -> List[ZhongShuBase]:
     log_switch = False
     if len(bi_list) == 0:
         return []
@@ -176,8 +176,8 @@ def generate_zhongshu_in_xianduan_from_bi(bi_list: List[BiBase], xianduan_s_e_li
     log_switch = False
     if len(xianduan_s_e_list) == 0:
         return []
-    from itertools import chain
-    l = list(chain(*(generate_zhongshu_from_bi(bi_list, i, j) for i, j in xianduan_s_e_list)))
+
+    l = list(chain.from_iterable((generate_zhongshu_from_bi(bi_list, i, j) for i, j in xianduan_s_e_list)))
     if log_switch:
         for i in l:
             print(i.start_time, i.end_time)

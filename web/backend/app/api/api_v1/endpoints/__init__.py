@@ -35,7 +35,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # FIX: 存在更早的反向段
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/159326SZ.pkl"
-        data_file = Path(settings.DATA_DIR) / "all_etf/512880SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_etf/512880SH.pkl"
 
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
@@ -122,7 +122,8 @@ class _DataCache:
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
         # 笔中枢（含扩张中枢）
-        self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
+        if len(self._bi_list) > 5:
+            self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
 
         # self._bi_zhongshu_list = []
 
@@ -133,13 +134,14 @@ class _DataCache:
         # print([(i.start_bi_idx,i.end_bi_idx,type(i)) for i in self._xianduan_list])
 
         # 笔中枢（仅限线段内）
-        self._bi_zhongshu_in_xianduan_list = generate_zhongshu_in_xianduan_from_bi(
-            self._bi_list, [(j.start_bi_idx + 1, j.end_bi_idx) for j in self._xianduan_list])
+        if len(self._bi_list) > 5:
+            self._bi_zhongshu_in_xianduan_list = generate_zhongshu_in_xianduan_from_bi(
+                self._bi_list, [(j.start_bi_idx + 1, j.end_bi_idx) for j in self._xianduan_list])
 
-        self._bi_zhongshu_list = remove_bi_zhongshu_duplicates(
-            self._bi_zhongshu_list,
-            self._bi_zhongshu_in_xianduan_list,
-        )
+            self._bi_zhongshu_list = remove_bi_zhongshu_duplicates(
+                self._bi_zhongshu_list,
+                self._bi_zhongshu_in_xianduan_list,
+            )
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
 
