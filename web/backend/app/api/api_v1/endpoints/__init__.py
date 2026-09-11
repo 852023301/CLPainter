@@ -12,7 +12,7 @@ from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi, \
     generate_zhongshu_in_xianduan_from_bi, remove_bi_zhongshu_duplicates
-from CLPainter.web.backend.app.toolbox.xianduan_zhongshu import generate_zhongshu_from_xianduan
+from CLPainter.web.backend.app.toolbox.xianduan_zhongshu import XianDuanZhongShu, generate_zhongshu_from_xianduan
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
@@ -202,6 +202,11 @@ class _DataCache:
         return self._xianduan_list
 
     @property
+    def xianduan_zhongshu_list(self) -> List[XianDuanZhongShu]:
+        self.ensure_loaded()
+        return self._xianduan_zhongshu_list or []
+
+    @property
     def fenxing_list(self) -> List[FenXing]:
         """获取分型列表"""
         self.ensure_loaded()
@@ -281,5 +286,5 @@ bi_zhongshu_list = _data_cache.bi_zhongshu_list
 te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 xian_duan_list = _data_cache.xian_duan_list
 bi_zhongshu_in_xianduan_list = _data_cache.bi_zhongshu_in_xianduan_list
-xianduan_zhongshu_list = _data_cache._xianduan_zhongshu_list
+xianduan_zhongshu_list = _data_cache.xianduan_zhongshu_list
 gaps_list = _data_cache.gaps_list

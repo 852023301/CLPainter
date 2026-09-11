@@ -216,6 +216,7 @@
     const xdData = {{ xd_data | safe }};
     const zhongshuData = {{ zhongshu_data | safe }};
     const zhongshuInXianduanData = {{ zhongshu_in_xianduan_data | safe }};
+    const xianduanZhongshuData = {{ xianduan_zhongshu_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
         const macdData = {{ macd_data | safe }};  // MACD(10,21,7): {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
@@ -297,7 +298,7 @@
         candlestickSeries.setData(candleData);
 
         // 使用 Series Primitive 绘制中枢框，保持缩放和滚动时与图表同步
-        function createZhongshuPrimitive(chart, series, items, fillColor, borderColor) {
+        function createZhongshuPrimitive(chart, series, items, fillColor, borderColor, borderDash = []) {
             const state = { chart, series, items, views: items.map(createPaneView) };
 
             function createPaneView(item) {
@@ -328,7 +329,7 @@
                                     ctx.fill();
                                     ctx.lineWidth = 1.5;
                                     ctx.strokeStyle = borderColor;
-                                    ctx.setLineDash([]);
+                                    ctx.setLineDash(borderDash);
                                     ctx.stroke();
                                     ctx.restore();
                                 });
@@ -378,6 +379,19 @@
                         zhongshuInXianduanData,
                         'rgba(156, 39, 176, 0.20)',
                         '#9c27b0'
+                    )
+                );
+            }
+
+            if (xianduanZhongshuData.length) {
+                candlestickSeries.attachPrimitive(
+                    createZhongshuPrimitive(
+                        chart,
+                        candlestickSeries,
+                        xianduanZhongshuData,
+                        'rgba(255, 152, 0, 0.10)',
+                        '#ff9800',
+                        [6, 4]
                     )
                 );
             }
