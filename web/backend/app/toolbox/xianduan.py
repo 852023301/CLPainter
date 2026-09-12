@@ -222,18 +222,6 @@ class XianDuan(XianDuanBase):
     def print_is_finished(self):
         return f"{self.has_enough_bi()=}  {self.is_fanbao()=}  {self.left_tzxl.is_second_category()=}   {self.is_second_bi_contain_first_bi()=}"
 
-    # def is_broken(self) -> bool:
-    #     """第三笔要超出第一笔"""
-    #     if self.is_up():
-    #         return (
-    #             self.left_tzxl.low_price < self.right_tzxl.low_price
-    #             and self.left_tzxl.high_price < self.right_tzxl.high_price
-    #         )
-    #
-    #     return (
-    #         self.left_tzxl.high_price > self.right_tzxl.high_price
-    #         and self.left_tzxl.low_price > self.right_tzxl.low_price
-    #     )
 
     def is_fanbao(self) -> bool:
         """若特征序列完成前已经反包原趋势，则前一个特征序列只是中继"""
@@ -690,6 +678,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                         # 已经验证：tmp_xd_mr.right_tzxl 就是 x_tzxl
                         xd_mr = XianDuan.from_tzxl(x_tzxl, y_tzxl, bi_list)
                     else:
+                        xd_lm = tmp_xd_mr
                         xd_mr = None
 
                     return True
