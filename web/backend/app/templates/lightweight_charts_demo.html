@@ -173,6 +173,14 @@
                 <div id="maItems"></div>
             </div>
         </div>
+        <div id="layerTrigger" style="font-size:14px;user-select:none;position:relative;cursor:pointer;padding:2px 6px;">图层 ▾
+            <div id="layerDropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:150px;">
+                <label style="display:block;font-size:13px;padding:2px 0;border-bottom:1px solid #eee;margin-bottom:4px;cursor:pointer;">
+                    <input type="checkbox" id="layerSelectAll" checked style="margin-right:6px;cursor:pointer;">全选
+                </label>
+                <div id="layerItems"></div>
+            </div>
+        </div>
     </div>
 
     <div id="chart">
@@ -299,7 +307,14 @@
 
         // 使用 Series Primitive 绘制中枢框，保持缩放和滚动时与图表同步
         function createZhongshuPrimitive(chart, series, items, fillColor, borderColor, borderDash = []) {
-            const state = { chart, series, items, views: items.map(createPaneView) };
+            const state = {
+                chart,
+                series,
+                items,
+                views: items.map(createPaneView),
+                visible: true,
+            };
+            let requestChartUpdate = null;
 
             function createPaneView(item) {
                 let rectangle = null;
@@ -355,47 +370,66 @@
             }
 
             return {
+                attached({ requestUpdate }) {
+                    requestChartUpdate = requestUpdate;
+                },
+                requestUpdate() {
+                    if (requestChartUpdate) {
+                        requestChartUpdate();
+                    }
+                },
+                setVisible(visible) {
+                    if (state.visible === visible) {
+                        return;
+                    }
+
+                    state.visible = visible;
+                    if (requestChartUpdate) {
+                        requestChartUpdate();
+                    }
+                },
                 updateAllViews() {
                     state.views.forEach(view => view.update());
                 },
                 paneViews() {
-                    return state.views;
+                    return state.visible ? state.views : [];
                 },
             };
         }
 
-        if (typeof candlestickSeries.attachPrimitive === 'function') {
-            if (zhongshuData.length) {
-                candlestickSeries.attachPrimitive(
-                    createZhongshuPrimitive(chart, candlestickSeries, zhongshuData, 'rgba(0, 172, 193, 0.18)', '#00acc1')
-                );
+        const primitiveLayerMap = {};
+        function registerZhongshuLayer(key, items, fillColor, borderColor, borderDash = []) {
+            if (!items.length || typeof candlestickSeries.attachPrimitive !== 'function') {
+                primitiveLayerMap[key] = { applyOptions: () => {} };
+                return;
             }
 
-            if (zhongshuInXianduanData.length) {
-                candlestickSeries.attachPrimitive(
-                    createZhongshuPrimitive(
-                        chart,
-                        candlestickSeries,
-                        zhongshuInXianduanData,
-                        'rgba(156, 39, 176, 0.20)',
-                        '#9c27b0'
-                    )
-                );
-            }
-
-            if (xianduanZhongshuData.length) {
-                candlestickSeries.attachPrimitive(
-                    createZhongshuPrimitive(
-                        chart,
-                        candlestickSeries,
-                        xianduanZhongshuData,
-                        'rgba(255, 152, 0, 0.10)',
-                        '#ff9800',
-                        [6, 4]
-                    )
-                );
-            }
+            const primitive = createZhongshuPrimitive(
+                chart,
+                candlestickSeries,
+                items,
+                fillColor,
+                borderColor,
+                borderDash
+            );
+            candlestickSeries.attachPrimitive(primitive);
+            primitiveLayerMap[key] = {
+                applyOptions: ({ visible }) => primitive.setVisible(visible),
+            };
         }
+
+        registerZhongshuLayer(
+            'biZhongshu', zhongshuData,
+            'rgba(0, 172, 193, 0.18)', '#00acc1'
+        );
+        registerZhongshuLayer(
+            'zhongshuInXianduan', zhongshuInXianduanData,
+            'rgba(156, 39, 176, 0.20)', '#9c27b0'
+        );
+        registerZhongshuLayer(
+            'xianduanZhongshu', xianduanZhongshuData,
+            'rgba(255, 152, 0, 0.10)', '#ff9800', [6, 4]
+        );
 
         // 2. 创建笔的折线系列
         const biSeries = chart.addLineSeries({
@@ -423,6 +457,34 @@
 
         xdData.sort((a, b) => new Date(a.time) - new Date(b.time));
         xdSeries.setData(xdData);
+
+        const layerConfigs = [
+            { key: 'biZhongshu', label: '笔中枢', color: '#00acc1' },
+            { key: 'zhongshuInXianduan', label: '笔中枢（线段内）', color: '#9c27b0' },
+            { key: 'xianduanZhongshu', label: '线段中枢', color: '#ff9800' },
+            { key: 'bi', label: '笔', color: '#2962ff' },
+            { key: 'xd', label: '线段', color: '#ff0000' },
+        ];
+        const layerSeriesMap = {
+            biZhongshu: primitiveLayerMap.biZhongshu,
+            zhongshuInXianduan: primitiveLayerMap.zhongshuInXianduan,
+            xianduanZhongshu: primitiveLayerMap.xianduanZhongshu,
+            bi: {
+                applyOptions: ({ visible }) => biSeries.applyOptions({ visible }),
+            },
+            xd: {
+                applyOptions: ({ visible }) => xdSeries.applyOptions({ visible }),
+            },
+        };
+        setupIndicatorGroup({
+            triggerId: 'layerTrigger',
+            dropdownId: 'layerDropdown',
+            itemsId: 'layerItems',
+            selectAllId: 'layerSelectAll',
+            data: layerConfigs,
+            seriesMap: layerSeriesMap,
+            prefix: 'layer:',
+        });
 
         // ========== 通用: 指标线渲染 + 下拉显隐联动 (均线/布林/RSI 复用) ==========
         // 创建折线序列并填充数据, 返回 key -> series 映射
