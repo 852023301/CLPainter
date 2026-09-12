@@ -13,6 +13,7 @@ from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate
 from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi, \
     generate_zhongshu_in_xianduan_from_bi, remove_bi_zhongshu_duplicates
 from CLPainter.web.backend.app.toolbox.xianduan_zhongshu import XianDuanZhongShu, generate_zhongshu_from_xianduan
+from CLPainter.web.backend.app.toolbox.xianduan_tezhengxulie import generate_xianduan_tezheng_xu_lie
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
@@ -49,7 +50,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/001282SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
-        data_file = Path(settings.DATA_DIR) / "all_stocks/600713SH.pkl"  # Fix:需要延长
+        # data_file = Path(settings.DATA_DIR) / "all_stocks/600713SH.pkl"  # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长
         # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
@@ -95,6 +96,7 @@ class _DataCache:
         self._te_zheng_xu_lie = None
         self._xianduan_list = None
         self._xianduan_zhongshu_list = None
+        self._xianduan_tezhengxulie_list = None
         self._bi_zhongshu_in_xianduan_list = None
         self._initialized = True
 
@@ -130,8 +132,10 @@ class _DataCache:
 
         # self._bi_zhongshu_list = []
 
+        # 特征序列
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
+        #  线段
         self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
 
         # print([(i.start_bi_idx,i.end_bi_idx,type(i)) for i in self._xianduan_list])
@@ -149,6 +153,9 @@ class _DataCache:
         if len(self._xianduan_list) > 5:
             self._xianduan_zhongshu_list = generate_zhongshu_from_xianduan(self._xianduan_list)
 
+        # 线段中枢（另一视角）
+
+        self._xianduan_tezhengxulie_list = generate_xianduan_tezheng_xu_lie(self._xianduan_list)
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
 
@@ -208,6 +215,11 @@ class _DataCache:
         return self._xianduan_zhongshu_list or []
 
     @property
+    def xianduan_tezhengxulie_list(self) -> List[XianDuanZhongShu]:
+        self.ensure_loaded()
+        return self._xianduan_tezhengxulie_list or []
+
+    @property
     def fenxing_list(self) -> List[FenXing]:
         """获取分型列表"""
         self.ensure_loaded()
@@ -229,6 +241,7 @@ class _DataCache:
             cls._instance._te_zheng_xu_lie = None
             cls._instance._xianduan_list = None
             cls._instance._xianduan_zhongshu_list = None
+            cls._instance._xianduan_tezhengxulie_list = None
             cls._instance._bi_zhongshu_in_xianduan_list = None
             cls._instance._initialized = False
             cls._instance.special_path = None
@@ -288,4 +301,5 @@ te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
 xian_duan_list = _data_cache.xian_duan_list
 bi_zhongshu_in_xianduan_list = _data_cache.bi_zhongshu_in_xianduan_list
 xianduan_zhongshu_list = _data_cache.xianduan_zhongshu_list
+xianduan_tezhengxulie_list = _data_cache._xianduan_tezhengxulie_list
 gaps_list = _data_cache.gaps_list
