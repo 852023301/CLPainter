@@ -49,6 +49,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # data_file = Path(settings.DATA_DIR) / "all_stocks/001282SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
+        data_file = Path(settings.DATA_DIR) / "all_stocks/600713SH.pkl"  # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长
         # Fix:需要延长
         # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"

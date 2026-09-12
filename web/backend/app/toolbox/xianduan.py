@@ -845,7 +845,37 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         # print(xd_lm)
         # print("##########")
         # print(xd_mr)
-    if xd_lm.is_finished and xd_mr is not None and xd_mr.is_finished:
+    def merge_last_unfinished_xd() -> bool:
+        """末端候选未确认时，回溯合并为最后一条已确认大线段。"""
+        nonlocal xd_lm, xd_mr
+        if xd_lm is None or xd_mr is None or not xd_lm.is_finished or xd_mr.is_finished:
+            return False
+        if not xianduan_finish_deque:
+            return False
+
+        previous_xd = xianduan_finish_deque[-1]
+        if not isinstance(previous_xd, XianDuan):
+            return False
+        if previous_xd.right_tzxl.idx != xd_lm.left_tzxl.idx:
+            return False
+
+        merged_xd = XianDuan.from_tzxl(
+            previous_xd.left_tzxl,
+            xd_mr.right_tzxl,
+            bi_list,
+        )
+        if not merged_xd.is_finished:
+            return False
+
+        xianduan_finish_deque.pop()
+        xianduan_finish_deque.append(merged_xd)
+        xd_lm = None
+        xd_mr = None
+        return True
+
+    merge_last_unfinished_xd()
+
+    if xd_lm is not None and xd_mr is not None and xd_lm.is_finished and xd_mr.is_finished:
         if log_switch and trade_e >= xd_lm.start_time >= trade_s:
             print("#" * 50, "加入前")
             print(f"xd_lm:{xd_lm.start_time}~{xd_lm.end_time}")
@@ -855,7 +885,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         xianduan_finish_deque.append(xd_mr)
         xd_lm = None
         xd_mr = None
-    elif xd_lm.is_finished and ((xd_mr is not None and not xd_mr.is_finished) or (xd_mr is None)):
+    elif xd_lm is not None and (
+        (xd_mr is not None and not xd_mr.is_finished) or (xd_mr is None)
+    ):
         xianduan_finish_deque.append(xd_lm)
         xd_lm = xd_mr
 
