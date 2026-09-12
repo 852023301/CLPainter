@@ -225,6 +225,7 @@
     const zhongshuData = {{ zhongshu_data | safe }};
     const zhongshuInXianduanData = {{ zhongshu_in_xianduan_data | safe }};
     const xianduanZhongshuData = {{ xianduan_zhongshu_data | safe }};
+    const xianduanZhongshuAnotherData = {{ xianduan_zhongshu_another_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
         const macdData = {{ macd_data | safe }};  // MACD(10,21,7): {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
@@ -430,6 +431,10 @@
             'xianduanZhongshu', xianduanZhongshuData,
             'rgba(255, 152, 0, 0.10)', '#ff9800', [6, 4]
         );
+        registerZhongshuLayer(
+            'xianduanZhongshuAnother', xianduanZhongshuAnotherData,
+            'rgba(139, 195, 74, 0.12)', '#7cb342', [6, 4]
+        );
 
         // 2. 创建笔的折线系列
         const biSeries = chart.addLineSeries({
@@ -459,16 +464,18 @@
         xdSeries.setData(xdData);
 
         const layerConfigs = [
+            { key: 'bi', label: '笔', color: '#2962ff' },
+            { key: 'xd', label: '线段', color: '#ff0000' },
             { key: 'biZhongshu', label: '笔中枢', color: '#00acc1' },
             { key: 'zhongshuInXianduan', label: '笔中枢（线段内）', color: '#9c27b0' },
             { key: 'xianduanZhongshu', label: '线段中枢', color: '#ff9800' },
-            { key: 'bi', label: '笔', color: '#2962ff' },
-            { key: 'xd', label: '线段', color: '#ff0000' },
+            { key: 'xianduanZhongshuAnother', label: '线段中枢（另一视角）', color: '#7cb342' },
         ];
         const layerSeriesMap = {
             biZhongshu: primitiveLayerMap.biZhongshu,
             zhongshuInXianduan: primitiveLayerMap.zhongshuInXianduan,
             xianduanZhongshu: primitiveLayerMap.xianduanZhongshu,
+            xianduanZhongshuAnother: primitiveLayerMap.xianduanZhongshuAnother,
             bi: {
                 applyOptions: ({ visible }) => biSeries.applyOptions({ visible }),
             },

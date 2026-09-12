@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from .xianduan import XianDuanBase
 from .zhongshu import ZhongShuForward, ZhongShuType
+
+if TYPE_CHECKING:
+    from .xianduan_tezhengxulie import XianduanTeZhengXuLie
 
 
 def _xianduan_high_price(xian_duan: XianDuanBase) -> float:
@@ -229,3 +232,24 @@ def generate_zhongshu_from_xianduan(
         last_zhongshu.set_finished()
 
     return zhongshu_list
+
+
+def generate_xianduan_zhongshu_another(
+    xian_duan_list: List[XianDuanBase],
+    xianduan_tezhengxulie_list: List["XianduanTeZhengXuLie"],
+) -> List[XianDuanZhongShu]:
+    """倒序寻找最早能生成线段中枢的尾部特征序列。"""
+    xian_duan_count = len(xian_duan_list)
+    for tzxl in reversed(xianduan_tezhengxulie_list):
+        xianduan_idx_start = tzxl.mid_xian_duan_idx + 1
+        if xianduan_idx_start >= xian_duan_count:
+            continue
+
+        zhongshu_list = generate_zhongshu_from_xianduan(
+            xian_duan_list,
+            xianduan_idx_start=xianduan_idx_start,
+            xianduan_idx_end=xian_duan_count - 1,
+        )
+        if zhongshu_list:
+            return zhongshu_list
+    return []
