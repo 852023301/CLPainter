@@ -126,7 +126,7 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start: Optional[int]
 
 
         if last_zhongshu is None or (
-                last_zhongshu.is_finished and tmp_zhongshu_entry_bi.start_time >= last_zhongshu.end_time):
+                last_zhongshu.is_finished and tmp_zhongshu_entry_bi.start_time >= bi_list[last_zhongshu.end_bi_idx].start_time):
             zhongshu_high_price = min(tmp_zhongshu_first_bi.high_price, tmp_zhongshu_third_bi.high_price)
             zhongshu_low_price = max(tmp_zhongshu_first_bi.low_price, tmp_zhongshu_third_bi.low_price)
             if tmp_zhongshu_exit_bi.high_price >= zhongshu_low_price and tmp_zhongshu_exit_bi.low_price <= zhongshu_high_price:
@@ -157,7 +157,11 @@ def generate_zhongshu_from_bi(bi_list: List[BiBase], bi_idx_start: Optional[int]
                 print("中枢内：", bi.start_time, bi.end_time)
             continue
         else:
-            last_zhongshu.extend(bi_list[idx - 2])
+            if tmp_zhongshu_exit_bi.is_up() == tmp_zhongshu_first_bi.is_up():
+                stop_id = idx - 2
+            else:
+                stop_id = idx - 1
+            last_zhongshu.extend(bi_list[stop_id])
             last_zhongshu.set_finished()
             if log_switch:
                 print(last_zhongshu)

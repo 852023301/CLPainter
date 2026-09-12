@@ -190,7 +190,7 @@ def generate_zhongshu_from_xianduan(
 
         if last_zhongshu is None or (
             last_zhongshu.is_finished
-            and entry_xian_duan.start_time >= last_zhongshu.end_time
+            and entry_xian_duan.start_time >= xian_duan_list[last_zhongshu.end_xianduan_idx].start_time
         ):
             if (
                 _xianduan_high_price(exit_xian_duan) >= zhongshu_low_price
@@ -221,7 +221,11 @@ def generate_zhongshu_from_xianduan(
             _xianduan_high_price(exit_xian_duan),
             _xianduan_low_price(exit_xian_duan),
         ):
-            last_zhongshu.extend(xian_duan_list[idx - 2])
+            if exit_xian_duan.is_up() == first_xian_duan.is_up():
+                stop_id = idx - 2
+            else:
+                stop_id = idx - 1
+            last_zhongshu.extend(xian_duan_list[stop_id])
             last_zhongshu.set_finished()
 
     if last_zhongshu is not None and not last_zhongshu.is_finished:
