@@ -6,7 +6,7 @@ pandas>=2.2.0
 # data read & write
 clickhouse-driver>=0.2.6  # clickhouse_driver
 h5py
-mysqlclient  # MySQLdb
+mysqlclient==2.2.3  # MySQLdb
 psycopg2
 pyarrow>=11.0.0
 pymysql

@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
         with open(f"{dsc_path}/{file_name}",
                   "wb") as fi:
-            print(f"{dsc_path}/{file_name}")
+            # print(f"{dsc_path}/{file_name}")
             pickle.dump(final_list, fi)
             file_names[file_name] = 1
             for f in os.listdir(dsc_path):
