@@ -1,5 +1,6 @@
 import os
 import pickle
+import re
 from pathlib import Path
 from typing import List
 
@@ -24,6 +25,10 @@ from CLPainter.web.backend.app.toolbox.xianduan_tezhengxulie import (
 from CLPainter.web.backend.app.toolbox.gap import Gap
 
 
+def _create_detached_data_cache(cls):
+    return object.__new__(cls)
+
+
 def load_raw_data(data_file=None) -> List[List]:
     """
     加载原始K线数据
@@ -44,6 +49,7 @@ def load_raw_data(data_file=None) -> List[List]:
         # FIX: 存在更早的反向段
         # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/159326SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "all_etf/159865SZ.pkl"
         # data_file = Path(settings.DATA_DIR) / "all_etf/512880SH.pkl"
 
         # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
@@ -107,6 +113,9 @@ class _DataCache:
         self._xianduan_zhongshu_another_list = None
         self._bi_zhongshu_in_xianduan_list = None
         self._initialized = True
+
+    def __reduce__(self):
+        return _create_detached_data_cache, (self.__class__,), self.__dict__
 
     def ensure_loaded(self):
         """确保数据已加载"""
@@ -262,6 +271,64 @@ class _DataCache:
             cls._instance._initialized = False
             cls._instance.special_path = None
             cls._instance = None
+
+
+CACHE_DUMP_DIR = Path(settings.CACHE_DUMP_DIR)
+_CACHE_DUMP_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def get_cache_dump_path(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
+    clean_symbol = Path(symbol).stem
+    if not _CACHE_DUMP_SYMBOL_PATTERN.fullmatch(clean_symbol):
+        raise ValueError(f"非法的标的数据文件名: {symbol}")
+
+    return dump_dir / f"{clean_symbol}.pkl"
+
+
+def dump_data_cache_to_pickle(source_file: Path, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
+    source_file = Path(source_file)
+    if not source_file.exists():
+        raise FileNotFoundError(f"数据文件不存在: {source_file}")
+
+    _DataCache.reset_instance()
+    cache = _DataCache(source_file)
+    cache.ensure_loaded()
+
+    dump_dir = Path(dump_dir)
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    destination = dump_dir / f"{source_file.stem}.pkl"
+    temp_path = destination.with_name(f".{destination.name}.tmp")
+
+    try:
+        with temp_path.open("wb") as file:
+            pickle.dump(cache, file, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(temp_path, destination)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+        _DataCache.reset_instance()
+
+    return destination
+
+
+def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _DataCache:
+    cache_path = get_cache_dump_path(symbol, dump_dir)
+    if not cache_path.exists():
+        raise FileNotFoundError(f"缓存文件不存在: {cache_path}")
+
+    with cache_path.open("rb") as file:
+        cache = pickle.load(file)
+
+    cache_type = type(cache)
+    is_legacy_cache = (
+        cache_type.__name__ == _DataCache.__name__
+        and cache_type.__module__.endswith(".endpoints")
+        and callable(getattr(cache, "ensure_loaded", None))
+    )
+    if not isinstance(cache, _DataCache) and not is_legacy_cache:
+        raise TypeError(f"缓存文件类型错误: {cache_type.__module__}.{cache_type.__name__}")
+
+    return cache
 
 
 # 创建全局数据缓存实例

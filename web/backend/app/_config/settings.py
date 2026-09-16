@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # 数据存储路径
     DATA_DIR: str = os.getenv("DATA_DIR", "/DataDepartmentTest/wjl/data_set/")
+    CACHE_DUMP_DIR: str = os.getenv("CACHE_DUMP_DIR", "/DataDepartmentTest/wjl/data_set/dump")
 
     class Config:
         env_file = ".env"

@@ -7,9 +7,7 @@ from fastapi.templating import Jinja2Templates
 from pyecharts import options as opts
 from pyecharts.charts import Bar, Kline, Candlestick
 
-from ..endpoints import origin_kline_data, trade_date_list, gaps_list, bi_data_list, xian_duan_list, bi_zhongshu_list
-from ..endpoints import bi_zhongshu_in_xianduan_list, xianduan_zhongshu_list
-from ..endpoints import xianduan_zhongshu_another_list
+from ..endpoints import load_data_cache_pickle
 from ....toolbox.calculate import calculate_boll_list, calculate_macd_indicator, calculate_ma_colors, calculate_ma_list, calculate_rsi_list
 
 import pandas as pd
@@ -336,7 +334,7 @@ async def Kline_markline(request: Request):
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
-async def lightweight_charts_demo(request: Request, precision: int = 2):
+async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", precision: int = 2):
     """
     Lightweight Charts 优化版：显示K线与缠论笔
     
@@ -352,9 +350,10 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
 
     try:
         # 1. 准备 K 线数据
-        sample_dates = trade_date_list
-        sample_data = origin_kline_data
-        sample_gaps = gaps_list
+        cache = load_data_cache_pickle(symbol)
+        sample_dates = cache.trade_dates
+        sample_data = cache.origin_kline_data
+        sample_gaps = cache.gaps_list
 
         candle_data = []
         for kline in sample_data:
@@ -370,7 +369,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
         # 2. 准备笔（Bi）数据 - 转换为折线图格式
         # 笔的数据点通常是顶底分型的坐标
         bi_line_data = []
-        for bi in bi_data_list:
+        for bi in cache.bi_list:
             # 如果 bi 是 Bi 对象，使用 to_dict() 方法转换
             bi_dict = bi.to_dict()
             # 起点
@@ -386,7 +385,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
 
         # 2.5 准备线段（XianDuan）数据 - 转换为折线图格式
         xd_line_data = []
-        for xd in xian_duan_list:
+        for xd in cache.xian_duan_list:
             xd_dict = xd.to_dict()
             xd_line_data.append({
                 "time": sample_dates[xd_dict['start_idx']],
@@ -404,7 +403,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 "high_price": float(zhongshu.high_price),
                 "low_price": float(zhongshu.low_price),
             }
-            for zhongshu in bi_zhongshu_list
+            for zhongshu in cache.bi_zhongshu_list
         ]
 
         zhongshu_in_xianduan_data = [
@@ -414,7 +413,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 "high_price": float(zhongshu.high_price),
                 "low_price": float(zhongshu.low_price),
             }
-            for zhongshu in bi_zhongshu_in_xianduan_list
+            for zhongshu in cache.bi_zhongshu_in_xianduan_list
         ]
 
         xianduan_zhongshu_data = [
@@ -424,7 +423,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 "high_price": float(zhongshu.high_price),
                 "low_price": float(zhongshu.low_price),
             }
-            for zhongshu in xianduan_zhongshu_list
+            for zhongshu in cache.xianduan_zhongshu_list
         ]
 
         xianduan_zhongshu_another_data = [
@@ -434,7 +433,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
                 "high_price": float(zhongshu.high_price),
                 "low_price": float(zhongshu.low_price),
             }
-            for zhongshu in xianduan_zhongshu_another_list
+            for zhongshu in cache.xianduan_zhongshu_another_list
         ]
 
         # 3.成交量数据
@@ -447,7 +446,7 @@ async def lightweight_charts_demo(request: Request, precision: int = 2):
             for kline in sample_data
         ]
 
-        logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(bi_data_list)}笔")
+        logger.info(f"生成Lightweight Charts数据: {len(candle_data)}根K线, {len(cache.bi_list)}笔")
 
         # 调试：检查模板名称类型
         # 计算多条 MA 线(后端 pandas, 支撑万根 K 线)
