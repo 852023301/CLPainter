@@ -1,10 +1,12 @@
 from fastapi import FastAPI, APIRouter
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from .api.api_v1.api import api_router
 from pathlib import Path
 
 root_router = APIRouter()
 app = FastAPI(title="DMS Backend API")
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
 @root_router.get("/", status_code=200)

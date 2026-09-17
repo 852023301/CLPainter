@@ -1,4 +1,6 @@
 from typing import Dict, List, Union, Optional
+
+import numpy as np
 import pandas as pd
 
 
@@ -192,14 +194,16 @@ def calculate_ma_list(
         窗口未满处的 NaN 会被跳过, 不出现在 values 里.
     """
     result: List[Dict[str, Union[str, int, List[Dict[str, Union[str, float]]]]]] = []
+    time_values = np.asarray([str(idx) for idx in close.index], dtype=object)
     for period in periods:
         rolling_kwargs = {"window": period}
         if min_periods is not None:
             rolling_kwargs["min_periods"] = min_periods
-        series = close.rolling(**rolling_kwargs).mean().round(2)
+        values_array = close.rolling(**rolling_kwargs).mean().round(2).to_numpy()
+        valid_indices = np.flatnonzero(~np.isnan(values_array))
         values = [
-            {"time": str(idx), "value": float(val)}
-            for idx, val in series.items() if pd.notna(val)
+            {"time": time_values[index], "value": float(values_array[index])}
+            for index in valid_indices
         ]
         result.append({"period": period, "values": values})
     return result
@@ -218,9 +222,11 @@ def _series_to_values(series: pd.Series, precision: int = 2) -> List[Dict[str, U
     Returns:
         [{"time": "2024-01-07", "value": 10.32}, ...]
     """
+    values_array = series.to_numpy(dtype=float, na_value=np.nan)
+    valid_indices = np.flatnonzero(~np.isnan(values_array))
     return [
-        {"time": str(idx), "value": round(float(val), precision)}
-        for idx, val in series.items() if pd.notna(val)
+        {"time": str(series.index[index]), "value": round(float(values_array[index]), precision)}
+        for index in valid_indices
     ]
 
 

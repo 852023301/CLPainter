@@ -1,12 +1,15 @@
 import json
+import gzip
 import logging
+from functools import lru_cache
 
 import pandas as pd
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.concurrency import run_in_threadpool
 
-from ..endpoints import load_data_cache_pickle
+from ..endpoints import get_cache_dump_path, load_data_cache_pickle
 from ....toolbox.calculate import calculate_boll_list, calculate_macd_indicator, calculate_ma_colors, calculate_ma_list, \
     calculate_rsi_list
 
@@ -38,9 +41,46 @@ async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", pr
         request: FastAPI 请求对象
         precision: 价格显示精度（小数位数），默认2位，范围0-6
     """
-    # 限制精度范围
     precision = max(0, min(6, precision))
 
+    cache_file = get_cache_dump_path(symbol)
+    try:
+        cache_version = cache_file.stat().st_mtime_ns
+    except FileNotFoundError:
+        cache_version = 0
+
+    try:
+        html_content = await run_in_threadpool(
+            _build_lightweight_charts_page, symbol, precision, cache_version
+        )
+    except Exception as e:
+        logger.error(f"生成Lightweight Charts数据失败: {str(e)}", exc_info=True)
+        return HTMLResponse(content=f"<h1>错误</h1><p>{str(e)}</p>", status_code=500)
+
+    etag = f'W/"{symbol}-{precision}-{cache_version}"'
+    common_headers = {"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Accept-Encoding"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=common_headers)
+
+    if "gzip" in request.headers.get("accept-encoding", "").lower():
+        compressed_content = await run_in_threadpool(
+            _compress_lightweight_charts_page, symbol, precision, cache_version, html_content
+        )
+        return Response(
+            content=compressed_content,
+            media_type="text/html; charset=utf-8",
+            headers={**common_headers, "Content-Encoding": "gzip"},
+        )
+
+    return HTMLResponse(
+        content=html_content,
+        headers=common_headers,
+    )
+
+
+@lru_cache(maxsize=16)
+def _build_lightweight_charts_page(symbol: str, precision: int, cache_version: int) -> str:
+    """构建页面 HTML；缓存文件更新后通过 cache_version 自动重建。"""
     periods = list(DEFAULT_MA_PERIODS)
     ma_colors = calculate_ma_colors(periods)
 
@@ -177,7 +217,6 @@ async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", pr
         try:
             template = templates.env.get_template(template_name)
             html_content = template.render(
-                request=request,
                 candle_data=json.dumps(candle_data, ensure_ascii=False),
                 bi_data=json.dumps(bi_line_data, ensure_ascii=False),
                 xd_data=json.dumps(xd_line_data, ensure_ascii=False),
@@ -196,11 +235,18 @@ async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", pr
                 rsi_data=json.dumps(rsi_list, ensure_ascii=False),
                 macd_data=json.dumps(macd_indicator, ensure_ascii=False),
             )
-            return HTMLResponse(content=html_content)
+            return html_content
         except Exception as render_error:
             logger.error(f"Template rendering error: {str(render_error)}", exc_info=True)
             raise
 
     except Exception as e:
         logger.error(f"生成Lightweight Charts数据失败: {str(e)}", exc_info=True)
-        return HTMLResponse(content=f"<h1>错误</h1><p>{str(e)}</p>", status_code=500)
+        raise
+
+
+@lru_cache(maxsize=16)
+def _compress_lightweight_charts_page(
+    symbol: str, precision: int, cache_version: int, html_content: str
+) -> bytes:
+    return gzip.compress(html_content.encode("utf-8"), compresslevel=6, mtime=0)
