@@ -13,7 +13,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from CLPainter.web.backend.app._config.settings import settings  # noqa: E402
-from CLPainter.web.backend.app.api.api_v1.endpoints import (  # noqa: E402
+from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     CACHE_DUMP_DIR,
     dump_data_cache_to_pickle,
 )
