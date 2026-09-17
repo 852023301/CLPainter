@@ -86,12 +86,13 @@ def load_raw_data(data_file=None) -> List[List]:
 class _DataCache:
     """数据缓存类，实现懒加载"""
     _instance = None
+    special_path: Path | None = None
 
     def __new__(cls, special_path=None):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
-            cls.special_path = special_path
+            cls._instance.special_path = special_path
         return cls._instance
 
     def __init__(self, special_path=None):
@@ -329,42 +330,3 @@ def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _Dat
         raise TypeError(f"缓存文件类型错误: {cache_type.__module__}.{cache_type.__name__}")
 
     return cache
-
-
-# 创建全局数据缓存实例
-
-
-_data_cache = _DataCache()
-
-# 以下代码用于集体测试
-all_stocks = sorted(Path(settings.DATA_DIR, "1day").iterdir(), key=lambda p: p.name)
-# 保持向后兼容的接口
-def get_data_init() -> List[List]:
-    """获取原始数据（向后兼容）"""
-    return _data_cache.raw_data
-
-
-def get_merge_data_list() -> List[MergedKLine]:
-    """获取合并后的K线数据（向后兼容）"""
-    return _data_cache.merged_klines
-
-
-def get_fenxing_list() -> List[FenXing]:
-    """获取分型列表"""
-    return _data_cache.fenxing_list
-
-
-# 导出变量（保持向后兼容）
-get_data_init_set = _data_cache.raw_data
-merge_data_list = _data_cache.merged_klines
-fenxing_data_list = _data_cache.fenxing_list
-trade_date_list = _data_cache.trade_dates
-origin_kline_data = _data_cache.origin_kline_data
-bi_data_list = _data_cache.bi_list
-bi_zhongshu_list = _data_cache.bi_zhongshu_list
-te_zheng_xu_lie_list = _data_cache.te_zheng_xu_lie_list
-xian_duan_list = _data_cache.xian_duan_list
-bi_zhongshu_in_xianduan_list = _data_cache.bi_zhongshu_in_xianduan_list
-xianduan_zhongshu_list = _data_cache.xianduan_zhongshu_list
-xianduan_zhongshu_another_list = _data_cache.xianduan_zhongshu_another_list
-gaps_list = _data_cache.gaps_list
