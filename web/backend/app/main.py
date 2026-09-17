@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from .api.api_v1.api import api_router
 from pathlib import Path
 
@@ -20,6 +21,11 @@ app.include_router(root_router)
 
 static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    return FileResponse(static_dir / "favicon.svg", media_type="image/svg+xml")
 
 if __name__ == '__main__':
     import uvicorn

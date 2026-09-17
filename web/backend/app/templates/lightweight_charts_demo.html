@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <title>Lightweight Charts Demo</title>
     <script src="/static/js/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -163,12 +164,12 @@
 
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:16px;">
         <label style="font-size:14px;cursor:pointer;user-select:none;">
-            <input type="checkbox" id="showGapsToggle" checked style="margin-right:4px;cursor:pointer;">显示缺口
+            <input type="checkbox" id="showGapsToggle" style="margin-right:4px;cursor:pointer;">显示缺口
         </label>
         <div id="maTrigger" style="font-size:14px;user-select:none;position:relative;cursor:pointer;padding:2px 6px;">均线 ▾
             <div id="maDropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:140px;">
                 <label style="display:block;font-size:13px;padding:2px 0;border-bottom:1px solid #eee;margin-bottom:4px;cursor:pointer;">
-                    <input type="checkbox" id="maSelectAll" checked style="margin-right:6px;cursor:pointer;">全选
+                    <input type="checkbox" id="maSelectAll" style="margin-right:6px;cursor:pointer;">全选
                 </label>
                 <div id="maItems"></div>
             </div>
@@ -491,6 +492,7 @@
             data: layerConfigs,
             seriesMap: layerSeriesMap,
             prefix: 'layer:',
+            defaultVisible: true,
         });
 
         // ========== 通用: 指标线渲染 + 下拉显隐联动 (均线/布林/RSI 复用) ==========
@@ -513,7 +515,7 @@
             return map;
         }
 
-        const maSeriesMap = buildOverlaySeries(maData);
+        const maSeriesMap = buildOverlaySeries(maData, { visible: false });
 
         // 通用下拉控件: 点击触发器仅展开/收起(不改变显隐); 复选框控制单条显隐; 全选联动
         function setupIndicatorGroup(cfg) {
@@ -521,6 +523,7 @@
             const dropdown = document.getElementById(cfg.dropdownId);
             const itemsContainer = document.getElementById(cfg.itemsId);
             const selectAll = document.getElementById(cfg.selectAllId);
+            const defaultVisible = cfg.defaultVisible !== false;
 
             trigger.addEventListener('click', (e) => {
                 if (e.target === trigger || e.target.nodeType === 3) {
@@ -538,7 +541,7 @@
             };
 
             cfg.data.forEach(item => {
-                const visible = lsGetBool(cfg.prefix + item.key, true);
+                const visible = lsGetBool(cfg.prefix + item.key, defaultVisible);
                 const lbl = document.createElement('label');
                 lbl.style.cssText = 'display:block;font-size:13px;padding:2px 0;cursor:pointer;';
                 const cb = document.createElement('input');
@@ -572,10 +575,19 @@
             syncSelectAll();
         }
 
-        setupIndicatorGroup({ triggerId: 'maTrigger', dropdownId: 'maDropdown', itemsId: 'maItems', selectAllId: 'maSelectAll', data: maData, seriesMap: maSeriesMap, prefix: 'ma:' });
+        setupIndicatorGroup({
+            triggerId: 'maTrigger',
+            dropdownId: 'maDropdown',
+            itemsId: 'maItems',
+            selectAllId: 'maSelectAll',
+            data: maData,
+            seriesMap: maSeriesMap,
+            prefix: 'ma:',
+            defaultVisible: false,
+        });
 
 
-        // 3. 创建三个可切换指标面板(成交量/BOLL/RSI), 每个面板左上角有下拉框选择当前指标,
+        // 3. 创建四个可切换指标面板(成交量/MACD/BOLL/RSI), 每个面板左上角有下拉框选择当前指标,
         //    下拉框收起时显示当前指标名(同花顺风格), 选择状态持久化到 localStorage.
         const PRICE_SCALE_WIDTH = 70;  // 统一右侧价格刻度宽度, 保证各面板绘图区等宽、垂直对齐
         // 主图右侧价格刻度也设为相同宽度, 保证主图与各副图绘图区等宽、横向严格对齐(否则副图会整体左移)
@@ -646,8 +658,8 @@
         // 指标注册表
         const INDICATOR_LABEL = { volume: '成交量', boll: 'BOLL(26,2)', rsi: 'RSI(6,12,24)' };
         const INDICATOR_HEIGHT = { volume: 120, boll: 120, rsi: 120 };
-        const INDICATOR_KEYS = ['volume', 'boll', 'rsi', 'macd'];
-        const DEFAULT_PANELS = ['volume', 'boll', 'rsi', 'macd'];
+        const INDICATOR_KEYS = ['volume', 'macd', 'boll', 'rsi'];
+        const DEFAULT_PANELS = ['volume', 'macd', 'boll', 'rsi'];
         INDICATOR_LABEL.macd = 'MACD(10,21,7)';
         INDICATOR_HEIGHT.macd = 180;
         const panels = [];  // 各面板运行时状态
@@ -811,12 +823,12 @@
                 select.appendChild(opt);
             });
 
-            let initKey = lsGetString('panel:' + idx, DEFAULT_PANELS[idx] || 'volume');
+            let initKey = lsGetString('panel:v2:' + idx, DEFAULT_PANELS[idx] || 'volume');
             if (!INDICATOR_LABEL[initKey]) initKey = DEFAULT_PANELS[idx] || 'volume';
             select.value = initKey;
 
             select.addEventListener('change', () => {
-                lsSetString('panel:' + idx, select.value);
+                lsSetString('panel:v2:' + idx, select.value);
                 buildIndicator(meta, select.value);
             });
 
@@ -970,7 +982,7 @@
         const showGapsToggle = document.getElementById('showGapsToggle');
 
         // 应用缺口开关初始状态(从 localStorage 读回)
-        showGapsToggle.checked = lsGetBool('gaps:visible', true);
+        showGapsToggle.checked = lsGetBool('gaps:visible', false);
         showGapsToggle.addEventListener('change', () => {
             lsSetBool('gaps:visible', showGapsToggle.checked);
             updateHighLowMarkers();
