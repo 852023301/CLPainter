@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     LOG_FILE: str = os.getenv("LOG_FILE", "/app/logs/app.log")
 
     # 数据存储路径
-    DATA_DIR: str = os.getenv("DATA_DIR", "/DataDepartmentTest/wjl/data_set/")
+    DATA_DIR: str = os.getenv("DATA_DIR", "/DataDepartmentTest/wjl/data_set/pv_data")
     CACHE_DUMP_DIR: str = os.getenv("CACHE_DUMP_DIR", "/DataDepartmentTest/wjl/data_set/dump")
 
     class Config:

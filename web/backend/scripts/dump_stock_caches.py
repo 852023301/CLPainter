@@ -18,7 +18,6 @@ from CLPainter.web.backend.app.api.api_v1.endpoints import (  # noqa: E402
     dump_data_cache_to_pickle,
 )
 
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_SOURCE_DIRS = (
@@ -29,6 +28,7 @@ DEFAULT_SOURCE_DIRS = (
 FEISHU_WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/361adc1b-4da1-451d-b881-14b038f938c3"
 FEISHU_FAILURE_BATCH_SIZE = 30
 MAX_FAILURE_REASON_LENGTH = 500
+FREQ = "1day"
 
 
 def parse_args():
@@ -37,7 +37,7 @@ def parse_args():
         "--source-dirs",
         nargs="+",
         type=Path,
-        default=[Path(settings.DATA_DIR) / name for name in DEFAULT_SOURCE_DIRS],
+        default=[Path(settings.DATA_DIR, FREQ) / name for name in DEFAULT_SOURCE_DIRS],
         help="原始 pickle 文件目录，默认包含 all_stocks、all_index 和 all_etf",
     )
     parser.add_argument("--symbol", help="只导出单一标的，例如 600713SH")
@@ -121,7 +121,7 @@ def main() -> int:
     worker_count = min(WORKER_BNUM, total_count)
 
     with ProcessPoolExecutor(
-        max_workers=worker_count,
+            max_workers=worker_count,
     ) as executor:
         futures = {
             executor.submit(dump_worker, source_file, CACHE_DUMP_DIR): source_file

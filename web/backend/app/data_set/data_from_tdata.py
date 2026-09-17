@@ -67,7 +67,7 @@ def clean_stale_files(dsc_path, generated_files):
 def change_data_type_and_save(columns, dates, N_D, info_dict,
                               dsc_path,
                               precision=2):
-    file_names = {}
+    file_names = set()
     dsc_path = Path(dsc_path)
     futures = {}
 
@@ -92,34 +92,36 @@ def change_data_type_and_save(columns, dates, N_D, info_dict,
 
         for future in as_completed(futures):
             if future.result():
-                file_names[futures[future]] = 1
+                file_names.add(futures[future])
 
-    clean_stale_files(dsc_path, file_names)
+    return file_names
 
 
 if __name__ == "__main__":
     #########################################
     # 个股
+    generated_files = set()
     with MysqlConnection() as sql:
         stock_info = sql.query_pandas(
-            f"select stock_code,start_date from stock_info where start_date> '{datetime.datetime.now().date()}' and  end_date > '{datetime.datetime.now().date()}' ")
+            f"select stock_code,start_date from stock_info where start_date <= '{datetime.datetime.now().date()}' and end_date > '{datetime.datetime.now().date()}' ")
 
     stock_info_dict = dict(
         zip(stock_info['stock_code'], pd.DatetimeIndex(stock_info['start_date']).strftime("%Y-%m-%d")))
 
     d = fetch_data(["open", "close", "low", "high", "volume"], start_date=START_DATE, end_date=END_DATE)
-    dates = pd.DatetimeIndex(d['open'].index).strftime("%Y-%m-%d").tolist()
-    columns = d['open'].columns.tolist()
-    stock_N_D = np.stack([d[column].values for column in ["open", "close", "low", "high", "volume"]])
 
-    change_data_type_and_save(columns, dates, stock_N_D, stock_info_dict,
-                              dsc_path=Path(settings.DATA_DIR, "all_stocks"))
+    dates = pd.DatetimeIndex(d['open'].index).strftime("%Y-%m-%d").tolist()
+    columns = [column for column in d['open'].columns.tolist() if column in stock_info_dict]
+    stock_N_D = np.stack([d[column][columns].values for column in ["open", "close", "low", "high", "volume"]])
+
+    generated_files.update(change_data_type_and_save(columns, dates, stock_N_D, stock_info_dict,
+                                                     dsc_path=Path(settings.DATA_DIR, "1day")))
 
     #########################################
     #  指数
     with MysqlConnection() as sql:
         index_info = sql.query_pandas(
-            f"select index_code,start_date from index_info where end_date > '{datetime.datetime.now().date()}' ")
+            f"select index_code,start_date from index_info where start_date <= '{datetime.datetime.now().date()}' and end_date > '{datetime.datetime.now().date()}' ")
     index_info_dict = dict(
         zip(index_info['index_code'], pd.DatetimeIndex(index_info['start_date']).strftime("%Y-%m-%d")))
 
@@ -142,8 +144,8 @@ if __name__ == "__main__":
         "kczz": "000680.SH",
     }
 
-    file_names = {}
-    dsc_path = Path(settings.DATA_DIR, "all_index")
+    file_names = set()
+    dsc_path = Path(settings.DATA_DIR, "1day")
     columns = ["open", "close", "low", "high", "volume"]
     index_data_names = [f"{index_name}_{column}" for index_name in index_map for column in columns]
     index_data = fetch_data(index_data_names, start_date=START_DATE, end_date=END_DATE)
@@ -167,24 +169,26 @@ if __name__ == "__main__":
             futures[future] = f"{code.replace('.', '')}.pkl"
 
         for future in as_completed(futures):
-            file_names[futures[future]] = 1
             future.result()
+            file_names.add(futures[future])
 
-    clean_stale_files(dsc_path, file_names)
+    generated_files.update(file_names)
 
     #########################################
     # etf
     with MysqlConnection() as sql:
         etf_info = sql.query_pandas(
-            f"select stock_code,start_date from etf_info where end_date > '{datetime.datetime.now().date()}' ")
+            f"select stock_code,start_date from etf_info where start_date <= '{datetime.datetime.now().date()}' and end_date > '{datetime.datetime.now().date()}' ")
 
     etf_info_dict = dict(zip(etf_info['stock_code'], pd.DatetimeIndex(etf_info['start_date']).strftime("%Y-%m-%d")))
 
     cols = [f"etf_{i}" for i in ["open", "close", "low", "high", "volume"]]
     d = fetch_data(cols,start_date=START_DATE,end_date=END_DATE)
     dates = pd.DatetimeIndex(d[cols[0]].index).strftime("%Y-%m-%d").tolist()
-    columns = d[cols[0]].columns.tolist()
-    etf_N_D = np.stack([d[column].values for column in cols])
+    columns = [column for column in d[cols[0]].columns.tolist() if column in etf_info_dict]
+    etf_N_D = np.stack([d[column][columns].values for column in cols])
 
-    change_data_type_and_save(columns, dates, etf_N_D, etf_info_dict,
-                              dsc_path=Path(settings.DATA_DIR, "all_etf"), precision=3)
+    generated_files.update(change_data_type_and_save(columns, dates, etf_N_D, etf_info_dict,
+                                                     dsc_path=Path(settings.DATA_DIR, "1day"), precision=3))
+
+    clean_stale_files(Path(settings.DATA_DIR, "1day"), generated_files)

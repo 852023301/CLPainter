@@ -42,35 +42,35 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(settings.DATA_DIR) / "all_index/000001SH.pkl"  #
-        # data_file = Path(settings.DATA_DIR) / "all_etf/561980SH.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_etf/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
+        data_file = Path(settings.DATA_DIR) / "1day/000001SH.pkl"  #
+        # data_file = Path(settings.DATA_DIR) / "1day/561980SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
         # FIX: 0段;
         # FIX: 存在更早的反向段
-        # data_file = Path(settings.DATA_DIR) / "all_etf/159831SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_etf/159326SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_etf/159865SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_etf/512880SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/159831SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/159326SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/159865SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/512880SH.pkl"
 
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/000001SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
+        # data_file = Path(settings.DATA_DIR) / "1day/000001SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/000002SZ.pkl"  # FIX: 第一段顶点有问题,_adjust_xian_duan的原因
         # FIX: 2021年7月线段划分有问题;
         # FIX: 存在更早的反向段
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/000008SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/000008SZ.pkl"
         # FIX: 研究为什么会前面会缺少那么多线段？
         # FIX: 研究为什么2015-12~2017-05中间的两条线段缺少一个顶点没有_adjust_xian_duan的效果
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/000605SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/001282SZ.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/000009SZ.pkl"  #
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/600703SH.pkl"  # Fix:需要延长
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/600713SH.pkl"  # Fix:需要延长
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/000011SZ.pkl"  #  Fix:需要延长
+        # data_file = Path(settings.DATA_DIR) / "1day/000605SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/001282SZ.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/000009SZ.pkl"  #
+        # data_file = Path(settings.DATA_DIR) / "1day/600703SH.pkl"  # Fix:需要延长
+        # data_file = Path(settings.DATA_DIR) / "1day/600713SH.pkl"  # Fix:需要延长
+        # data_file = Path(settings.DATA_DIR) / "1day/000011SZ.pkl"  #  Fix:需要延长
         # Fix:需要延长
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/600499SH.pkl"
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/603533SH.pkl" # Fix:需要增加
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/300883SZ.pkl" # Fix:线段划分有问题
-        # data_file = Path(settings.DATA_DIR) / "all_stocks//000908SZ.pkl"  # Fix:线段划分有问题
-        # data_file = Path(settings.DATA_DIR) / "all_stocks/300889SZ.pkl" # Fix:线段划分有问题
+        # data_file = Path(settings.DATA_DIR) / "1day/600499SH.pkl"
+        # data_file = Path(settings.DATA_DIR) / "1day/603533SH.pkl" # Fix:需要增加
+        # data_file = Path(settings.DATA_DIR) / "1day/300883SZ.pkl" # Fix:线段划分有问题
+        # data_file = Path(settings.DATA_DIR) / "1day//000908SZ.pkl"  # Fix:线段划分有问题
+        # data_file = Path(settings.DATA_DIR) / "1day/300889SZ.pkl" # Fix:线段划分有问题
 
     if not data_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {data_file}")
@@ -337,25 +337,7 @@ def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _Dat
 _data_cache = _DataCache()
 
 # 以下代码用于集体测试
-all_stocks = sorted(Path(settings.DATA_DIR, "all_stocks").iterdir(), key=lambda p: p.name)
-all_etf = sorted(Path(settings.DATA_DIR, "all_etf").iterdir(), key=lambda p: p.name)
-all_index = sorted(Path(settings.DATA_DIR, "all_index").iterdir(), key=lambda p: p.name)
-
-
-# 测试
-# for target in [all_stocks, all_etf, all_index]:
-#     # _data_cache = _DataCache(target)
-#     for i, stk_p in enumerate(target):
-#         if stk_p.name in ['159816SZ.pkl']:
-#             continue
-#         print(f"{i}:{stk_p}")
-#         _data_cache = _DataCache(stk_p)
-#         # 强制加载数据以验证
-#         _ = _data_cache.raw_data
-#         # 重置单例以便下一个股票使用
-#         _DataCache.reset_instance()
-
-
+all_stocks = sorted(Path(settings.DATA_DIR, "1day").iterdir(), key=lambda p: p.name)
 # 保持向后兼容的接口
 def get_data_init() -> List[List]:
     """获取原始数据（向后兼容）"""

@@ -113,7 +113,7 @@ if __name__ == "__main__":
         zip(stock_df['ts_code'], pd.DatetimeIndex(stock_df['list_date']).strftime("%Y-%m-%d")))
 
     _process_symbols(pro, lambda p, c, s: p.daily(ts_code=c, start_date=s),  # 不复权
-                     stock_info_dict, Path(settings.DATA_DIR, "all_stocks"), precision=2)
+                     stock_info_dict, Path(settings.DATA_DIR, "old_pv_data"), precision=2)
 
     #########################################
     # 指数
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     index_dict = {code: index_info_dict.get(code) for code in index_map.values()}
 
     _process_symbols(pro, lambda p, c, s: p.index_daily(ts_code=c, start_date=s),  # 指数, 不复权
-                     index_dict, Path(settings.DATA_DIR, "all_index"), validate=False)
+                     index_dict, Path(settings.DATA_DIR, "old_pv_data"), validate=False)
 
     #########################################
     # etf
@@ -151,7 +151,7 @@ if __name__ == "__main__":
         zip(etf_df['ts_code'], pd.DatetimeIndex(etf_df['list_date']).strftime("%Y-%m-%d")))
 
     _process_symbols(pro, lambda p, c, s: p.fund_daily(ts_code=c, start_date=s),  # ETF, 不复权
-                     etf_info_dict, Path(settings.DATA_DIR, "all_etf"), precision=3)
+                     etf_info_dict, Path(settings.DATA_DIR, "old_pv_data"), precision=3)
 
     # 容器内拷贝示例:
     #   docker cp <local>/all_stocks CLPainter:/root/CLPainter/web/backend/app/data_set/
