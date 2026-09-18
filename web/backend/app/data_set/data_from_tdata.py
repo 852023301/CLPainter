@@ -1,10 +1,10 @@
+from bisect import bisect_left, bisect_right
 from tdata import fetch_data
 import numpy as np
 import pandas as pd
 import pickle
 from pathlib import Path
 import datetime
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ddp import MysqlConnection
 from CLPainter.web.backend.app._config.settings import settings
@@ -12,32 +12,35 @@ from CLPainter.web.backend.app._config.settings import settings
 START_DATE = "2009-01-01"
 END_DATE = None
 MAX_WORKERS = 10
+FIELDS = ["open", "close", "low", "high", "volume"]
 
 
-def transform_and_save_symbol(columns, dates, N_D, symbol_idx, start_date,
-                              dsc_path, precision):
-    date_array = np.asarray(dates)
-    start_idx = int(np.searchsorted(date_array, start_date, side="left"))
-    end_idx = len(date_array)
+def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
+                              start_date, output_path, precision):
+    start_idx = bisect_left(dates, start_date)
+    end_idx = len(dates)
     if END_DATE:
-        end_idx = int(np.searchsorted(date_array, END_DATE, side="right"))
+        end_idx = bisect_right(dates, END_DATE)
 
-    values = N_D[:, start_idx:end_idx, symbol_idx]
+    date_slice = dates[start_idx:end_idx]
+    values = np.stack([
+        field_array[symbol_idx, start_idx:end_idx]
+        for field_array in field_arrays
+    ])
     validation_values = values[:-1]
-    if np.isnan(validation_values).any() or (validation_values == 0).any():
-        invalid_mask = np.isnan(validation_values).any(axis=0) | (validation_values == 0).any(axis=0)
+    invalid_mask = np.isnan(validation_values).any(axis=0) | (validation_values == 0).any(axis=0)
+    if invalid_mask.any():
         first_invalid = start_idx + int(np.flatnonzero(invalid_mask)[0])
-        print(f"{columns[symbol_idx]} {date_array[first_invalid]}存在空值或0，不处理")
+        print(f"{symbol} {date_slice[first_invalid - start_idx]}存在空值或0，不处理")
         return False
 
     rounded_values = np.round(values, decimals=precision)
     final_list = [
         [date, *values_on_date]
-        for date, values_on_date in zip(date_array[start_idx:end_idx], rounded_values.T.tolist())
+        for date, values_on_date in zip(date_slice, rounded_values.T.tolist())
     ]
-    file_name = f"{columns[symbol_idx].replace('.', '')}.pkl"
-    with open(dsc_path / file_name, "wb") as file:
-        pickle.dump(final_list, file)
+    with open(output_path, "wb") as file:
+        pickle.dump(final_list, file, protocol=pickle.HIGHEST_PROTOCOL)
     return True
 
 
@@ -55,7 +58,7 @@ def write_index_data(index_name, code, index_data, start_date, dsc_path):
     final_list = concat_data.reset_index().values.tolist()
     file_name = f"{code.replace('.', '')}.pkl"
     with open(dsc_path / file_name, "wb") as file:
-        pickle.dump(final_list, file)
+        pickle.dump(final_list, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def clean_stale_files(dsc_path, generated_files):
@@ -64,11 +67,12 @@ def clean_stale_files(dsc_path, generated_files):
             path.unlink()
 
 
-def change_data_type_and_save(columns, dates, N_D, info_dict,
+def change_data_type_and_save(columns, dates, field_arrays, info_dict,
                               dsc_path,
                               precision=2):
     file_names = set()
     dsc_path = Path(dsc_path)
+    dsc_path.mkdir(parents=True, exist_ok=True)
     futures = {}
 
     with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(columns)))) as executor:
@@ -78,17 +82,18 @@ def change_data_type_and_save(columns, dates, N_D, info_dict,
                 continue
 
             effective_start_date = max(START_DATE, start_date) if START_DATE else start_date
+            file_name = f"{column_name.replace('.', '')}.pkl"
             future = executor.submit(
                 transform_and_save_symbol,
-                columns,
-                dates,
-                N_D,
                 idx,
+                column_name,
+                dates,
+                field_arrays,
                 effective_start_date,
-                dsc_path,
+                dsc_path / file_name,
                 precision,
             )
-            futures[future] = f"{column_name.replace('.', '')}.pkl"
+            futures[future] = file_name
 
         for future in as_completed(futures):
             if future.result():
@@ -108,14 +113,18 @@ if __name__ == "__main__":
     stock_info_dict = dict(
         zip(stock_info['stock_code'], pd.DatetimeIndex(stock_info['start_date']).strftime("%Y-%m-%d")))
 
-    d = fetch_data(["open", "close", "low", "high", "volume"], start_date=START_DATE, end_date=END_DATE)
+    d = fetch_data(FIELDS, start_date=START_DATE, end_date=END_DATE)
 
     dates = pd.DatetimeIndex(d['open'].index).strftime("%Y-%m-%d").tolist()
     columns = [column for column in d['open'].columns.tolist() if column in stock_info_dict]
-    stock_N_D = np.stack([d[column][columns].values for column in ["open", "close", "low", "high", "volume"]])
+    stock_field_arrays = []
+    for column in FIELDS:
+        stock_field_arrays.append(d.pop(column)[columns].to_numpy().T.copy())
+    del d
 
-    generated_files.update(change_data_type_and_save(columns, dates, stock_N_D, stock_info_dict,
+    generated_files.update(change_data_type_and_save(columns, dates, stock_field_arrays, stock_info_dict,
                                                      dsc_path=Path(settings.DATA_DIR, "1day")))
+    del stock_field_arrays
 
     #########################################
     #  指数
@@ -146,9 +155,10 @@ if __name__ == "__main__":
 
     file_names = set()
     dsc_path = Path(settings.DATA_DIR, "1day")
-    columns = ["open", "close", "low", "high", "volume"]
+    columns = FIELDS
     index_data_names = [f"{index_name}_{column}" for index_name in index_map for column in columns]
     index_data = fetch_data(index_data_names, start_date=START_DATE, end_date=END_DATE)
+    dsc_path.mkdir(parents=True, exist_ok=True)
 
     futures = {}
     with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(index_map)))) as executor:
@@ -173,6 +183,7 @@ if __name__ == "__main__":
             file_names.add(futures[future])
 
     generated_files.update(file_names)
+    del index_data
 
     #########################################
     # etf
@@ -182,13 +193,17 @@ if __name__ == "__main__":
 
     etf_info_dict = dict(zip(etf_info['stock_code'], pd.DatetimeIndex(etf_info['start_date']).strftime("%Y-%m-%d")))
 
-    cols = [f"etf_{i}" for i in ["open", "close", "low", "high", "volume"]]
+    cols = [f"etf_{column}" for column in FIELDS]
     d = fetch_data(cols,start_date=START_DATE,end_date=END_DATE)
     dates = pd.DatetimeIndex(d[cols[0]].index).strftime("%Y-%m-%d").tolist()
     columns = [column for column in d[cols[0]].columns.tolist() if column in etf_info_dict]
-    etf_N_D = np.stack([d[column][columns].values for column in cols])
+    etf_field_arrays = []
+    for column in cols:
+        etf_field_arrays.append(d.pop(column)[columns].to_numpy().T.copy())
+    del d
 
-    generated_files.update(change_data_type_and_save(columns, dates, etf_N_D, etf_info_dict,
+    generated_files.update(change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
                                                      dsc_path=Path(settings.DATA_DIR, "1day"), precision=3))
+    del etf_field_arrays
 
     clean_stale_files(Path(settings.DATA_DIR, "1day"), generated_files)

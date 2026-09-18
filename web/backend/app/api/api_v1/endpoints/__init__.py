@@ -4,7 +4,9 @@ from CLPainter.web.backend.app.toolbox.datacube import (
     _create_detached_data_cache,
     dump_data_cache_to_pickle,
     get_cache_dump_path,
+    get_chart_payload_path,
     load_data_cache_pickle,
+    load_chart_payload,
 )
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "_create_detached_data_cache",
     "dump_data_cache_to_pickle",
     "get_cache_dump_path",
+    "get_chart_payload_path",
     "load_data_cache_pickle",
+    "load_chart_payload",
 ]

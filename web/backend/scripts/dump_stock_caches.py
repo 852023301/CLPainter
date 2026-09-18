@@ -40,7 +40,7 @@ def parse_args():
 
 
 def dump_worker(source_file: Path, dump_dir: Path) -> None:
-    dump_data_cache_to_pickle(source_file, dump_dir)
+    dump_data_cache_to_pickle(source_file, dump_dir, frequency=FREQ)
 
 
 def collect_source_files(source_dirs: list[Path]) -> list[Path]:

@@ -1,8 +1,12 @@
 import os
 import pickle
 import re
+import json
+import math
 from pathlib import Path
 from typing import List
+
+import pandas as pd
 
 from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.toolbox.bi import generate_bi, Bi
@@ -23,10 +27,21 @@ from CLPainter.web.backend.app.toolbox.xianduan_tezhengxulie import (
     generate_xianduan_tezheng_xu_lie,
 )
 from CLPainter.web.backend.app.toolbox.gap import Gap
+from CLPainter.web.backend.app.toolbox.calculate import (
+    calculate_boll_list,
+    calculate_macd_indicator,
+    calculate_ma_colors,
+    calculate_ma_list,
+    calculate_rsi_list,
+)
 
 
 def _create_detached_data_cache(cls):
     return object.__new__(cls)
+
+
+DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
+CHART_PAYLOAD_DIR = Path(settings.DATA_DIR).parent / "chart_payload"
 
 
 def load_raw_data(data_file=None) -> List[List]:
@@ -113,6 +128,7 @@ class _DataCache:
         self._xianduan_tezhengxulie_list = None
         self._xianduan_zhongshu_another_list = None
         self._bi_zhongshu_in_xianduan_list = None
+        self._chart_payload = None
         self._initialized = True
 
     def __reduce__(self):
@@ -178,6 +194,108 @@ class _DataCache:
         )
 
         self._trade_dates = [data.trade_datetime for data in merged_klines]
+
+    def build_chart_payload(self, precision: int = 2) -> dict:
+        """构建 Lightweight Charts 所需的全部模板数据。"""
+        self.ensure_loaded()
+        if self._chart_payload is not None:
+            return self._chart_payload
+
+        klines = self._origin_kline_data
+        dates = self._trade_dates
+        candle_data = [
+            {
+                "time": kline.trade_datetime,
+                "open": float(kline.open),
+                "high": float(kline.high),
+                "low": float(kline.low),
+                "close": float(kline.close),
+            }
+            for kline in klines
+        ]
+        bi_data = []
+        for bi in self._bi_list:
+            bi_dict = bi.to_dict()
+            bi_data.extend((
+                {"time": dates[bi_dict["start_idx"]], "value": bi_dict["start_price"]},
+                {"time": dates[bi_dict["end_idx"]], "value": bi_dict["end_price"]},
+            ))
+
+        xd_data = []
+        for xd in self._xianduan_list:
+            xd_dict = xd.to_dict()
+            xd_data.extend((
+                {"time": dates[xd_dict["start_idx"]], "value": xd_dict["start_price"]},
+                {"time": dates[xd_dict["end_idx"]], "value": xd_dict["end_price"]},
+            ))
+
+        def zhongshu_data(items):
+            return [
+                {
+                    "start_time": item.start_time,
+                    "end_time": item.end_time,
+                    "high_price": float(item.high_price),
+                    "low_price": float(item.low_price),
+                }
+                for item in items
+            ]
+
+        close_series = pd.Series([kline.close for kline in klines], index=dates)
+        ma_colors = calculate_ma_colors(DEFAULT_MA_PERIODS)
+        ma_data = [
+            {
+                "key": f"MA{item['period']}",
+                "label": f"MA{item['period']}",
+                "color": ma_colors[index],
+                "values": item["values"],
+            }
+            for index, item in enumerate(calculate_ma_list(close_series, DEFAULT_MA_PERIODS))
+        ]
+        boll_colors = ["#26A69A", "#AB47BC", "#00796B"]
+        boll_data = [
+            {"key": item["key"], "label": item["key"], "color": boll_colors[index], "values": item["values"]}
+            for index, item in enumerate(calculate_boll_list(close_series, precision=precision))
+        ]
+        rsi_colors = ["#E91E63", "#4CAF50", "#795548"]
+        rsi_data = [
+            {"key": item["key"], "label": item["key"], "color": rsi_colors[index], "values": item["values"]}
+            for index, item in enumerate(calculate_rsi_list(close_series, precision=precision))
+        ]
+        volume_data = [
+            {
+                "time": kline.trade_datetime,
+                "value": kline.volume if math.isfinite(kline.volume) else 0.0,
+                "color": "#ef5350" if kline.is_up() else "#26a69a",
+            }
+            for kline in klines
+        ]
+
+        def serialized(value):
+            return json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+
+        self._chart_payload = {
+            "candle_data": serialized(candle_data),
+            "bi_data": serialized(bi_data),
+            "xd_data": serialized(xd_data),
+            "zhongshu_data": serialized(zhongshu_data(self._bi_zhongshu_list or [])),
+            "zhongshu_in_xianduan_data": serialized(zhongshu_data(self._bi_zhongshu_in_xianduan_list or [])),
+            "xianduan_zhongshu_data": serialized(zhongshu_data(self._xianduan_zhongshu_list or [])),
+            "xianduan_zhongshu_another_data": serialized(zhongshu_data(self._xianduan_zhongshu_another_list or [])),
+            "gaps_data": serialized([gap.to_kwargs() for gap in self._gaps_list]),
+            "volume_data": serialized(volume_data),
+            "ma_data": serialized(ma_data),
+            "boll_data": serialized(boll_data),
+            "rsi_data": serialized(rsi_data),
+            "macd_data": serialized(calculate_macd_indicator(close_series, precision=precision)),
+            "candle_count": len(candle_data),
+            "precision": precision,
+        }
+        return self._chart_payload
 
     @property
     def raw_data(self) -> List[List]:
@@ -269,12 +387,14 @@ class _DataCache:
             cls._instance._xianduan_tezhengxulie_list = None
             cls._instance._xianduan_zhongshu_another_list = None
             cls._instance._bi_zhongshu_in_xianduan_list = None
+            cls._instance._chart_payload = None
             cls._instance._initialized = False
             cls._instance.special_path = None
             cls._instance = None
 
 
 CACHE_DUMP_DIR = Path(settings.CACHE_DUMP_DIR)
+_CHART_PAYLOAD_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _CACHE_DUMP_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -286,7 +406,31 @@ def get_cache_dump_path(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
     return dump_dir / f"{clean_symbol}.pkl"
 
 
-def dump_data_cache_to_pickle(source_file: Path, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
+def get_chart_payload_path(symbol: str, frequency: str = "1day") -> Path:
+    clean_symbol = Path(symbol).stem
+    if not _CHART_PAYLOAD_SYMBOL_PATTERN.fullmatch(clean_symbol):
+        raise ValueError(f"非法的标的数据文件名: {symbol}")
+
+    return CHART_PAYLOAD_DIR / frequency / f"{clean_symbol}.chart.pkl"
+
+
+def _atomic_pickle_dump(value, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination.with_name(f".{destination.name}.tmp")
+    try:
+        with temp_path.open("wb") as file:
+            pickle.dump(value, file, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(temp_path, destination)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def dump_data_cache_to_pickle(
+    source_file: Path,
+    dump_dir: Path = CACHE_DUMP_DIR,
+    frequency: str | None = None,
+) -> Path:
     source_file = Path(source_file)
     if not source_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {source_file}")
@@ -294,19 +438,18 @@ def dump_data_cache_to_pickle(source_file: Path, dump_dir: Path = CACHE_DUMP_DIR
     _DataCache.reset_instance()
     cache = _DataCache(source_file)
     cache.ensure_loaded()
+    chart_payload = cache.build_chart_payload()
+    _atomic_pickle_dump(
+        chart_payload,
+        get_chart_payload_path(source_file.stem, frequency or source_file.parent.name),
+    )
 
     dump_dir = Path(dump_dir)
     dump_dir.mkdir(parents=True, exist_ok=True)
     destination = dump_dir / f"{source_file.stem}.pkl"
-    temp_path = destination.with_name(f".{destination.name}.tmp")
-
     try:
-        with temp_path.open("wb") as file:
-            pickle.dump(cache, file, protocol=pickle.HIGHEST_PROTOCOL)
-        os.replace(temp_path, destination)
+        _atomic_pickle_dump(cache, destination)
     finally:
-        if temp_path.exists():
-            temp_path.unlink()
         _DataCache.reset_instance()
 
     return destination
@@ -330,3 +473,12 @@ def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _Dat
         raise TypeError(f"缓存文件类型错误: {cache_type.__module__}.{cache_type.__name__}")
 
     return cache
+
+
+def load_chart_payload(symbol: str, frequency: str = "1day") -> dict:
+    payload_path = get_chart_payload_path(symbol, frequency)
+    with payload_path.open("rb") as file:
+        payload = pickle.load(file)
+    if not isinstance(payload, dict):
+        raise TypeError(f"图表缓存类型错误: {type(payload).__module__}.{type(payload).__name__}")
+    return payload
