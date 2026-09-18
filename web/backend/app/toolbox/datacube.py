@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 from typing import List
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -37,11 +38,32 @@ from CLPainter.web.backend.app.toolbox.calculate import (
 
 
 def _create_detached_data_cache(cls):
+    """创建不调用__init__的空_DataCache实例，供pickle重建使用。"""
     return object.__new__(cls)
 
 
 DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
 CHART_PAYLOAD_DIR = Path(settings.DATA_DIR).parent / "chart_payload"
+SUPPORTED_CHART_FREQUENCIES = {
+    "1day": "日K",
+    "1week": "周K",
+    "1month": "月K",
+    "1year": "年K",
+    "1min": "1分",
+    "5min": "5分",
+    "15min": "15分",
+    "30min": "30分",
+    "60min": "60分",
+    "120min": "120分",
+    "240min": "240分",
+}
+
+
+def _chart_time(value):
+    """将日内时间字符串转为UTC秒，日级日期字符串保持原格式。"""
+    if isinstance(value, str) and len(value) > 10:
+        return int(datetime.fromisoformat(value).replace(tzinfo=timezone.utc).timestamp())
+    return value
 
 
 def load_raw_data(data_file=None) -> List[List]:
@@ -104,6 +126,7 @@ class _DataCache:
     special_path: Path | None = None
 
     def __new__(cls, special_path=None):
+        """保证进程内只保留一个可切换数据源的数据缓存实例。"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._initialized = False
@@ -111,6 +134,7 @@ class _DataCache:
         return cls._instance
 
     def __init__(self, special_path=None):
+        """初始化懒加载字段，避免创建时立即读取和计算数据。"""
         if self._initialized:
             return
 
@@ -132,6 +156,7 @@ class _DataCache:
         self._initialized = True
 
     def __reduce__(self):
+        """定义pickle重建方式，避免反序列化时触发单例构造逻辑。"""
         return _create_detached_data_cache, (self.__class__,), self.__dict__
 
     def ensure_loaded(self):
@@ -203,44 +228,46 @@ class _DataCache:
 
         klines = self._origin_kline_data
         dates = self._trade_dates
+        chart_dates = [_chart_time(value) for value in dates]
         candle_data = [
             {
-                "time": kline.trade_datetime,
+                "time": chart_dates[index],
                 "open": float(kline.open),
                 "high": float(kline.high),
                 "low": float(kline.low),
                 "close": float(kline.close),
             }
-            for kline in klines
+            for index, kline in enumerate(klines)
         ]
         bi_data = []
         for bi in self._bi_list:
             bi_dict = bi.to_dict()
             bi_data.extend((
-                {"time": dates[bi_dict["start_idx"]], "value": bi_dict["start_price"]},
-                {"time": dates[bi_dict["end_idx"]], "value": bi_dict["end_price"]},
+                {"time": chart_dates[bi_dict["start_idx"]], "value": bi_dict["start_price"]},
+                {"time": chart_dates[bi_dict["end_idx"]], "value": bi_dict["end_price"]},
             ))
 
         xd_data = []
         for xd in self._xianduan_list:
             xd_dict = xd.to_dict()
             xd_data.extend((
-                {"time": dates[xd_dict["start_idx"]], "value": xd_dict["start_price"]},
-                {"time": dates[xd_dict["end_idx"]], "value": xd_dict["end_price"]},
+                {"time": chart_dates[xd_dict["start_idx"]], "value": xd_dict["start_price"]},
+                {"time": chart_dates[xd_dict["end_idx"]], "value": xd_dict["end_price"]},
             ))
 
         def zhongshu_data(items):
+            """将中枢对象转换为前端绘图所需的价格区间字典。"""
             return [
                 {
-                    "start_time": item.start_time,
-                    "end_time": item.end_time,
+                    "start_time": _chart_time(item.start_time),
+                    "end_time": _chart_time(item.end_time),
                     "high_price": float(item.high_price),
                     "low_price": float(item.low_price),
                 }
                 for item in items
             ]
 
-        close_series = pd.Series([kline.close for kline in klines], index=dates)
+        close_series = pd.Series([kline.close for kline in klines], index=chart_dates)
         ma_colors = calculate_ma_colors(DEFAULT_MA_PERIODS)
         ma_data = [
             {
@@ -263,14 +290,15 @@ class _DataCache:
         ]
         volume_data = [
             {
-                "time": kline.trade_datetime,
+                "time": chart_dates[index],
                 "value": kline.volume if math.isfinite(kline.volume) else 0.0,
                 "color": "#ef5350" if kline.is_up() else "#26a69a",
             }
-            for kline in klines
+            for index, kline in enumerate(klines)
         ]
 
         def serialized(value):
+            """将数据序列化为紧凑且禁止NaN的JSON字符串。"""
             return json.dumps(
                 value,
                 ensure_ascii=False,
@@ -286,7 +314,10 @@ class _DataCache:
             "zhongshu_in_xianduan_data": serialized(zhongshu_data(self._bi_zhongshu_in_xianduan_list or [])),
             "xianduan_zhongshu_data": serialized(zhongshu_data(self._xianduan_zhongshu_list or [])),
             "xianduan_zhongshu_another_data": serialized(zhongshu_data(self._xianduan_zhongshu_another_list or [])),
-            "gaps_data": serialized([gap.to_kwargs() for gap in self._gaps_list]),
+            "gaps_data": serialized([
+                {**gap.to_kwargs(), "time": _chart_time(gap.trade_datetime)}
+                for gap in self._gaps_list
+            ]),
             "volume_data": serialized(volume_data),
             "ma_data": serialized(ma_data),
             "boll_data": serialized(boll_data),
@@ -299,66 +330,79 @@ class _DataCache:
 
     @property
     def raw_data(self) -> List[List]:
+        """获取原始K线数据。"""
         self.ensure_loaded()
         return self._raw_data
 
     @property
     def origin_kline_data(self) -> List[OriginKLine]:
+        """获取标准化后的原始K线列表。"""
         self.ensure_loaded()
         return self._origin_kline_data
 
     @property
     def gaps_list(self) -> List[Gap]:
+        """获取缺口标注列表。"""
         self.ensure_loaded()
         return self._gaps_list
 
     @property
     def merged_klines(self) -> List[MergedKLine]:
+        """获取合并K线列表。"""
         self.ensure_loaded()
         return self._merged_klines
 
     @property
     def trade_dates(self) -> List[str]:
+        """获取与合并K线对齐的交易时间列表。"""
         self.ensure_loaded()
         return self._trade_dates
 
     @property
     def bi_list(self) -> List[Bi]:
+        """获取笔列表。"""
         self.ensure_loaded()
         return self._bi_list
 
     @property
     def bi_zhongshu_list(self) -> List[ZhongShuBase]:
+        """获取笔中枢列表。"""
         self.ensure_loaded()
         return self._bi_zhongshu_list
 
     @property
     def bi_zhongshu_in_xianduan_list(self) -> List[ZhongShuBase]:
+        """获取线段内部笔中枢列表。"""
         self.ensure_loaded()
         return self._bi_zhongshu_in_xianduan_list
 
     @property
     def te_zheng_xu_lie_list(self) -> List[TeZhengXuLie]:
+        """获取笔特征序列列表。"""
         self.ensure_loaded()
         return self._te_zheng_xu_lie
 
     @property
     def xian_duan_list(self) -> List[TeZhengXuLie]:
+        """获取线段列表。"""
         self.ensure_loaded()
         return self._xianduan_list
 
     @property
     def xianduan_tezhengxulie_list(self) -> List[XianduanTeZhengXuLie]:
+        """获取线段特征序列列表。"""
         self.ensure_loaded()
         return self._xianduan_tezhengxulie_list or []
 
     @property
     def xianduan_zhongshu_list(self) -> List[XianDuanZhongShu]:
+        """获取线段中枢列表。"""
         self.ensure_loaded()
         return self._xianduan_zhongshu_list or []
 
     @property
     def xianduan_zhongshu_another_list(self) -> List[XianDuanZhongShu]:
+        """获取补充线段中枢列表。"""
         self.ensure_loaded()
         return self._xianduan_zhongshu_another_list or []
 
@@ -399,6 +443,7 @@ _CACHE_DUMP_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def get_cache_dump_path(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
+    """校验标的编码并返回_DataCache pickle路径。"""
     clean_symbol = Path(symbol).stem
     if not _CACHE_DUMP_SYMBOL_PATTERN.fullmatch(clean_symbol):
         raise ValueError(f"非法的标的数据文件名: {symbol}")
@@ -407,6 +452,10 @@ def get_cache_dump_path(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
 
 
 def get_chart_payload_path(symbol: str, frequency: str = "1day") -> Path:
+    """校验周期和标的编码，返回图表payload文件路径。"""
+    if frequency not in SUPPORTED_CHART_FREQUENCIES:
+        raise ValueError(f"不支持的K线周期: {frequency}")
+
     clean_symbol = Path(symbol).stem
     if not _CHART_PAYLOAD_SYMBOL_PATTERN.fullmatch(clean_symbol):
         raise ValueError(f"非法的标的数据文件名: {symbol}")
@@ -414,7 +463,19 @@ def get_chart_payload_path(symbol: str, frequency: str = "1day") -> Path:
     return CHART_PAYLOAD_DIR / frequency / f"{clean_symbol}.chart.pkl"
 
 
+def get_chart_payload_versions(symbol: str) -> tuple[int, ...]:
+    """获取全部周期payload的修改时间，缺失周期返回0。"""
+    return tuple(
+        path.stat().st_mtime_ns if path.exists() else 0
+        for path in (
+            get_chart_payload_path(symbol, frequency)
+            for frequency in SUPPORTED_CHART_FREQUENCIES
+        )
+    )
+
+
 def _atomic_pickle_dump(value, destination: Path) -> None:
+    """通过临时文件原子写入pickle数据，避免留下半成品文件。"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_path = destination.with_name(f".{destination.name}.tmp")
     try:
@@ -430,7 +491,9 @@ def dump_data_cache_to_pickle(
     source_file: Path,
     dump_dir: Path = CACHE_DUMP_DIR,
     frequency: str | None = None,
+    dump_cache: bool = True,
 ) -> Path:
+    """构建图表payload并可选导出_DataCache，写入过程支持强制覆盖。"""
     source_file = Path(source_file)
     if not source_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {source_file}")
@@ -444,6 +507,10 @@ def dump_data_cache_to_pickle(
         get_chart_payload_path(source_file.stem, frequency or source_file.parent.name),
     )
 
+    if not dump_cache:
+        _DataCache.reset_instance()
+        return get_chart_payload_path(source_file.stem, frequency or source_file.parent.name)
+
     dump_dir = Path(dump_dir)
     dump_dir.mkdir(parents=True, exist_ok=True)
     destination = dump_dir / f"{source_file.stem}.pkl"
@@ -456,6 +523,7 @@ def dump_data_cache_to_pickle(
 
 
 def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _DataCache:
+    """读取_DataCache缓存，并兼容旧版endpoints模块生成的pickle。"""
     cache_path = get_cache_dump_path(symbol, dump_dir)
     if not cache_path.exists():
         raise FileNotFoundError(f"缓存文件不存在: {cache_path}")
@@ -476,6 +544,7 @@ def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _Dat
 
 
 def load_chart_payload(symbol: str, frequency: str = "1day") -> dict:
+    """读取指定标的和周期的预计算图表payload。"""
     payload_path = get_chart_payload_path(symbol, frequency)
     with payload_path.open("rb") as file:
         payload = pickle.load(file)

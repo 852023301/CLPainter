@@ -7,7 +7,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
 
-from ..endpoints import get_chart_payload_path, load_chart_payload
+from ..endpoints import (
+    SUPPORTED_CHART_FREQUENCIES,
+    get_chart_payload_versions,
+    load_chart_payload,
+)
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -23,15 +27,17 @@ templates.env.cache = None
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
 async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", frequency: str = "1day"):
-    payload_file = get_chart_payload_path(symbol, frequency)
+    """读取图表payload，渲染页面并处理ETag与gzip响应。"""
     try:
-        cache_version = payload_file.stat().st_mtime_ns
-    except FileNotFoundError:
-        cache_version = 0
+        frequency_versions = get_chart_payload_versions(symbol)
+    except ValueError as error:
+        return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
+
+    cache_version = "-".join(map(str, frequency_versions))
 
     try:
         html_content = await run_in_threadpool(
-            _build_lightweight_charts_page, symbol, frequency, cache_version
+            _build_lightweight_charts_page, symbol, frequency, cache_version, frequency_versions
         )
     except Exception as error:
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
@@ -56,14 +62,27 @@ async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", fr
 
 
 @lru_cache(maxsize=16)
-def _build_lightweight_charts_page(symbol: str, frequency: str, cache_version: int) -> str:
+def _build_lightweight_charts_page(
+    symbol: str, frequency: str, cache_version: str, frequency_versions: tuple[int, ...]
+) -> str:
+    """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency)
+    payload["frequency"] = frequency
+    payload["frequency_options"] = [
+        {
+            "value": value,
+            "label": label,
+            "available": bool(frequency_versions[index]),
+        }
+        for index, (value, label) in enumerate(SUPPORTED_CHART_FREQUENCIES.items())
+    ]
     template = templates.env.get_template("lightweight_charts_demo.html")
     return template.render(**payload)
 
 
 @lru_cache(maxsize=16)
 def _compress_lightweight_charts_page(
-    symbol: str, frequency: str, cache_version: int, html_content: str
+    symbol: str, frequency: str, cache_version: str, html_content: str
 ) -> bytes:
+    """按缓存版本生成可复用的gzip页面内容。"""
     return gzip.compress(html_content.encode("utf-8"), compresslevel=6, mtime=0)

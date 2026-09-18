@@ -15,6 +15,7 @@ if str(BACKEND_DIR) not in sys.path:
 from CLPainter.web.backend.app._config.settings import settings  # noqa: E402
 from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     CACHE_DUMP_DIR,
+    SUPPORTED_CHART_FREQUENCIES,
     dump_data_cache_to_pickle,
 )
 
@@ -23,38 +24,51 @@ logger = logging.getLogger(__name__)
 FEISHU_WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/361adc1b-4da1-451d-b881-14b038f938c3"
 FEISHU_FAILURE_BATCH_SIZE = 30
 MAX_FAILURE_REASON_LENGTH = 500
-FREQ = "1day"
-
 
 def parse_args():
+    """解析批量导出的源目录和可选标的参数。"""
     parser = argparse.ArgumentParser(description="批量导出股票 _DataCache pickle 文件")
     parser.add_argument(
         "--source-dirs",
         nargs="+",
         type=Path,
-        default=[Path(settings.DATA_DIR, FREQ)  ],
-        help="原始 pickle 文件目录，默认包含 all_stocks、all_index 和 all_etf",
+        default=[
+            path
+            for frequency in SUPPORTED_CHART_FREQUENCIES
+            if (path := Path(settings.DATA_DIR, frequency)).exists()
+        ],
+        help="原始 pickle 文件目录，默认包含所有支持的K线周期目录",
     )
     parser.add_argument("--symbol", help="只导出单一标的，例如 600713SH")
     return parser.parse_args()
 
 
 def dump_worker(source_file: Path, dump_dir: Path) -> None:
-    dump_data_cache_to_pickle(source_file, dump_dir, frequency=FREQ)
+    """按源文件目录识别周期并导出图表缓存。"""
+    frequency = source_file.parent.name
+    dump_data_cache_to_pickle(
+        source_file,
+        dump_dir,
+        frequency=frequency,
+        dump_cache=frequency == "1day",
+    )
 
 
 def collect_source_files(source_dirs: list[Path]) -> list[Path]:
-    source_files_by_stem: dict[str, Path] = {}
+    """按周期和标的编码收集去重后的源文件列表。"""
+    source_files_by_key: dict[tuple[str, str], Path] = {}
     for source_dir in source_dirs:
         for source_file in source_dir.glob("*.pkl"):
-            existing_file = source_files_by_stem.setdefault(source_file.stem, source_file)
+            key = (source_file.parent.name, source_file.stem)
+            existing_file = source_files_by_key.setdefault(key, source_file)
             if existing_file != source_file:
                 raise ValueError(f"输出文件名冲突: {existing_file} 和 {source_file}")
 
-    return sorted(source_files_by_stem.values(), key=lambda item: item.stem)
+    return sorted(source_files_by_key.values(), key=lambda item: (item.parent.name, item.stem))
 
 
 def send_feishu_text(text: str) -> None:
+    """发送一条文本消息到配置的飞书机器人。"""
     payload = json.dumps({"msg_type": "text", "content": {"text": text}}).encode("utf-8")
     request = urllib.request.Request(
         FEISHU_WEBHOOK_URL,
@@ -71,6 +85,7 @@ def send_feishu_text(text: str) -> None:
 
 
 def notify_failures_to_feishu(total_count: int, success_count: int, failures: list[str]) -> None:
+    """分批汇总导出结果和失败原因并发送到飞书。"""
     summary = f"CLPainter 缓存导出失败汇总\n总数: {total_count}\n成功: {success_count}\n失败: {len(failures)}"
     if not failures:
         send_feishu_text(summary)
@@ -84,6 +99,7 @@ def notify_failures_to_feishu(total_count: int, success_count: int, failures: li
 
 
 def main() -> int:
+    """批量导出缓存，失败不影响其他标的，最后汇总结果。"""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     args = parse_args()
 
@@ -134,7 +150,7 @@ def main() -> int:
                 reason = str(error)
                 if len(reason) > MAX_FAILURE_REASON_LENGTH:
                     reason = f"{reason[:MAX_FAILURE_REASON_LENGTH]}..."
-                failures.append(f"{source_file.name}: {type(error).__name__}: {reason}")
+                failures.append(f"{source_file.parent.name}/{source_file.name}: {type(error).__name__}: {reason}")
                 logger.exception("[%d/%d] 导出失败: %s", index, total_count, source_file.name)
 
     logger.info(

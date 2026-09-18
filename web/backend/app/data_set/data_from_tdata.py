@@ -17,6 +17,7 @@ FIELDS = ["open", "close", "low", "high", "volume"]
 
 def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
                               start_date, output_path, precision):
+    """校验并转换单个标的K线，然后写入目标pickle文件。"""
     start_idx = bisect_left(dates, start_date)
     end_idx = len(dates)
     if END_DATE:
@@ -45,6 +46,7 @@ def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
 
 
 def write_index_data(index_name, code, index_data, start_date, dsc_path):
+    """将指数批量数据裁剪为标准K线列表并保存。"""
     effective_start_date = max(START_DATE, start_date) if START_DATE else start_date
     columns = ["open", "close", "low", "high", "volume"]
     data = [index_data[f"{index_name}_{column}"] for column in columns]
@@ -62,6 +64,7 @@ def write_index_data(index_name, code, index_data, start_date, dsc_path):
 
 
 def clean_stale_files(dsc_path, generated_files):
+    """删除本轮没有生成的历史数据文件。"""
     for path in dsc_path.iterdir():
         if path.is_file() and path.name not in generated_files:
             path.unlink()
@@ -70,6 +73,7 @@ def clean_stale_files(dsc_path, generated_files):
 def change_data_type_and_save(columns, dates, field_arrays, info_dict,
                               dsc_path,
                               precision=2):
+    """并行转换有效标的K线，返回本轮成功生成的文件名集合。"""
     file_names = set()
     dsc_path = Path(dsc_path)
     dsc_path.mkdir(parents=True, exist_ok=True)

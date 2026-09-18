@@ -134,6 +134,48 @@
             display: none;
         }
 
+        .frequency-tabs {
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: white;
+        }
+
+        .frequency-tab {
+            min-width: 42px;
+            padding: 4px 8px;
+            border: 0;
+            border-right: 1px solid #eee;
+            background: transparent;
+            color: #333;
+            font-size: 13px;
+            line-height: 1.4;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .frequency-tab:last-child {
+            border-right: 0;
+        }
+
+        .frequency-tab:hover {
+            background: #fff2f2;
+        }
+
+        .frequency-tab.active {
+            background: #e64545;
+            color: white;
+            font-weight: 600;
+        }
+
+        .frequency-tab:disabled {
+            color: #bbb;
+            background: #f7f7f7;
+            cursor: not-allowed;
+        }
+
     </style>
 </head>
 <body>
@@ -163,6 +205,16 @@
     <h1>📊 Lightweight Charts 简单示例</h1>
 
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:16px;">
+        <div id="frequencyTabs" class="frequency-tabs" aria-label="K线周期">
+            {% for option in frequency_options %}
+            <button type="button"
+                    class="frequency-tab{% if option.value == frequency %} active{% endif %}"
+                    data-frequency="{{ option.value }}"
+                    {% if not option.available %}disabled title="暂无该周期数据"{% endif %}>
+                {{ option.label }}
+            </button>
+            {% endfor %}
+        </div>
         <label style="font-size:14px;cursor:pointer;user-select:none;">
             <input type="checkbox" id="showGapsToggle" style="margin-right:4px;cursor:pointer;">显示缺口
         </label>
@@ -218,6 +270,15 @@
         return v === null ? def : v;
     };
     const lsSetString = (k, v) => localStorage.setItem(k, v);
+
+    document.querySelectorAll('#frequencyTabs .frequency-tab').forEach(button => {
+        button.addEventListener('click', () => {
+            if (button.classList.contains('active') || button.disabled) return;
+            const params = new URLSearchParams(window.location.search);
+            params.set('frequency', button.dataset.frequency);
+            window.location.search = params.toString();
+        });
+    });
 
     // 从后端传入的数据
     const candleData = {{ candle_data | safe }};

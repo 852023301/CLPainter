@@ -194,7 +194,7 @@ def calculate_ma_list(
         窗口未满处的 NaN 会被跳过, 不出现在 values 里.
     """
     result: List[Dict[str, Union[str, int, List[Dict[str, Union[str, float]]]]]] = []
-    time_values = np.asarray([str(idx) for idx in close.index], dtype=object)
+    time_values = np.asarray(list(close.index), dtype=object)
     for period in periods:
         rolling_kwargs = {"window": period}
         if min_periods is not None:
