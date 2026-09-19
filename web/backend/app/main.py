@@ -1,12 +1,41 @@
+import logging
+import os
+import sys
+from contextlib import asynccontextmanager
+from datetime import datetime
+
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from CLPainter.web.backend.app._config.settings import settings
 from .api.api_v1.api import api_router
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    worker_target = f"{os.getenv('LHOST', '0.0.0.0')}:{os.getenv('PORT', '-')}"
+    startup_info = [
+        "=" * 72,
+        "CLPainter Backend",
+        "API: DMS Backend API",
+        f"Worker: PID={os.getpid()}, Target={worker_target}",
+        f"Python: {sys.version.split()[0]}",
+        f"App Dir: {settings.APP_DIR}",
+        f"Data Dir: {settings.DATA_DIR}",
+        f"Cache Dir: {settings.CACHE_DUMP_DIR}",
+        f"Started At: {datetime.now().isoformat(timespec='seconds')}",
+        "=" * 72,
+    ]
+    logger.info("\n%s", "\n".join(startup_info))
+    yield
+
+
 root_router = APIRouter()
-app = FastAPI(title="DMS Backend API")
+app = FastAPI(title="DMS Backend API", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 

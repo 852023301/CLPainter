@@ -720,7 +720,7 @@
         const INDICATOR_LABEL = { volume: '成交量', boll: 'BOLL(26,2)', rsi: 'RSI(6,12,24)' };
         const INDICATOR_HEIGHT = { volume: 120, boll: 120, rsi: 120 };
         const INDICATOR_KEYS = ['volume', 'macd', 'boll', 'rsi'];
-        const DEFAULT_PANELS = ['volume', 'macd', 'boll', 'rsi'];
+        const DEFAULT_PANELS = ['macd', 'boll', 'rsi', 'volume'];
         INDICATOR_LABEL.macd = 'MACD(10,21,7)';
         INDICATOR_HEIGHT.macd = 180;
         const panels = [];  // 各面板运行时状态
@@ -884,12 +884,12 @@
                 select.appendChild(opt);
             });
 
-            let initKey = lsGetString('panel:v2:' + idx, DEFAULT_PANELS[idx] || 'volume');
+            let initKey = lsGetString('panel:v3:' + idx, DEFAULT_PANELS[idx] || 'volume');
             if (!INDICATOR_LABEL[initKey]) initKey = DEFAULT_PANELS[idx] || 'volume';
             select.value = initKey;
 
             select.addEventListener('change', () => {
-                lsSetString('panel:v2:' + idx, select.value);
+                lsSetString('panel:v3:' + idx, select.value);
                 buildIndicator(meta, select.value);
             });
 
