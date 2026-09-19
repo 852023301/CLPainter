@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 
+import pandas as pd
+
 from .tezhengxulie import TeZhengXuLieCategory, TeZhengXuLieType
 
 if TYPE_CHECKING:
@@ -69,7 +71,7 @@ class XianduanTeZhengXuLie:
         return self.mid_xian_duan.start_idx
 
     @property
-    def start_time(self) -> str:
+    def start_time(self) -> pd.Timestamp:
         return self.mid_xian_duan.start_time
 
     @property

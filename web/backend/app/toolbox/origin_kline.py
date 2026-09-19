@@ -2,6 +2,9 @@ import dataclasses
 from dataclasses import dataclass, fields
 from typing import List, Tuple
 from enum import Enum
+
+import pandas as pd
+
 from .gap import Gap, GapDirectionType
 
 
@@ -15,7 +18,7 @@ class OriginKlineType(str, Enum):
 class OriginKLine:
     """原始的K线数据类"""
 
-    trade_datetime: str
+    trade_datetime: pd.Timestamp
     open: float
     close: float
     low: float
@@ -52,7 +55,7 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
             处理后的K线列表
         """
 
-    origin_klines = [OriginKLine(*kl) for kl in raw_klines]
+    origin_klines = [OriginKLine(pd.Timestamp(kl[0]), *kl[1:]) for kl in raw_klines]
     gaps_list = []
 
     for idx, kl in enumerate(origin_klines):

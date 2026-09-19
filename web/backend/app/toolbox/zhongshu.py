@@ -3,6 +3,8 @@ from typing import List, Tuple, Optional
 from enum import Enum
 from itertools import chain
 
+import pandas as pd
+
 from .bi import BiBase
 
 
@@ -29,8 +31,8 @@ class ZhongShuBase:
     bi_list: List[BiBase] = field(init=True, default_factory=list, repr=False)
     start_idx: int = field(init=False, default=0)  # 中枢起始位置的K 线索引
     end_idx: int = field(init=False, default=0)  # 中枢结束位置的K 线索引
-    start_time: str = field(init=False, default='')  # 起始时间
-    end_time: str = field(init=False, default='')  # 结束时间
+    start_time: pd.Timestamp = field(init=False, default=pd.NaT)  # 起始时间
+    end_time: pd.Timestamp = field(init=False, default=pd.NaT)  # 结束时间
     high_price: float = field(init=False, default=0.0)  # 中暑上沿
     low_price: float = field(init=False, default=0.0)  # 中枢下沿
 

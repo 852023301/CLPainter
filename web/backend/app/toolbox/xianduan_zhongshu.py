@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 
+import pandas as pd
+
 from .xianduan import XianDuanBase
 from .zhongshu import ZhongShuForward, ZhongShuType
 
@@ -27,8 +29,8 @@ class XianDuanZhongShu:
     xian_duan_list: List[XianDuanBase] = field(init=True, default_factory=list, repr=False)
     start_idx: int = field(init=False, default=0)
     end_idx: int = field(init=False, default=0)
-    start_time: str = field(init=False, default='')
-    end_time: str = field(init=False, default='')
+    start_time: pd.Timestamp = field(init=False, default=pd.NaT)
+    end_time: pd.Timestamp = field(init=False, default=pd.NaT)
     start_price: float = field(init=False, default=0.0)
     end_price: float = field(init=False, default=0.0)
     high_price: float = field(init=False, default=0.0)

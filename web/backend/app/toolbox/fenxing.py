@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 from enum import Enum
 import numpy as np
+import pandas as pd
 
 from .merged_kline import MergedKLine
 
@@ -33,7 +34,7 @@ class FenXing:
     low_price: float = field(init=False, default=0.0)  # 分型最低价
     high_idx: int = field(init=False, default=0)  # 分型最高价索引
     low_idx: int = field(init=False, default=0)  # 分型最低价索引
-    trade_datetime: str = field(init=False, default='')  # 极值的交易日
+    trade_datetime: pd.Timestamp = field(init=False, default=pd.NaT)  # 极值的交易日
     idx: int = field(init=False, default=0)  # 本分型在分型列表中的索引
 
     @property

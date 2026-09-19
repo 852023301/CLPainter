@@ -1,6 +1,9 @@
 from dataclasses import dataclass, field
 from typing import List
 from enum import Enum
+
+import pandas as pd
+
 from .origin_kline import OriginKLine, OriginKlineType
 
 
@@ -15,7 +18,7 @@ class MergedKLineType(int, Enum):
 class MergedKLine:
     """合并后的K线数据类"""
 
-    trade_datetime: str
+    trade_datetime: pd.Timestamp
     open: float
     close: float
     low: float

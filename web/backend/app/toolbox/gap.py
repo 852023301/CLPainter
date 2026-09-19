@@ -3,6 +3,8 @@ from dataclasses import dataclass, field, asdict, fields
 from typing import List
 from enum import Enum
 
+import pandas as pd
+
 
 class GapDirectionType(str, Enum):
     """笔的类型"""
@@ -14,7 +16,7 @@ class GapDirectionType(str, Enum):
 class Gap:
     """原始的K线数据类"""
 
-    trade_datetime: str
+    trade_datetime: pd.Timestamp
     type: GapDirectionType
     position: str  # 'belowBar' 或者  'aboveBar'
     color: str

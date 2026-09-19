@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Dict, List, Literal, Optional, Tuple, TypedDict, Union
 from abc import ABC
 import numpy as np
+import pandas as pd
 
 from .bi import BiBase
 from .tezhengxulie import TeZhengXuLie
@@ -19,7 +20,7 @@ class ExtremeBoundary(TypedDict):
     """线段极值修复时的真实边界点"""
 
     price: float
-    time: str
+    time: pd.Timestamp
     kline_idx: int
     prev_end_bi_idx: int
     next_start_bi_idx: int
@@ -42,8 +43,8 @@ class XianDuanBase(ABC):
     end_idx: int = field(init=False, default=0)  # 线段结束位置索引(特征序列极值点所在 K 线索引)
     start_bi_idx: int = field(init=False, default=0)  # 线段起始位置的笔索引(特征序列极值点中间笔索引)
     end_bi_idx: int = field(init=False, default=0)  # 线段真实覆盖到的最后一笔索引（(特征序列中间笔索引-1）
-    start_time: str = field(init=False, default='')  # 起始时间
-    end_time: str = field(init=False, default='')  # 结束时间
+    start_time: pd.Timestamp = field(init=False, default=pd.NaT)  # 起始时间
+    end_time: pd.Timestamp = field(init=False, default=pd.NaT)  # 结束时间
     start_price: float = field(init=False, default=0.0)  # 起始价格(顶/底特征序列的极值)
     end_price: float = field(init=False, default=0.0)  # 结束价格(顶/底特征序列的极值)
     xianduan_type: Optional[XianDuanDirectionType] = field(init=False, default=None)  # 线段的方向
@@ -396,7 +397,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
     def _find_extreme_boundary(segment: XianDuanBase, extreme_type: ExtremeType) -> ExtremeBoundary:
         """在线段覆盖范围内找到可作为相邻线段分界的真实极值点。"""
         best_boundary: Optional[ExtremeBoundary] = None
-        best_key: Optional[Tuple[float, str]] = None
+        best_key: Optional[Tuple[float, pd.Timestamp]] = None
         for bi_idx in range(segment.start_bi_idx, segment.end_bi_idx + 1):
             bi = bi_list[bi_idx]
             start_boundary: ExtremeBoundary = {
@@ -446,8 +447,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         return max(0.0, deviation / true_range)
 
     def _find_tzxl_by_time(
-        tzxl_by_time_and_type: Dict[Tuple[str, bool], TeZhengXuLie],
-        time: str,
+        tzxl_by_time_and_type: Dict[Tuple[pd.Timestamp, bool], TeZhengXuLie],
+        time: pd.Timestamp,
         is_top: bool,
     ) -> Optional[TeZhengXuLie]:
         return tzxl_by_time_and_type.get((time, is_top))
@@ -489,7 +490,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         使修复后的线段重新满足最少笔数且终点仍是覆盖区间内的真实极值。
         """
         repaired_list = list(xianduan_list)
-        tzxl_by_time_and_type: Dict[Tuple[str, bool], TeZhengXuLie] = {}
+        tzxl_by_time_and_type: Dict[Tuple[pd.Timestamp, bool], TeZhengXuLie] = {}
         for tzxl in tzxl_list:
             tzxl_by_time_and_type.setdefault((tzxl.start_time, tzxl.is_top()), tzxl)
         index = 1

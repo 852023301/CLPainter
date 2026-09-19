@@ -5,6 +5,7 @@ from functools import cached_property
 from typing import List, Tuple, Union, Optional
 
 import numpy as np
+import pandas as pd
 
 from .fenxing import FenXing
 from .merged_kline import MergedKLine
@@ -33,8 +34,8 @@ class BiBase:
 
     # === 由 __post_init__ / 外部事后赋值(init=False) ===
     start_idx: int = field(init=False, default=0)  # 笔起始位置索引(分型所在 K 线索引)
-    start_time: str = field(init=False, default='')  # 起始时间
-    end_time: str = field(init=False, default='')  # 结束时间
+    start_time: pd.Timestamp = field(init=False, default=pd.NaT)  # 起始时间
+    end_time: pd.Timestamp = field(init=False, default=pd.NaT)  # 结束时间
     real_origin_kline_count: int = field(init=False, default=0)  # 笔包含的真实原始 K 线数量(一端分型最高点到另一端最低点之间)
     real_merged_kline_count: int = field(init=False, default=0)  # 笔包含的真实合并 K 线数量(一端分型最高点到另一端最低点之间)
     has_gap_count: int = field(init=False, default=0)  # 包含缺口数量

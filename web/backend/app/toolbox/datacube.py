@@ -5,7 +5,7 @@ import json
 import math
 from pathlib import Path
 from typing import List
-from datetime import datetime, timezone
+from datetime import timezone
 
 import pandas as pd
 
@@ -60,10 +60,10 @@ SUPPORTED_CHART_FREQUENCIES = {
 
 
 def _chart_time(value):
-    """将日内时间字符串转为UTC秒，日级日期字符串保持原格式。"""
-    if isinstance(value, str) and len(value) > 10:
-        return int(datetime.fromisoformat(value).replace(tzinfo=timezone.utc).timestamp())
-    return value
+    """将日内时间转为UTC秒，日级时间保持字符串格式。"""
+    if value == value.normalize():
+        return value.strftime("%Y-%m-%d")
+    return int(value.replace(tzinfo=timezone.utc).timestamp())
 
 
 def load_raw_data(data_file=None) -> List[List]:
@@ -315,7 +315,11 @@ class _DataCache:
             "xianduan_zhongshu_data": serialized(zhongshu_data(self._xianduan_zhongshu_list or [])),
             "xianduan_zhongshu_another_data": serialized(zhongshu_data(self._xianduan_zhongshu_another_list or [])),
             "gaps_data": serialized([
-                {**gap.to_kwargs(), "time": _chart_time(gap.trade_datetime)}
+                {
+                    **gap.to_kwargs(),
+                    "trade_datetime": _chart_time(gap.trade_datetime),
+                    "time": _chart_time(gap.trade_datetime),
+                }
                 for gap in self._gaps_list
             ]),
             "volume_data": serialized(volume_data),
@@ -353,7 +357,7 @@ class _DataCache:
         return self._merged_klines
 
     @property
-    def trade_dates(self) -> List[str]:
+    def trade_dates(self) -> List[pd.Timestamp]:
         """获取与合并K线对齐的交易时间列表。"""
         self.ensure_loaded()
         return self._trade_dates

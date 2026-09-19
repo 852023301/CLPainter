@@ -3,6 +3,7 @@ from typing import List, Tuple, Optional, Union
 from enum import Enum
 from collections import deque
 import numpy as np
+import pandas as pd
 
 from .bi import BiBase
 
@@ -75,7 +76,7 @@ class TeZhengXuLie:
         return self.mid_bi.start_idx
 
     @property
-    def start_time(self) -> str:
+    def start_time(self) -> pd.Timestamp:
         return self.mid_bi.start_time
 
     @property
