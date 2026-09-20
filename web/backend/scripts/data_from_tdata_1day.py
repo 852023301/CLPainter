@@ -12,6 +12,8 @@ from CLPainter.web.backend.app._config.settings import settings
 START_DATE = "2009-01-01"
 END_DATE = None
 MAX_WORKERS = 10
+MARKET_DIR = "market=cn"
+ASSET_CLASS_DIR = "asset_class=stock"
 FIELDS = ["open", "close", "low", "high", "volume"]
 
 
@@ -127,7 +129,7 @@ if __name__ == "__main__":
     del d
 
     generated_files.update(change_data_type_and_save(columns, dates, stock_field_arrays, stock_info_dict,
-                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day")))
+                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR)))
     del stock_field_arrays
 
     #########################################
@@ -158,7 +160,7 @@ if __name__ == "__main__":
     }
 
     file_names = set()
-    dsc_path = Path(settings.DATA_DIR, "freq=1day")
+    dsc_path = Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR)
     columns = FIELDS
     index_data_names = [f"{index_name}_{column}" for index_name in index_map for column in columns]
     index_data = fetch_data(index_data_names, start_date=START_DATE, end_date=END_DATE)
@@ -207,7 +209,7 @@ if __name__ == "__main__":
     del d
 
     generated_files.update(change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
-                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day"), precision=3))
+                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), precision=3))
     del etf_field_arrays
 
-    clean_stale_files(Path(settings.DATA_DIR, "freq=1day"), generated_files)
+    clean_stale_files(Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), generated_files)

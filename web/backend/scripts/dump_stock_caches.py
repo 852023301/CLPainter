@@ -15,6 +15,8 @@ if str(BACKEND_DIR) not in sys.path:
 from CLPainter.web.backend.app._config.settings import settings  # noqa: E402
 from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     CACHE_DUMP_DIR,
+    DEFAULT_ASSET_CLASS_DIR,
+    DEFAULT_MARKET_DIR,
     SUPPORTED_CHART_FREQUENCIES,
     dump_data_cache_to_pickle,
 )
@@ -25,7 +27,10 @@ FEISHU_WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/361adc1b-4da1
 FEISHU_FAILURE_BATCH_SIZE = 30
 MAX_FAILURE_REASON_LENGTH = 500
 
-def parse_args():
+def parse_args(
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+):
     """解析批量导出的源目录和可选标的参数。"""
     parser = argparse.ArgumentParser(description="批量导出股票 _DataCache pickle 文件")
     parser.add_argument(
@@ -35,7 +40,14 @@ def parse_args():
         default=[
             path
             for frequency in SUPPORTED_CHART_FREQUENCIES
-            if (path := Path(settings.DATA_DIR, frequency)).exists()
+            if (
+                path := Path(
+                    settings.DATA_DIR,
+                    frequency,
+                    market_dir,
+                    asset_class_dir,
+                )
+            ).exists()
         ],
         help="原始 pickle 文件目录，默认包含所有支持的K线周期目录",
     )
@@ -43,28 +55,55 @@ def parse_args():
     return parser.parse_args()
 
 
-def dump_worker(source_file: Path, dump_dir: Path) -> None:
-    """按源文件目录识别周期并导出图表缓存。"""
-    frequency = source_file.parent.name
+def source_frequency(
+    source_file: Path,
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+) -> str:
+    """从 freq=.../market=.../asset_class=... 层级中识别周期。"""
+    if source_file.parent.name != asset_class_dir:
+        raise ValueError(f"标的目录层级缺少 {asset_class_dir}: {source_file}")
+    if source_file.parent.parent.name != market_dir:
+        raise ValueError(f"标的目录层级缺少 {market_dir}: {source_file}")
+    return source_file.parent.parent.parent.name
+
+
+def dump_worker(
+    source_file: Path,
+    dump_dir: Path,
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+) -> None:
+    """按源文件层级识别周期并导出图表缓存。"""
+    frequency = source_frequency(source_file, market_dir, asset_class_dir)
     dump_data_cache_to_pickle(
         source_file,
         dump_dir,
         frequency=frequency,
         dump_cache=frequency == "freq=1day",
+        market_dir=market_dir,
+        asset_class_dir=asset_class_dir,
     )
 
 
-def collect_source_files(source_dirs: list[Path]) -> list[Path]:
+def collect_source_files(
+    source_dirs: list[Path],
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+) -> list[Path]:
     """按周期和标的编码收集去重后的源文件列表。"""
     source_files_by_key: dict[tuple[str, str], Path] = {}
     for source_dir in source_dirs:
         for source_file in source_dir.glob("*.pkl"):
-            key = (source_file.parent.name, source_file.stem)
+            key = (source_frequency(source_file, market_dir, asset_class_dir), source_file.stem)
             existing_file = source_files_by_key.setdefault(key, source_file)
             if existing_file != source_file:
                 raise ValueError(f"输出文件名冲突: {existing_file} 和 {source_file}")
 
-    return sorted(source_files_by_key.values(), key=lambda item: (item.parent.name, item.stem))
+    return sorted(
+        source_files_by_key.values(),
+        key=lambda item: (source_frequency(item, market_dir, asset_class_dir), item.stem),
+    )
 
 
 def send_feishu_text(text: str) -> None:
@@ -109,7 +148,11 @@ def main() -> int:
         return 1
 
     try:
-        source_files = collect_source_files(args.source_dirs)
+        source_files = collect_source_files(
+            args.source_dirs,
+            DEFAULT_MARKET_DIR,
+            DEFAULT_ASSET_CLASS_DIR,
+        )
     except ValueError as error:
         logger.error(str(error))
         return 1
@@ -135,7 +178,13 @@ def main() -> int:
             max_workers=worker_count,
     ) as executor:
         futures = {
-            executor.submit(dump_worker, source_file, CACHE_DUMP_DIR): source_file
+            executor.submit(
+                dump_worker,
+                source_file,
+                CACHE_DUMP_DIR,
+                DEFAULT_MARKET_DIR,
+                DEFAULT_ASSET_CLASS_DIR,
+            ): source_file
             for source_file in source_files
         }
 

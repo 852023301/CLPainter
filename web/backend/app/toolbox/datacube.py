@@ -43,7 +43,9 @@ def _create_detached_data_cache(cls):
 
 
 DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
-CHART_PAYLOAD_DIR = Path(settings.DATA_DIR).parent / "chart_payload"
+DEFAULT_MARKET_DIR = "market=cn"
+DEFAULT_ASSET_CLASS_DIR = "asset_class=stock"
+CHART_PAYLOAD_DIR = Path(settings.CACHE_DUMP_DIR).parent / "chart_payload"
 SUPPORTED_CHART_FREQUENCIES = {
     "freq=1day": "日K",
     "freq=1week": "周K",
@@ -446,16 +448,27 @@ _CHART_PAYLOAD_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _CACHE_DUMP_SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-def get_cache_dump_path(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
+def get_cache_dump_path(
+    symbol: str,
+    frequency: str = "freq=1day",
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+    dump_dir: Path = CACHE_DUMP_DIR,
+) -> Path:
     """校验标的编码并返回_DataCache pickle路径。"""
     clean_symbol = Path(symbol).stem
     if not _CACHE_DUMP_SYMBOL_PATTERN.fullmatch(clean_symbol):
         raise ValueError(f"非法的标的数据文件名: {symbol}")
 
-    return dump_dir / f"{clean_symbol}.pkl"
+    return dump_dir / frequency / market_dir / asset_class_dir / f"{clean_symbol}.pkl"
 
 
-def get_chart_payload_path(symbol: str, frequency: str = "freq=1day") -> Path:
+def get_chart_payload_path(
+    symbol: str,
+    frequency: str = "freq=1day",
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+) -> Path:
     """校验周期和标的编码，返回图表payload文件路径。"""
     if frequency not in SUPPORTED_CHART_FREQUENCIES:
         raise ValueError(f"不支持的K线周期: {frequency}")
@@ -464,15 +477,25 @@ def get_chart_payload_path(symbol: str, frequency: str = "freq=1day") -> Path:
     if not _CHART_PAYLOAD_SYMBOL_PATTERN.fullmatch(clean_symbol):
         raise ValueError(f"非法的标的数据文件名: {symbol}")
 
-    return CHART_PAYLOAD_DIR / frequency / f"{clean_symbol}.chart.pkl"
+    return (
+        CHART_PAYLOAD_DIR
+        / frequency
+        / market_dir
+        / asset_class_dir
+        / f"{clean_symbol}.chart.pkl"
+    )
 
 
-def get_chart_payload_versions(symbol: str) -> tuple[int, ...]:
+def get_chart_payload_versions(
+    symbol: str,
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+) -> tuple[int, ...]:
     """获取全部周期payload的修改时间，缺失周期返回0。"""
     return tuple(
         path.stat().st_mtime_ns if path.exists() else 0
         for path in (
-            get_chart_payload_path(symbol, frequency)
+            get_chart_payload_path(symbol, frequency, market_dir, asset_class_dir)
             for frequency in SUPPORTED_CHART_FREQUENCIES
         )
     )
@@ -496,6 +519,8 @@ def dump_data_cache_to_pickle(
     dump_dir: Path = CACHE_DUMP_DIR,
     frequency: str | None = None,
     dump_cache: bool = True,
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
 ) -> Path:
     """构建图表payload并可选导出_DataCache，写入过程支持强制覆盖。"""
     source_file = Path(source_file)
@@ -508,16 +533,30 @@ def dump_data_cache_to_pickle(
     chart_payload = cache.build_chart_payload()
     _atomic_pickle_dump(
         chart_payload,
-        get_chart_payload_path(source_file.stem, frequency or source_file.parent.name),
+        get_chart_payload_path(
+            source_file.stem,
+            frequency or source_file.parent.name,
+            market_dir,
+            asset_class_dir,
+        ),
     )
 
     if not dump_cache:
         _DataCache.reset_instance()
-        return get_chart_payload_path(source_file.stem, frequency or source_file.parent.name)
+        return get_chart_payload_path(
+            source_file.stem,
+            frequency or source_file.parent.name,
+            market_dir,
+            asset_class_dir,
+        )
 
-    dump_dir = Path(dump_dir)
-    dump_dir.mkdir(parents=True, exist_ok=True)
-    destination = dump_dir / f"{source_file.stem}.pkl"
+    destination = get_cache_dump_path(
+        source_file.stem,
+        frequency or "freq=1day",
+        market_dir,
+        asset_class_dir,
+        dump_dir,
+    )
     try:
         _atomic_pickle_dump(cache, destination)
     finally:
@@ -526,9 +565,15 @@ def dump_data_cache_to_pickle(
     return destination
 
 
-def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _DataCache:
+def load_data_cache_pickle(
+    symbol: str,
+    frequency: str = "freq=1day",
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+    dump_dir: Path = CACHE_DUMP_DIR,
+) -> _DataCache:
     """读取_DataCache缓存，并兼容旧版endpoints模块生成的pickle。"""
-    cache_path = get_cache_dump_path(symbol, dump_dir)
+    cache_path = get_cache_dump_path(symbol, frequency, market_dir, asset_class_dir, dump_dir)
     if not cache_path.exists():
         raise FileNotFoundError(f"缓存文件不存在: {cache_path}")
 
@@ -547,9 +592,14 @@ def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _Dat
     return cache
 
 
-def load_chart_payload(symbol: str, frequency: str = "freq=1day") -> dict:
+def load_chart_payload(
+    symbol: str,
+    frequency: str = "freq=1day",
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+) -> dict:
     """读取指定标的和周期的预计算图表payload。"""
-    payload_path = get_chart_payload_path(symbol, frequency)
+    payload_path = get_chart_payload_path(symbol, frequency, market_dir, asset_class_dir)
     with payload_path.open("rb") as file:
         payload = pickle.load(file)
     if not isinstance(payload, dict):

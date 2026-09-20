@@ -8,6 +8,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
 
 from ..endpoints import (
+    DEFAULT_ASSET_CLASS_DIR,
+    DEFAULT_MARKET_DIR,
     SUPPORTED_CHART_FREQUENCIES,
     get_chart_payload_versions,
     load_chart_payload,
@@ -26,10 +28,16 @@ templates.env.cache = None
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
-async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", frequency: str = "freq=1day"):
+async def lightweight_charts_demo(
+    request: Request,
+    symbol: str = "600713SH",
+    frequency: str = "freq=1day",
+    market_dir: str = DEFAULT_MARKET_DIR,
+    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+):
     """读取图表payload，渲染页面并处理ETag与gzip响应。"""
     try:
-        frequency_versions = get_chart_payload_versions(symbol)
+        frequency_versions = get_chart_payload_versions(symbol, market_dir, asset_class_dir)
     except ValueError as error:
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
 
@@ -37,13 +45,19 @@ async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", fr
 
     try:
         html_content = await run_in_threadpool(
-            _build_lightweight_charts_page, symbol, frequency, cache_version, frequency_versions
+            _build_lightweight_charts_page,
+            symbol,
+            frequency,
+            cache_version,
+            frequency_versions,
+            market_dir,
+            asset_class_dir,
         )
     except Exception as error:
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=500)
 
-    etag = f'W/"{symbol}-{frequency}-{cache_version}"'
+    etag = f'W/"{symbol}-{frequency}-{market_dir}-{asset_class_dir}-{cache_version}"'
     common_headers = {"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Accept-Encoding"}
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=common_headers)
@@ -63,10 +77,15 @@ async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", fr
 
 @lru_cache(maxsize=16)
 def _build_lightweight_charts_page(
-    symbol: str, frequency: str, cache_version: str, frequency_versions: tuple[int, ...]
+    symbol: str,
+    frequency: str,
+    cache_version: str,
+    frequency_versions: tuple[int, ...],
+    market_dir: str,
+    asset_class_dir: str,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
-    payload = load_chart_payload(symbol, frequency)
+    payload = load_chart_payload(symbol, frequency, market_dir, asset_class_dir)
     payload["frequency"] = frequency
     payload["frequency_options"] = [
         {

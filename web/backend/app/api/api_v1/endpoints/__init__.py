@@ -1,5 +1,7 @@
 from CLPainter.web.backend.app.toolbox.datacube import (
     CACHE_DUMP_DIR,
+    DEFAULT_ASSET_CLASS_DIR,
+    DEFAULT_MARKET_DIR,
     _DataCache,
     _create_detached_data_cache,
     dump_data_cache_to_pickle,
@@ -13,6 +15,8 @@ from CLPainter.web.backend.app.toolbox.datacube import (
 
 __all__ = [
     "CACHE_DUMP_DIR",
+    "DEFAULT_ASSET_CLASS_DIR",
+    "DEFAULT_MARKET_DIR",
     "_DataCache",
     "_create_detached_data_cache",
     "dump_data_cache_to_pickle",
