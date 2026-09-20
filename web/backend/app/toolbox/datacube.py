@@ -45,17 +45,17 @@ def _create_detached_data_cache(cls):
 DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
 CHART_PAYLOAD_DIR = Path(settings.DATA_DIR).parent / "chart_payload"
 SUPPORTED_CHART_FREQUENCIES = {
-    "1day": "日K",
-    "1week": "周K",
-    "1month": "月K",
-    "1year": "年K",
-    "1min": "1分",
-    "5min": "5分",
-    "15min": "15分",
-    "30min": "30分",
-    "60min": "60分",
-    "120min": "120分",
-    "240min": "240分",
+    "freq=1day": "日K",
+    "freq=1week": "周K",
+    "freq=1month": "月K",
+    "freq=1year": "年K",
+    "freq=1min": "1分",
+    "freq=5min": "5分",
+    "freq=15min": "15分",
+    "freq=30min": "30分",
+    "freq=60min": "60分",
+    "freq=120min": "120分",
+    "freq=240min": "240分",
 }
 
 
@@ -79,7 +79,7 @@ def load_raw_data(data_file=None) -> List[List]:
         raise EnvironmentError("环境变量 'APP_DIR' 未设置且配置中未提供 APP_DIR")
 
     if data_file is None:
-        data_file = Path(settings.DATA_DIR) / "1day/000001SH.pkl"  #
+        data_file = Path(settings.DATA_DIR) / "freq=1day/000001SH.pkl"  #
         # data_file = Path(settings.DATA_DIR) / "1day/561980SH.pkl"
         # data_file = Path(settings.DATA_DIR) / "1day/516700SH.pkl"  # Fix:没有fake最后一条线段？为什么线段没有微调成功？
         # FIX: 0段;
@@ -455,7 +455,7 @@ def get_cache_dump_path(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> Path:
     return dump_dir / f"{clean_symbol}.pkl"
 
 
-def get_chart_payload_path(symbol: str, frequency: str = "1day") -> Path:
+def get_chart_payload_path(symbol: str, frequency: str = "freq=1day") -> Path:
     """校验周期和标的编码，返回图表payload文件路径。"""
     if frequency not in SUPPORTED_CHART_FREQUENCIES:
         raise ValueError(f"不支持的K线周期: {frequency}")
@@ -547,7 +547,7 @@ def load_data_cache_pickle(symbol: str, dump_dir: Path = CACHE_DUMP_DIR) -> _Dat
     return cache
 
 
-def load_chart_payload(symbol: str, frequency: str = "1day") -> dict:
+def load_chart_payload(symbol: str, frequency: str = "freq=1day") -> dict:
     """读取指定标的和周期的预计算图表payload。"""
     payload_path = get_chart_payload_path(symbol, frequency)
     with payload_path.open("rb") as file:

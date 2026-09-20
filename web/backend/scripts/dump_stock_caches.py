@@ -50,7 +50,7 @@ def dump_worker(source_file: Path, dump_dir: Path) -> None:
         source_file,
         dump_dir,
         frequency=frequency,
-        dump_cache=frequency == "1day",
+        dump_cache=frequency == "freq=1day",
     )
 
 

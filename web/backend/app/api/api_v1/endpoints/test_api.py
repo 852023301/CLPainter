@@ -26,7 +26,7 @@ templates.env.cache = None
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
-async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", frequency: str = "1day"):
+async def lightweight_charts_demo(request: Request, symbol: str = "600713SH", frequency: str = "freq=1day"):
     """读取图表payload，渲染页面并处理ETag与gzip响应。"""
     try:
         frequency_versions = get_chart_payload_versions(symbol)
