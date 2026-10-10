@@ -1,5 +1,7 @@
+# 只需要未复权（除权）数据
 from __future__ import annotations
 
+import argparse
 import os
 import pickle
 import time
@@ -84,21 +86,48 @@ def _select_columns(data: pd.DataFrame, columns: Iterable[str]) -> pd.DataFrame:
     return data.loc[:, [column for column in columns if column in data.columns]]
 
 
-def _convert_history_to_pv_list(data: pd.DataFrame) -> list:
+def _convert_history_to_pv_list(data: pd.DataFrame) -> Optional[list]:
     if data.empty:
         return []
 
     history = data.copy()
     history["trade_date"] = history["trade_date"].map(_normalize_date).dt.strftime("%Y-%m-%d")
-    history = history.dropna(subset=list(PV_FIELD_ORDER))
-    history = history.loc[
-        history[list(PV_FIELD_ORDER)].map(lambda value: math.isfinite(float(value))).all(axis=1)
-    ]
     history = history.sort_values("trade_date")
-    return [
-        [trade_date, *(float(row[field]) for field in PV_FIELD_ORDER)]
-        for trade_date, row in zip(history["trade_date"], history.to_dict("records"))
-    ]
+    previous_close: Optional[float] = None
+    result = []
+
+    for trade_date, row in zip(history["trade_date"], history.to_dict("records")):
+        values = {field: row[field] for field in PV_FIELD_ORDER}
+        volume = values["volume"]
+        if volume is None or not math.isfinite(float(volume)):
+            volume = 0.0
+
+        close = values["close"]
+        if close is None or not math.isfinite(float(close)):
+            if previous_close is None:
+                continue
+            close = previous_close
+            if (
+                values["high"] is not None
+                and math.isfinite(float(values["high"]))
+                and float(close) > float(values["high"])
+            ) or (
+                values["low"] is not None
+                and math.isfinite(float(values["low"]))
+                and float(close) < float(values["low"])
+            ):
+                return None
+
+        close = float(close)
+        filled_values = {}
+        for field in ("open", "high", "low"):
+            value = values[field]
+            filled_values[field] = float(value) if value is not None and math.isfinite(float(value)) else close
+
+        result.append([trade_date, filled_values["open"], close, filled_values["low"], filled_values["high"], float(volume)])
+        previous_close = close
+
+    return result
 
 
 def fetch_stock_list(pro_api: Any, as_of: date) -> pd.DataFrame:
@@ -224,6 +253,7 @@ def _iter_history_for_list(
         end_date: date,
         request_interval: float,
         history_dir: Optional[Path] = None,
+        overwrite: bool = False,
 ) -> Iterator[Tuple[str, Optional[pd.DataFrame]]]:
     if "ts_code" not in securities.columns:
         return
@@ -234,7 +264,12 @@ def _iter_history_for_list(
 
     for ts_code in codes:
         output_path = history_dir / f"{ts_code.replace('.', '')}.pkl" if history_dir is not None else None
-        if output_path is not None and output_path.is_file() and output_path.stat().st_size > 0:
+        if (
+                output_path is not None
+                and not overwrite
+                and output_path.is_file()
+                and output_path.stat().st_size > 0
+        ):
             yield ts_code, None
             continue
 
@@ -256,6 +291,10 @@ def _save_history(history_dir: Path, ts_code: str, data: pd.DataFrame) -> Path:
     output_path = history_dir / f"{ts_code.replace('.', '')}.pkl"
     temporary_path = output_path.with_suffix(".pkl.tmp")
     pv_list = _convert_history_to_pv_list(data)
+    if pv_list is None:
+        if output_path.is_file():
+            output_path.unlink()
+        raise ValueError(f"{ts_code} 缺失值无法安全填补，已跳过整个标的")
     with temporary_path.open("wb") as file:
         pickle.dump(pv_list, file, protocol=pickle.HIGHEST_PROTOCOL)
     temporary_path.replace(output_path)
@@ -273,6 +312,10 @@ def _get_history_dir(output_dir: Path, category: str) -> Path:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="获取当前上市标的截至指定日期的历史日线行情")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖已有行情文件，默认跳过以支持断点续跑")
+    args = parser.parse_args()
+
     token  = "ac46d24be66cf2ed037f517378d67874e8294eaf5908f39af23d04f5"
     if not token:
         raise ValueError("请通过环境变量 TUSHARE_TOKEN 提供 Tushare token")
@@ -290,6 +333,7 @@ def main() -> None:
         saved_count = 0
         empty_count = 0
         skipped_count = 0
+        invalid_count = 0
         histories = _iter_history_for_list(
             pro_api,
             securities,
@@ -298,19 +342,25 @@ def main() -> None:
             DEFAULT_HISTORY_END,
             DEFAULT_REQUEST_INTERVAL_SECONDS,
             history_dir=history_dir,
+            overwrite=args.overwrite,
         )
         for ts_code, history in histories:
             if history is None:
                 skipped_count += 1
                 continue
 
-            _save_history(history_dir, ts_code, history)
+            try:
+                _save_history(history_dir, ts_code, history)
+            except ValueError as error:
+                invalid_count += 1
+                print(f"\n{error}")
+                continue
             if history.empty:
                 empty_count += 1
             else:
                 saved_count += 1
             print(
-                f"\r{category}: 已保存 {saved_count}，无数据 {empty_count}，续跑跳过 {skipped_count}",
+                f"\r{category}: 已保存 {saved_count}，无数据 {empty_count}，续跑跳过 {skipped_count}，缺失跳过 {invalid_count}",
                 end="",
                 flush=True,
             )

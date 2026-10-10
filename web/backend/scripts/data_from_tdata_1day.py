@@ -1,3 +1,4 @@
+# 只需要未复权（除权）数据
 from bisect import bisect_left, bisect_right
 from tdata import fetch_data
 import numpy as np
@@ -15,12 +16,59 @@ MAX_WORKERS = 10
 MARKET_DIR = "market=cn"
 ASSET_CLASS_DIR = "asset_class=stock"
 FIELDS = ["open", "close", "low", "high", "volume"]
+DR_FIELDS = [f"{j}_dr" for j in FIELDS]
+OLD_DATA_CUTOFF = "2008-12-31"
+OLD_DATA_ROOT = Path(settings.OLD_DATA_DIR)
+ASSET_CLASS_DIRS = {
+    "stock": "asset_class=stock",
+    "index": "asset_class=index",
+    "etf": "asset_class=fund",
+}
+
+
+def load_old_pv_list(code, asset_class, start_date):
+    """读取旧K线；上市不晚于2008-12-31的标的必须存在旧文件。"""
+    if start_date > OLD_DATA_CUTOFF:
+        return []
+
+    asset_class_dir = ASSET_CLASS_DIRS[asset_class]
+    old_dir = OLD_DATA_ROOT / "freq=1day" / MARKET_DIR / asset_class_dir
+    symbol = code.split(".", 1)[0]
+    candidates = [
+        old_dir / f"{code.replace('.', '')}.pkl",
+        old_dir / f"{symbol}SH.pkl",
+        old_dir / f"{symbol}SZ.pkl",
+        old_dir / f"{symbol}CSI.pkl",
+        old_dir / f"{symbol}CNI.pkl",
+    ]
+    old_path = next((path for path in candidates if path.is_file() and path.stat().st_size > 0), None)
+    if old_path is None:
+        raise FileNotFoundError(
+            f"{code} 上市时间早于等于 {OLD_DATA_CUTOFF}，但缺少有效旧数据文件，已尝试: "
+            + ", ".join(str(path) for path in candidates)
+        )
+
+    with old_path.open("rb") as file:
+        old_list = pickle.load(file)
+    if not isinstance(old_list, list):
+        raise ValueError(f"{code} 旧数据格式错误，应为 list: {old_path}")
+    return old_list
+
+
+def save_pv_list(output_path, old_list, new_list, code):
+    """拼接旧新数据并校验日期顺序。"""
+    final_list = old_list + new_list
+    dates = [row[0] for row in final_list]
+    if any(date_previous >= date_current for date_previous, date_current in zip(dates, dates[1:])):
+        raise ValueError(f"{code} 拼接后日期非严格递增")
+    with output_path.open("wb") as file:
+        pickle.dump(final_list, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
-                              start_date, output_path, precision):
+                              data_start_date, original_start_date, output_path, precision, asset_class="stock"):
     """校验并转换单个标的K线，然后写入目标pickle文件。"""
-    start_idx = bisect_left(dates, start_date)
+    start_idx = bisect_left(dates, data_start_date)
     end_idx = len(dates)
     if END_DATE:
         end_idx = bisect_right(dates, END_DATE)
@@ -42,8 +90,16 @@ def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
         [date, *values_on_date]
         for date, values_on_date in zip(date_slice, rounded_values.T.tolist())
     ]
-    with open(output_path, "wb") as file:
-        pickle.dump(final_list, file, protocol=pickle.HIGHEST_PROTOCOL)
+    save_pv_list(
+        output_path,
+        load_old_pv_list(
+            symbol,
+            asset_class,
+            original_start_date.strftime("%Y-%m-%d") if hasattr(original_start_date, "strftime") else original_start_date,
+        ),
+        final_list,
+        symbol,
+    )
     return True
 
 
@@ -60,9 +116,12 @@ def write_index_data(index_name, code, index_data, start_date, dsc_path):
 
     concat_data.index = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
     final_list = concat_data.reset_index().values.tolist()
-    file_name = f"{code.replace('.', '')}.pkl"
-    with open(dsc_path / file_name, "wb") as file:
-        pickle.dump(final_list, file, protocol=pickle.HIGHEST_PROTOCOL)
+    save_pv_list(
+        dsc_path / f"{code.replace('.', '')}.pkl",
+        load_old_pv_list(code, "index", start_date),
+        final_list,
+        code,
+    )
 
 
 def clean_stale_files(dsc_path, generated_files):
@@ -73,8 +132,7 @@ def clean_stale_files(dsc_path, generated_files):
 
 
 def change_data_type_and_save(columns, dates, field_arrays, info_dict,
-                              dsc_path,
-                              precision=2):
+                              dsc_path, precision=2, asset_class="stock"):
     """并行转换有效标的K线，返回本轮成功生成的文件名集合。"""
     file_names = set()
     dsc_path = Path(dsc_path)
@@ -83,11 +141,11 @@ def change_data_type_and_save(columns, dates, field_arrays, info_dict,
 
     with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(columns)))) as executor:
         for idx, column_name in enumerate(columns):
-            start_date = info_dict.get(column_name)
-            if start_date is None:
+            original_start_date = info_dict.get(column_name)
+            if original_start_date is None:
                 continue
 
-            effective_start_date = max(START_DATE, start_date) if START_DATE else start_date
+            data_start_date = max(START_DATE, original_start_date) if START_DATE else original_start_date
             file_name = f"{column_name.replace('.', '')}.pkl"
             future = executor.submit(
                 transform_and_save_symbol,
@@ -95,9 +153,11 @@ def change_data_type_and_save(columns, dates, field_arrays, info_dict,
                 column_name,
                 dates,
                 field_arrays,
-                effective_start_date,
+                data_start_date,
+                original_start_date,
                 dsc_path / file_name,
                 precision,
+                asset_class,
             )
             futures[future] = file_name
 
@@ -119,12 +179,14 @@ if __name__ == "__main__":
     stock_info_dict = dict(
         zip(stock_info['stock_code'], pd.DatetimeIndex(stock_info['start_date']).strftime("%Y-%m-%d")))
 
-    d = fetch_data(FIELDS, start_date=START_DATE, end_date=END_DATE)
 
-    dates = pd.DatetimeIndex(d['open'].index).strftime("%Y-%m-%d").tolist()
-    columns = [column for column in d['open'].columns.tolist() if column in stock_info_dict]
+    d = fetch_data(DR_FIELDS, start_date=START_DATE, end_date=END_DATE)
+
+    first_key = list(d.keys())[0]
+    dates = pd.DatetimeIndex(d[first_key].index).strftime("%Y-%m-%d").tolist()
+    columns = [column for column in d[first_key].columns.tolist() if column in stock_info_dict]
     stock_field_arrays = []
-    for column in FIELDS:
+    for column in DR_FIELDS:
         stock_field_arrays.append(d.pop(column)[columns].to_numpy().T.copy())
     del d
 
@@ -165,6 +227,8 @@ if __name__ == "__main__":
     index_data_names = [f"{index_name}_{column}" for index_name in index_map for column in columns]
     index_data = fetch_data(index_data_names, start_date=START_DATE, end_date=END_DATE)
     dsc_path.mkdir(parents=True, exist_ok=True)
+    index_dsc_path = Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["index"])
+    index_dsc_path.mkdir(parents=True, exist_ok=True)
 
     futures = {}
     with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(index_map)))) as executor:
@@ -180,7 +244,7 @@ if __name__ == "__main__":
                 code,
                 index_data,
                 start_date,
-                dsc_path,
+                index_dsc_path,
             )
             futures[future] = f"{code.replace('.', '')}.pkl"
 
@@ -199,7 +263,7 @@ if __name__ == "__main__":
 
     etf_info_dict = dict(zip(etf_info['stock_code'], pd.DatetimeIndex(etf_info['start_date']).strftime("%Y-%m-%d")))
 
-    cols = [f"etf_{column}" for column in FIELDS]
+    cols = [f"etf_{column}_dr" for column in FIELDS]
     d = fetch_data(cols,start_date=START_DATE,end_date=END_DATE)
     dates = pd.DatetimeIndex(d[cols[0]].index).strftime("%Y-%m-%d").tolist()
     columns = [column for column in d[cols[0]].columns.tolist() if column in etf_info_dict]
@@ -209,7 +273,7 @@ if __name__ == "__main__":
     del d
 
     generated_files.update(change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
-                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), precision=3))
+                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["etf"]), precision=3, asset_class="etf"))
     del etf_field_arrays
 
     clean_stale_files(Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), generated_files)

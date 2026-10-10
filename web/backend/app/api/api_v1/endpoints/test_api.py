@@ -1,5 +1,6 @@
 import gzip
 import logging
+import re
 from functools import lru_cache
 
 from fastapi import APIRouter, Request, Response
@@ -7,13 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
 
-from ..endpoints import (
-    DEFAULT_ASSET_CLASS_DIR,
-    DEFAULT_MARKET_DIR,
-    SUPPORTED_CHART_FREQUENCIES,
-    get_chart_payload_versions,
-    load_chart_payload,
-)
+from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -21,6 +16,24 @@ setup_logger()
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_SIMPLE_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_SIMPLE_FREQUENCIES = frozenset(key.removeprefix("freq=") for key in SUPPORTED_CHART_FREQUENCIES)
+
+
+def _normalize_frequency(value: str) -> str:
+    """将1day等简化周期参数转换为freq=1day格式。"""
+    if value not in _SIMPLE_FREQUENCIES:
+        supported = ", ".join(sorted(_SIMPLE_FREQUENCIES))
+        raise ValueError(f"不支持的K线周期: {value}，支持: {supported}")
+    return f"freq={value}"
+
+
+def _normalize_directory_value(value: str, prefix: str, field_name: str) -> str:
+    """将cn等简化目录参数转换为market=cn格式。"""
+    if not _SIMPLE_VALUE_PATTERN.fullmatch(value):
+        raise ValueError(f"非法的{field_name}: {value}")
+    return f"{prefix}{value}"
 
 template_dir = f"{settings.APP_DIR}/templates"
 templates = Jinja2Templates(directory=template_dir)
@@ -30,14 +43,23 @@ templates.env.cache = None
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
 async def lightweight_charts_demo(
     request: Request,
-    symbol: str = "600713SH",
-    frequency: str = "freq=1day",
-    market_dir: str = DEFAULT_MARKET_DIR,
-    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+    symbol: str = "000001SH",
+    frequency: str = "1day",
+    market: str = "cn",
+    asset_class: str = "stock",
+    market_dir: str | None = None,
+    asset_class_dir: str | None = None,
 ):
     """读取图表payload，渲染页面并处理ETag与gzip响应。"""
     try:
-        frequency_versions = get_chart_payload_versions(symbol, market_dir, asset_class_dir)
+        if market_dir is not None:
+            raise ValueError("参数market_dir已改名为market")
+        if asset_class_dir is not None:
+            raise ValueError("参数asset_class_dir已改名为asset_class")
+        frequency_key = _normalize_frequency(frequency)
+        market_key = _normalize_directory_value(market, "market=", "市场")
+        asset_class_key = _normalize_directory_value(asset_class, "asset_class=", "资产类别")
+        frequency_versions = get_chart_payload_versions(symbol, market_key, asset_class_key)
     except ValueError as error:
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
 
@@ -47,24 +69,24 @@ async def lightweight_charts_demo(
         html_content = await run_in_threadpool(
             _build_lightweight_charts_page,
             symbol,
-            frequency,
+            frequency_key,
             cache_version,
             frequency_versions,
-            market_dir,
-            asset_class_dir,
+            market_key,
+            asset_class_key,
         )
     except Exception as error:
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=500)
 
-    etag = f'W/"{symbol}-{frequency}-{market_dir}-{asset_class_dir}-{cache_version}"'
+    etag = f'W/"{symbol}-{frequency_key}-{market_key}-{asset_class_key}-{cache_version}"'
     common_headers = {"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Accept-Encoding"}
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=common_headers)
 
     if "gzip" in request.headers.get("accept-encoding", "").lower():
         compressed_content = await run_in_threadpool(
-            _compress_lightweight_charts_page, symbol, frequency, cache_version, html_content
+            _compress_lightweight_charts_page, symbol, frequency_key, cache_version, html_content
         )
         return Response(
             content=compressed_content,
@@ -81,11 +103,11 @@ def _build_lightweight_charts_page(
     frequency: str,
     cache_version: str,
     frequency_versions: tuple[int, ...],
-    market_dir: str,
-    asset_class_dir: str,
+    market: str,
+    asset_class: str,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
-    payload = load_chart_payload(symbol, frequency, market_dir, asset_class_dir)
+    payload = load_chart_payload(symbol, frequency, market, asset_class)
     payload["frequency"] = frequency
     payload["frequency_options"] = [
         {

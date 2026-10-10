@@ -209,7 +209,7 @@
             {% for option in frequency_options %}
             <button type="button"
                     class="frequency-tab{% if option.value == frequency %} active{% endif %}"
-                    data-frequency="{{ option.value }}"
+                    data-frequency="{{ option.value.removeprefix('freq=') }}"
                     {% if not option.available %}disabled title="暂无该周期数据"{% endif %}>
                 {{ option.label }}
             </button>

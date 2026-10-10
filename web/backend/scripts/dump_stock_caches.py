@@ -7,7 +7,6 @@ from pathlib import Path
 
 import urllib.request
 
-WORKER_BNUM = 40
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -15,67 +14,52 @@ if str(BACKEND_DIR) not in sys.path:
 from CLPainter.web.backend.app._config.settings import settings  # noqa: E402
 from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     CACHE_DUMP_DIR,
-    DEFAULT_ASSET_CLASS_DIR,
-    DEFAULT_MARKET_DIR,
     SUPPORTED_CHART_FREQUENCIES,
     dump_data_cache_to_pickle,
 )
 
+WORKER_BNUM = 40
+DEFAULT_SOURCE_DIR = Path(settings.DATA_DIR)
 logger = logging.getLogger(__name__)
 
 FEISHU_WEBHOOK_URL = "https://open.feishu.cn/open-apis/bot/v2/hook/361adc1b-4da1-451d-b881-14b038f938c3"
 FEISHU_FAILURE_BATCH_SIZE = 30
 MAX_FAILURE_REASON_LENGTH = 500
 
-def parse_args(
-    market_dir: str = DEFAULT_MARKET_DIR,
-    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
-):
+def parse_args(source_dir: Path = DEFAULT_SOURCE_DIR):
     """解析批量导出的源目录和可选标的参数。"""
-    parser = argparse.ArgumentParser(description="批量导出股票 _DataCache pickle 文件")
+    parser = argparse.ArgumentParser(description="批量导出K线图表缓存文件")
     parser.add_argument(
         "--source-dirs",
         nargs="+",
         type=Path,
-        default=[
-            path
-            for frequency in SUPPORTED_CHART_FREQUENCIES
-            if (
-                path := Path(
-                    settings.DATA_DIR,
-                    frequency,
-                    market_dir,
-                    asset_class_dir,
-                )
-            ).exists()
-        ],
-        help="原始 pickle 文件目录，默认包含所有支持的K线周期目录",
+        default=[source_dir],
+        help="原始 pickle 文件根目录，脚本会递归识别 freq/market/asset_class 目录结构",
     )
     parser.add_argument("--symbol", help="只导出单一标的，例如 600713SH")
     return parser.parse_args()
 
 
-def source_frequency(
-    source_file: Path,
-    market_dir: str = DEFAULT_MARKET_DIR,
-    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
-) -> str:
-    """从 freq=.../market=.../asset_class=... 层级中识别周期。"""
-    if source_file.parent.name != asset_class_dir:
-        raise ValueError(f"标的目录层级缺少 {asset_class_dir}: {source_file}")
-    if source_file.parent.parent.name != market_dir:
-        raise ValueError(f"标的目录层级缺少 {market_dir}: {source_file}")
-    return source_file.parent.parent.parent.name
+def source_metadata(source_file: Path) -> tuple[str, str, str]:
+    """从文件路径识别周期、市场和资产类别。"""
+    asset_class_dir = source_file.parent.name
+    market_dir = source_file.parent.parent.name
+    frequency = source_file.parent.parent.parent.name
+
+    if frequency not in SUPPORTED_CHART_FREQUENCIES:
+        directory_format = "freq=.../market=.../asset_class=..."
+        raise ValueError(f"不支持的K线周期: {frequency}，请使用 {directory_format} 目录: {source_file}")
+    if not market_dir.startswith("market="):
+        raise ValueError(f"数据目录层级缺少 market=...: {source_file}")
+    if not asset_class_dir.startswith("asset_class="):
+        raise ValueError(f"数据目录层级缺少 asset_class=...: {source_file}")
+
+    return frequency, market_dir, asset_class_dir
 
 
-def dump_worker(
-    source_file: Path,
-    dump_dir: Path,
-    market_dir: str = DEFAULT_MARKET_DIR,
-    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
-) -> None:
+def dump_worker(source_file: Path, dump_dir: Path) -> None:
     """按源文件层级识别周期并导出图表缓存。"""
-    frequency = source_frequency(source_file, market_dir, asset_class_dir)
+    frequency, market_dir, asset_class_dir = source_metadata(source_file)
     dump_data_cache_to_pickle(
         source_file,
         dump_dir,
@@ -86,23 +70,19 @@ def dump_worker(
     )
 
 
-def collect_source_files(
-    source_dirs: list[Path],
-    market_dir: str = DEFAULT_MARKET_DIR,
-    asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
-) -> list[Path]:
-    """按周期和标的编码收集去重后的源文件列表。"""
-    source_files_by_key: dict[tuple[str, str], Path] = {}
+def collect_source_files(source_dirs: list[Path]) -> list[Path]:
+    """递归收集符合目录规范的源文件，并按完整数据身份去重。"""
+    source_files_by_key: dict[tuple[str, str, str, str], Path] = {}
     for source_dir in source_dirs:
-        for source_file in source_dir.glob("*.pkl"):
-            key = (source_frequency(source_file, market_dir, asset_class_dir), source_file.stem)
+        for source_file in source_dir.glob("**/*.pkl"):
+            key = (*source_metadata(source_file), source_file.stem)
             existing_file = source_files_by_key.setdefault(key, source_file)
             if existing_file != source_file:
                 raise ValueError(f"输出文件名冲突: {existing_file} 和 {source_file}")
 
     return sorted(
         source_files_by_key.values(),
-        key=lambda item: (source_frequency(item, market_dir, asset_class_dir), item.stem),
+        key=lambda item: (*source_metadata(item), item.stem),
     )
 
 
@@ -148,11 +128,7 @@ def main() -> int:
         return 1
 
     try:
-        source_files = collect_source_files(
-            args.source_dirs,
-            DEFAULT_MARKET_DIR,
-            DEFAULT_ASSET_CLASS_DIR,
-        )
+        source_files = collect_source_files(args.source_dirs)
     except ValueError as error:
         logger.error(str(error))
         return 1
@@ -182,8 +158,6 @@ def main() -> int:
                 dump_worker,
                 source_file,
                 CACHE_DUMP_DIR,
-                DEFAULT_MARKET_DIR,
-                DEFAULT_ASSET_CLASS_DIR,
             ): source_file
             for source_file in source_files
         }
