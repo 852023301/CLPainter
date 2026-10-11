@@ -50,6 +50,7 @@ SUPPORTED_CHART_FREQUENCIES = {
     "freq=1day": "日K",
     "freq=1week": "周K",
     "freq=1month": "月K",
+    "freq=1quarter": "季K",
     "freq=1year": "年K",
     "freq=1min": "1分",
     "freq=5min": "5分",
