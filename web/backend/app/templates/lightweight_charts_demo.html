@@ -360,6 +360,7 @@
 
         // 1. 创建K线系列
         const candlestickSeries = chart.addCandlestickSeries({
+            priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) },
             upColor: '#ef5350',
             downColor: '#26a69a',
             borderVisible: false,
@@ -756,6 +757,7 @@
                 };
             } else if (indicator === 'boll') {
                 const cs = chart.addCandlestickSeries({
+                    priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) },
                     upColor: 'rgba(239, 83, 80, 0.5)', downColor: 'rgba(38, 166, 154, 0.5)',
                     borderVisible: false, wickUpColor: 'rgba(239, 83, 80, 0.5)', wickDownColor: 'rgba(38, 166, 154, 0.5)',
                     lastValueVisible: false, priceLineVisible: false,

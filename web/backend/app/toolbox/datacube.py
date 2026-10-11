@@ -522,6 +522,7 @@ def dump_data_cache_to_pickle(
     dump_cache: bool = True,
     market_dir: str = DEFAULT_MARKET_DIR,
     asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
+    precision: int | None = None,
 ) -> Path:
     """构建图表payload并可选导出_DataCache，写入过程支持强制覆盖。"""
     source_file = Path(source_file)
@@ -531,7 +532,10 @@ def dump_data_cache_to_pickle(
     _DataCache.reset_instance()
     cache = _DataCache(source_file)
     cache.ensure_loaded()
-    chart_payload = cache.build_chart_payload()
+    chart_precision = precision if precision is not None else (
+        2 if asset_class_dir == "asset_class=stock" else 3
+    )
+    chart_payload = cache.build_chart_payload(precision=chart_precision)
     _atomic_pickle_dump(
         chart_payload,
         get_chart_payload_path(
