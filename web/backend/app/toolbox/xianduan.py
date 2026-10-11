@@ -863,6 +863,26 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         xd_mr = None
         return True
 
+    def repair_xianduan_queue_gaps():
+        """补齐状态机跳过的未确认区间，保证完成队列首尾相接。"""
+        nonlocal xianduan_finish_deque
+
+        repaired_queue = deque([])
+        for segment in xianduan_finish_deque:
+            if repaired_queue:
+                previous = repaired_queue[-1]
+                if previous.end_time < segment.start_time:
+                    connector = XianDuan.from_tzxl(previous.right_tzxl, segment.left_tzxl, bi_list)
+                    if not connector.has_enough_bi():
+                        raise RuntimeError(
+                            f"线段完成队列缺口无法修复: "
+                            f"{previous.end_time} -> {segment.start_time}"
+                        )
+                    repaired_queue.append(connector)
+            repaired_queue.append(segment)
+
+        xianduan_finish_deque = repaired_queue
+
     merge_last_unfinished_xd()
 
     if xd_lm is not None and xd_mr is not None and xd_lm.is_finished and xd_mr.is_finished:
@@ -1243,6 +1263,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                     xianduan_finish_deque.appendleft(fake_earliest_xd)
 
     make_fake_first_xd_extend()
+    repair_xianduan_queue_gaps()
 
     make_fake_last_xd()
 
