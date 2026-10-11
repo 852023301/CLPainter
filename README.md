@@ -44,11 +44,12 @@ v1.4.0:
 3. 全部日期用datetime表示 ✅ 
 4. 补充季线  ✅
 5. 检查时间跨度一致性（old_pv_data、pv_data、dump）
+6. 股票和ETF量价调整为未复权  ✅ 
 
 Fix:
-1. 000750SZ.pkl  make_fake_first_xd_extend会造成中间空缺一段
-2. 000001SZ 在1994~1996年的线段低点不是最低点
-3. asset_class=fund/159307SZ.pkl: RuntimeError: 极值修复后线段笔数不足:2024-09-19 00:00:00 -> 2024-10-08 00:00:00
+1. 000750SZ.pkl  make_fake_first_xd_extend会造成中间空缺一段 ✅
+2. 000001SZ 在1994~1996年的线段低点不是最低点 
+3. ETF量价调整为 未复权后，出现asset_class=fund/159307SZ.pkl: RuntimeError: 极值修复后线段笔数不足:2024-09-19 00:00:00 -> 2024-10-08 00:00:00  ✅
 ----------
 
 v1.5.0:

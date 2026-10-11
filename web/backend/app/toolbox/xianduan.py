@@ -895,8 +895,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         xianduan_finish_deque.append(xd_mr)
         xd_lm = None
         xd_mr = None
-    elif xd_lm is not None and (
-        (xd_mr is not None and not xd_mr.is_finished) or (xd_mr is None)
+    elif xd_lm is not None and xd_lm.is_finished and (
+        xd_mr is None or not xd_mr.is_finished
     ):
         xianduan_finish_deque.append(xd_lm)
         xd_lm = xd_mr
