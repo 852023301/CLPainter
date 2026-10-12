@@ -6,9 +6,9 @@ import pandas as pd
 
 def calculate_macd(
     close: pd.Series,
-    short_window: int = 10,
-    long_window: int = 21,
-    signal_window: int = 7
+    short_window: int = 12,
+    long_window: int = 26,
+    signal_window: int = 9
 ) -> Dict[str, Union[pd.Series, list]]:
     """
     计算 MACD 指标
