@@ -41,10 +41,14 @@ def parse_args(source_dir: Path = DEFAULT_SOURCE_DIR):
         choices=tuple(SUPPORTED_CHART_FREQUENCIES),
         help="只导出指定周期，例如 freq=1week；默认导出源目录中的全部支持周期",
     )
-    parser.add_argument("--market", help="只导出指定市场目录，例如 market=cn")
-    parser.add_argument("--asset-class", help="只导出指定资产类别目录，例如 asset_class=stock")
+    parser.add_argument("--market", help="只导出指定市场，例如 cn")
+    parser.add_argument("--asset-class", help="只导出指定资产类别，例如 stock")
     parser.add_argument("--symbol", help="只导出单一标的，例如 600713SH")
     args = parser.parse_args()
+    if args.market:
+        args.market = args.market.removeprefix("market=")
+    if args.asset_class:
+        args.asset_class = args.asset_class.removeprefix("asset_class=")
     if args.symbol and (not args.market or not args.asset_class):
         parser.error("指定 --symbol 时必须同时指定 --market 和 --asset-class")
     return args
@@ -132,13 +136,6 @@ def main() -> int:
     """批量导出缓存，失败不影响其他标的，最后汇总结果。"""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     args = parse_args()
-    if args.market and not args.market.startswith("market="):
-        logger.error("--market 必须形如 market=cn")
-        return 1
-    if args.asset_class and not args.asset_class.startswith("asset_class="):
-        logger.error("--asset-class 必须形如 asset_class=stock")
-        return 1
-
     invalid_dirs = [source_dir for source_dir in args.source_dirs if not source_dir.exists()]
     if invalid_dirs:
         logger.error("源数据目录不存在: %s", ", ".join(map(str, invalid_dirs)))
@@ -153,9 +150,11 @@ def main() -> int:
     if args.frequency:
         metadata = [item for item in metadata if item[0] == args.frequency]
     if args.market:
-        metadata = [item for item in metadata if item[1] == args.market]
+        market_dir = f"market={args.market}"
+        metadata = [item for item in metadata if item[1] == market_dir]
     if args.asset_class:
-        metadata = [item for item in metadata if item[2] == args.asset_class]
+        asset_class_dir = f"asset_class={args.asset_class}"
+        metadata = [item for item in metadata if item[2] == asset_class_dir]
     source_files = [item[3] for item in metadata]
 
     if not source_files:
