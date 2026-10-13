@@ -4,44 +4,6 @@ import numpy as np
 import pandas as pd
 
 
-def calculate_macd(
-    close: pd.Series,
-    short_window: int = 12,
-    long_window: int = 26,
-    signal_window: int = 9
-) -> Dict[str, Union[pd.Series, list]]:
-    """
-    计算 MACD 指标
-
-    Args:
-        close: 收盘价序列
-        short_window: 短期 EMA 窗口
-        long_window: 长期 EMA 窗口
-        signal_window: 信号线 DEA 窗口
-
-    Returns:
-        包含 DIF, DEA 和 MACD_Hist 的字典
-    """
-    # 计算 EMA
-    ema_short = close.ewm(span=short_window, adjust=False).mean()
-    ema_long = close.ewm(span=long_window, adjust=False).mean()
-
-    # 计算 DIF (差离值)
-    dif = ema_short - ema_long
-
-    # 计算 DEA (讯号线)
-    dea = dif.ewm(span=signal_window, adjust=False).mean()
-
-    # 计算柱状图 (MACD Histogram)
-    histogram = (dif - dea) * 2
-
-    return {
-        'DIF': dif,
-        'DEA': dea,
-        'MACD_Hist': histogram.tolist()
-    }
-
-
 # MACD 4-color palette: TongDaXin uses RED/WHITE/GREEN/WHITE; pure WHITE is invisible
 # on a white background, so the weakening bars use light tints instead.
 _MACD_RED_STRONG = '#ef5350'      # MACD>prev and MACD>0   (rising positive)
@@ -52,9 +14,9 @@ _MACD_GREEN_LIGHT = '#9fd6a8'    # MACD>=prev and MACD<0  (rising negative)
 
 def calculate_macd_indicator(
     close: pd.Series,
-    short: int = 10,
-    long: int = 21,
-    mid: int = 7,
+    short: int = 12,
+    long: int = 26,
+    mid: int = 9,
     precision: int = 2,
 ) -> Dict[str, Union[List, Dict]]:
     """

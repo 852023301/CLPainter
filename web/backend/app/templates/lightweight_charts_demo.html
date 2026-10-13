@@ -290,10 +290,11 @@
     const xianduanZhongshuAnotherData = {{ xianduan_zhongshu_another_data | safe }};
     const gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
-        const macdData = {{ macd_data | safe }};  // MACD(10,21,7): {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
+        const macdData = {{ macd_data | safe }};  // {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
         const maData = {{ ma_data | safe }};      // 后端计算的 MA 列表:   [{key, label, color, values:[{time,value}]}]
         const bollData = {{ boll_data | safe }};  // 后端计算的 BOLL 列表: [{key, label, color, values:[{time,value}]}]
         const rsiData = {{ rsi_data | safe }};    // 后端计算的 RSI 列表:  [{key, label, color, values:[{time,value}]}]
+        const indicatorParams = {{ indicator_params | tojson }};
     const currentPrecision = {{ precision }};  // 当前精度
 
     console.log('收到的K线数据:', candleData.length);
@@ -718,11 +719,16 @@
         }
 
         // 指标注册表
-        const INDICATOR_LABEL = { volume: '成交量', boll: 'BOLL(26,2)', rsi: 'RSI(6,12,24)' };
+        const INDICATOR_LABEL = {
+            volume: '成交量',
+            ma: 'MA(' + indicatorParams.ma.periods.join(',') + ')',
+            boll: 'BOLL(' + indicatorParams.boll.n + ',' + indicatorParams.boll.k + ')',
+            rsi: 'RSI(' + indicatorParams.rsi.periods.join(',') + ')',
+            macd: 'MACD(' + indicatorParams.macd.short + ',' + indicatorParams.macd.long + ',' + indicatorParams.macd.mid + ')',
+        };
         const INDICATOR_HEIGHT = { volume: 120, boll: 120, rsi: 120 };
         const INDICATOR_KEYS = ['volume', 'macd', 'boll', 'rsi'];
         const DEFAULT_PANELS = ['macd', 'boll', 'rsi', 'volume'];
-        INDICATOR_LABEL.macd = 'MACD(10,21,7)';
         INDICATOR_HEIGHT.macd = 180;
         const panels = [];  // 各面板运行时状态
 

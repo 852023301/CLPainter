@@ -43,6 +43,12 @@ def _create_detached_data_cache(cls):
 
 
 DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
+INDICATOR_PARAMS = {
+    "ma": {"periods": DEFAULT_MA_PERIODS},
+    "boll": {"n": 26, "k": 2},
+    "rsi": {"periods": [6, 12, 24]},
+    "macd": {"short": 12, "long": 26, "mid": 9},
+}
 DEFAULT_MARKET_DIR = "market=cn"
 DEFAULT_ASSET_CLASS_DIR = "asset_class=stock"
 CHART_PAYLOAD_DIR = Path(settings.CACHE_DUMP_DIR).parent / "chart_payload"
@@ -271,7 +277,8 @@ class _DataCache:
             ]
 
         close_series = pd.Series([kline.close for kline in klines], index=chart_dates)
-        ma_colors = calculate_ma_colors(DEFAULT_MA_PERIODS)
+        ma_periods = INDICATOR_PARAMS["ma"]["periods"]
+        ma_colors = calculate_ma_colors(ma_periods)
         ma_data = [
             {
                 "key": f"MA{item['period']}",
@@ -279,17 +286,26 @@ class _DataCache:
                 "color": ma_colors[index],
                 "values": item["values"],
             }
-            for index, item in enumerate(calculate_ma_list(close_series, DEFAULT_MA_PERIODS))
+            for index, item in enumerate(calculate_ma_list(close_series, ma_periods))
         ]
         boll_colors = ["#26A69A", "#AB47BC", "#00796B"]
         boll_data = [
             {"key": item["key"], "label": item["key"], "color": boll_colors[index], "values": item["values"]}
-            for index, item in enumerate(calculate_boll_list(close_series, precision=precision))
+            for index, item in enumerate(
+                calculate_boll_list(
+                    close_series,
+                    n=INDICATOR_PARAMS["boll"]["n"],
+                    k=INDICATOR_PARAMS["boll"]["k"],
+                    precision=precision,
+                )
+            )
         ]
         rsi_colors = ["#E91E63", "#4CAF50", "#795548"]
         rsi_data = [
             {"key": item["key"], "label": item["key"], "color": rsi_colors[index], "values": item["values"]}
-            for index, item in enumerate(calculate_rsi_list(close_series, precision=precision))
+            for index, item in enumerate(
+                calculate_rsi_list(close_series, periods=INDICATOR_PARAMS["rsi"]["periods"], precision=precision)
+            )
         ]
         volume_data = [
             {
@@ -309,6 +325,12 @@ class _DataCache:
                 allow_nan=False,
             )
 
+        indicator_params = {
+            "ma": {"periods": ma_periods},
+            "boll": INDICATOR_PARAMS["boll"],
+            "rsi": INDICATOR_PARAMS["rsi"],
+            "macd": INDICATOR_PARAMS["macd"],
+        }
         self._chart_payload = {
             "candle_data": serialized(candle_data),
             "bi_data": serialized(bi_data),
@@ -329,7 +351,16 @@ class _DataCache:
             "ma_data": serialized(ma_data),
             "boll_data": serialized(boll_data),
             "rsi_data": serialized(rsi_data),
-            "macd_data": serialized(calculate_macd_indicator(close_series, precision=precision)),
+            "macd_data": serialized(
+                calculate_macd_indicator(
+                    close_series,
+                    short=INDICATOR_PARAMS["macd"]["short"],
+                    long=INDICATOR_PARAMS["macd"]["long"],
+                    mid=INDICATOR_PARAMS["macd"]["mid"],
+                    precision=precision,
+                )
+            ),
+            "indicator_params": indicator_params,
             "candle_count": len(candle_data),
             "precision": precision,
         }
