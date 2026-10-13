@@ -872,13 +872,22 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             if repaired_queue:
                 previous = repaired_queue[-1]
                 if previous.end_time < segment.start_time:
-                    connector = XianDuan.from_tzxl(previous.right_tzxl, segment.left_tzxl, bi_list)
-                    if not connector.has_enough_bi():
-                        raise RuntimeError(
-                            f"线段完成队列缺口无法修复: "
-                            f"{previous.end_time} -> {segment.start_time}"
+                    start_idx = previous.right_tzxl.idx + 1
+                    end_idx = segment.left_tzxl.idx
+                    if start_idx > end_idx or any(
+                        tzxl_list[cursor].type == tzxl_list[cursor - 1].type
+                        for cursor in range(start_idx + 1, end_idx + 1)
+                    ):
+                        raise RuntimeError("补齐线段间隔时，特征序列方向不连续")
+                    for cursor in range(start_idx, end_idx + 1):
+                        connector = XianDuan.from_tzxl(
+                            tzxl_list[cursor - 1],
+                            tzxl_list[cursor],
+                            bi_list,
                         )
-                    repaired_queue.append(connector)
+                        if not connector.has_enough_bi():
+                            raise RuntimeError("补齐线段间隔时，中间笔数量不足")
+                        repaired_queue.append(connector)
             repaired_queue.append(segment)
 
         xianduan_finish_deque = repaired_queue
