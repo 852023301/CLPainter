@@ -838,7 +838,19 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
                 if last_bi_extend:
                     if new_fx is not None:
-                        new_bi = Bi.from_fenxing(last_bi.right_fx, new_fx, all_klines, prefix_merged, prefix_gap)
+                        if last_bi.right_fx.fenxing_type != new_fx.fenxing_type:
+                            new_bi = Bi.from_fenxing(last_bi.right_fx, new_fx, all_klines, prefix_merged, prefix_gap)
+                        else:
+                            new_bi = FakeBiLast.from_fenxing(
+                                left_fx=last_bi.left_fx,
+                                right_fx_mid_idx=start_kline_idx,
+                                start_price=last_bi.start_price,
+                                end_price=high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx],
+                                bi_type=fake_type,
+                                all_klines=all_klines,
+                                prefix_merged=prefix_merged,
+                                prefix_gap=prefix_gap,
+                            )
                     else:
                         new_bi = FakeBiLast.from_fenxing(
                             left_fx=last_bi.left_fx, right_fx_mid_idx=start_kline_idx,
