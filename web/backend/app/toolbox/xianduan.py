@@ -1276,7 +1276,73 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
 
     make_fake_last_xd()
 
+    def make_fake_last_after_xianduan(left_xianduan: XianDuan) -> Optional[FakeXianDuanLast]:
+        """以已确认线段末端为起点，用后续真实反向极值构造假线段。"""
+        start_bi_idx = left_xianduan.end_bi_idx + 1
+        if start_bi_idx >= len(bi_list):
+            return None
+
+        fake_direction = XianDuanDirectionType.DOWN if left_xianduan.is_up() else XianDuanDirectionType.UP
+        candidate_bi_idx = start_bi_idx
+        candidate_price = float("inf") if fake_direction == XianDuanDirectionType.DOWN else float("-inf")
+        for bi_idx in range(start_bi_idx, len(bi_list)):
+            bi = bi_list[bi_idx]
+            price = bi.low_price if fake_direction == XianDuanDirectionType.DOWN else bi.high_price
+            if (
+                fake_direction == XianDuanDirectionType.DOWN and price < candidate_price
+            ) or (
+                fake_direction == XianDuanDirectionType.UP and price > candidate_price
+            ):
+                candidate_bi_idx = bi_idx
+                candidate_price = price
+
+        candidate_bi = bi_list[candidate_bi_idx]
+        if candidate_bi.is_up() != (fake_direction == XianDuanDirectionType.UP):
+            return None
+
+        start_bi = bi_list[start_bi_idx]
+        fake_xianduan = FakeXianDuanLast()
+        fake_xianduan.start_bi_idx = start_bi_idx
+        fake_xianduan.end_bi_idx = candidate_bi_idx
+        fake_xianduan.start_idx = start_bi.start_idx
+        fake_xianduan.end_idx = candidate_bi.end_idx
+        fake_xianduan.start_time = start_bi.start_time
+        fake_xianduan.end_time = candidate_bi.end_time
+        fake_xianduan.start_price = start_bi.start_price
+        fake_xianduan.end_price = candidate_bi.end_price
+        fake_xianduan.xianduan_type = fake_direction
+        return fake_xianduan if fake_xianduan.has_enough_bi() else None
+
+    def find_confirmed_xianduan_pair() -> List[XianDuanBase]:
+        """主流程无结果时，寻找最早的已确认线段并补齐末尾假线段。"""
+        for left_idx in range(len(tzxl_list)):
+            best_split_idx: Optional[int] = None
+            best_left_xianduan: Optional[XianDuan] = None
+            for split_idx in range(left_idx + 1, len(tzxl_list)):
+                if tzxl_list[left_idx].type == tzxl_list[split_idx].type:
+                    continue
+
+                left_xianduan = XianDuan.from_tzxl(
+                    tzxl_list[left_idx],
+                    tzxl_list[split_idx],
+                    bi_list,
+                )
+                if left_xianduan.is_finished:
+                    best_split_idx = split_idx
+                    best_left_xianduan = left_xianduan
+
+            if best_split_idx is None or best_left_xianduan is None:
+                continue
+
+            fake_last_xianduan = make_fake_last_after_xianduan(best_left_xianduan)
+            if fake_last_xianduan is not None:
+                return [best_left_xianduan, fake_last_xianduan]
+
+        return []
+
     xianduan_list = list(xianduan_finish_deque)
+    if not xianduan_list:
+        xianduan_list = find_confirmed_xianduan_pair()
 
     ####################### 检查
     # 检查笔上下交替

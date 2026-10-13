@@ -18,7 +18,7 @@ from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     dump_data_cache_to_pickle,
 )
 
-WORKER_BNUM = 40
+WORKER_BNUM = 60
 DEFAULT_SOURCE_DIR = Path(settings.DATA_DIR)
 logger = logging.getLogger(__name__)
 
