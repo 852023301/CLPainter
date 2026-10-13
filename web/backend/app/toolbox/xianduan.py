@@ -602,6 +602,39 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                 raise RuntimeError("极值修复后线段方向交替检查失败")
         return repaired_list
 
+    def merge_same_direction_xianduan(segments: List[XianDuanBase]) -> List[XianDuanBase]:
+        """合并状态机遗留的同向相邻线段。"""
+        merged_segments = []
+        for segment in segments:
+            if not merged_segments:
+                merged_segments.append(segment)
+                continue
+
+            previous_segment = merged_segments[-1]
+            if previous_segment.end_time < segment.start_time:
+                previous_segment.end_bi_idx = segment.start_bi_idx - 1
+                boundary_bi = bi_list[segment.start_bi_idx - 1]
+                previous_segment.end_idx = boundary_bi.end_idx
+                previous_segment.end_time = boundary_bi.end_time
+                previous_segment.end_price = boundary_bi.end_price
+                previous_segment.invalidate_cache()
+
+            if previous_segment.is_up() != segment.is_up():
+                merged_segments.append(segment)
+                continue
+
+            previous_segment.end_bi_idx = segment.end_bi_idx
+            previous_segment.end_idx = segment.end_idx
+            previous_segment.end_time = segment.end_time
+            previous_segment.end_price = segment.end_price
+            if isinstance(segment, (XianDuan, FakeXianDuanFirst)):
+                previous_segment.right_tzxl = segment.right_tzxl
+                if isinstance(previous_segment, FakeXianDuanLast):
+                    previous_segment.left_tzxl = None
+            previous_segment.invalidate_cache()
+
+        return merged_segments
+
     def _advance_both():
         """推进 lm 和 mr：lm=mr，从 tzxl_deque 取下一对创建新 mr"""
         nonlocal xd_lm, xd_mr, tzxl_deque
@@ -886,8 +919,11 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                             bi_list,
                         )
                         if not connector.has_enough_bi():
-                            raise RuntimeError("补齐线段间隔时，中间笔数量不足")
+                            continue
                         repaired_queue.append(connector)
+                        break
+                    else:
+                        raise RuntimeError("补齐线段间隔时，中间笔数量不足")
             repaired_queue.append(segment)
 
         xianduan_finish_deque = repaired_queue
@@ -1313,6 +1349,53 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         fake_xianduan.xianduan_type = fake_direction
         return fake_xianduan if fake_xianduan.has_enough_bi() else None
 
+    def make_fake_first_before_xianduan(
+        left_xianduan: XianDuan,
+    ) -> Union[XianDuan, FakeXianDuanFirst]:
+        """将 fallback 首段左侧延长到更早的真实极值点。"""
+        origin_start_bi_idx = left_xianduan.start_bi_idx
+        candidate_bi_idx = origin_start_bi_idx
+        candidate_price = (
+            float("inf") if left_xianduan.is_up() else float("-inf")
+        )
+        for bi_idx in range(origin_start_bi_idx):
+            bi = bi_list[bi_idx]
+            price = bi.low_price if left_xianduan.is_up() else bi.high_price
+            if (
+                left_xianduan.is_up() and price < candidate_price
+            ) or (
+                not left_xianduan.is_up() and price > candidate_price
+            ):
+                candidate_bi_idx = bi_idx
+                candidate_price = price
+
+        if candidate_bi_idx >= origin_start_bi_idx:
+            return left_xianduan
+
+        candidate_bi = bi_list[candidate_bi_idx]
+        is_direction_bi = candidate_bi.is_up() == left_xianduan.is_up()
+        if not is_direction_bi and candidate_bi_idx + 1 >= origin_start_bi_idx:
+            return left_xianduan
+        if not is_direction_bi:
+            candidate_bi_idx += 1
+            candidate_bi = bi_list[candidate_bi_idx]
+            boundary_bi = bi_list[candidate_bi_idx - 1]
+        else:
+            boundary_bi = candidate_bi
+
+        fake_xianduan = FakeXianDuanFirst()
+        fake_xianduan.start_bi_idx = candidate_bi_idx
+        fake_xianduan.end_bi_idx = left_xianduan.end_bi_idx
+        fake_xianduan.start_idx = boundary_bi.end_idx
+        fake_xianduan.end_idx = left_xianduan.end_idx
+        fake_xianduan.start_time = boundary_bi.end_time
+        fake_xianduan.end_time = left_xianduan.end_time
+        fake_xianduan.start_price = boundary_bi.end_price
+        fake_xianduan.end_price = left_xianduan.end_price
+        fake_xianduan.xianduan_type = left_xianduan.xianduan_type
+        fake_xianduan.right_tzxl = left_xianduan.right_tzxl
+        return fake_xianduan if fake_xianduan.has_enough_bi() else left_xianduan
+
     def find_confirmed_xianduan_pair() -> List[XianDuanBase]:
         """主流程无结果时，寻找最早的已确认线段并补齐末尾假线段。"""
         for left_idx in range(len(tzxl_list)):
@@ -1336,13 +1419,15 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
 
             fake_last_xianduan = make_fake_last_after_xianduan(best_left_xianduan)
             if fake_last_xianduan is not None:
-                return [best_left_xianduan, fake_last_xianduan]
+                fake_first_xianduan = make_fake_first_before_xianduan(best_left_xianduan)
+                return [fake_first_xianduan, fake_last_xianduan]
 
         return []
 
     xianduan_list = list(xianduan_finish_deque)
     if not xianduan_list:
         xianduan_list = find_confirmed_xianduan_pair()
+    xianduan_list = merge_same_direction_xianduan(xianduan_list)
 
     ####################### 检查
     # 检查笔上下交替
