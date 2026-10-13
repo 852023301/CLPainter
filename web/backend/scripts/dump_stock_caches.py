@@ -197,8 +197,10 @@ def main() -> int:
                 reason = str(error)
                 if len(reason) > MAX_FAILURE_REASON_LENGTH:
                     reason = f"{reason[:MAX_FAILURE_REASON_LENGTH]}..."
-                failures.append(f"{source_file.parent.name}/{source_file.name}: {type(error).__name__}: {reason}")
-                logger.exception("[%d/%d] 导出失败: %s", index, total_count, source_file.name)
+                frequency, market_dir, asset_class_dir = source_metadata(source_file)
+                source_id = "/".join((frequency, market_dir, asset_class_dir, source_file.name))
+                failures.append(f"{source_id}: {type(error).__name__}: {reason}")
+                logger.exception("[%d/%d] 导出失败: %s", index, total_count, source_id)
 
     logger.info(
         "导出完成: 成功 %d，失败 %d，总计 %d",
