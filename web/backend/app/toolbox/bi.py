@@ -7,7 +7,7 @@ from typing import List, Tuple, Union, Optional
 import numpy as np
 import pandas as pd
 
-from .fenxing import FenXing
+from .fenxing import FenXing, FenXingType
 from .merged_kline import MergedKLine
 
 
@@ -801,9 +801,165 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         bi_list[0:2] = [historic_bi, replaced_next_bi]
         return True
 
+    def split_fake_front_bi_by_internal_extreme_permissively():
+        """宽松处理无法满足严格边界的首伪笔。"""
+        if not bi_list or not isinstance(bi_list[0], FakeBiFront):
+            return False
+
+        front_bi = bi_list[0]
+        if len(bi_list) < 2 or not isinstance(bi_list[1], Bi):
+            return False
+
+        next_bi = bi_list[1]
+        extreme_fx = None
+        extreme_value = front_bi.end_price
+        for candidate_fx in fenxing_list:
+            if candidate_fx.mid_idx >= next_bi.start_idx:
+                break
+            candidate_value = candidate_fx.low_price if front_bi.is_down() else candidate_fx.high_price
+            if (candidate_value < extreme_value) if front_bi.is_down() else (candidate_value > extreme_value):
+                extreme_value = candidate_value
+                extreme_fx = candidate_fx
+
+        if (
+                extreme_fx is None
+                or extreme_fx.idx is None
+                or next_bi.left_fx.idx is None
+                or extreme_fx.idx >= next_bi.left_fx.idx
+        ):
+            return False
+
+        try:
+            replaced_next_bi = Bi.from_fenxing(
+                extreme_fx,
+                next_bi.right_fx,
+                all_klines,
+                prefix_merged,
+                prefix_gap,
+            )
+        except ValueError:
+            return False
+        if not replaced_next_bi.is_finished or replaced_next_bi.end_idx != next_bi.end_idx:
+            return False
+
+        extreme_idx = extreme_fx.low_idx if front_bi.is_down() else extreme_fx.high_idx
+        historic_bi = FakeBiFront(
+            end_idx=extreme_idx,
+            start_price=front_bi.start_price,
+            end_price=extreme_fx.low_price if front_bi.is_down() else extreme_fx.high_price,
+            bi_type=front_bi.bi_type,
+            all_klines=all_klines,
+        )
+        historic_bi.start_idx = front_bi.start_idx
+        historic_bi.start_time = front_bi.start_time
+        historic_bi.end_time = extreme_fx.trade_datetime
+        (
+            historic_bi.real_merged_kline_count,
+            historic_bi.has_gap_count,
+        ) = BiBase.calculate_bi_real_merged_kline_count_and_gap_count(
+            historic_bi.start_idx,
+            historic_bi.end_idx,
+            all_klines,
+            prefix_merged,
+            prefix_gap,
+        )
+        historic_bi.real_origin_kline_count = historic_bi.end_idx - historic_bi.start_idx + 1
+        if not historic_bi.is_kline_count_enough() or historic_bi.start_idx >= historic_bi.end_idx:
+            return False
+
+        bi_list[0:2] = [historic_bi, replaced_next_bi]
+        return True
+
+    def split_initial_fake_front_by_internal_extreme():
+        """首伪笔后的首正式笔存在更极值端点时，补出首段不完整笔。"""
+        if not bi_list or not isinstance(bi_list[0], (Bi, FakeBiFront)):
+            return False
+
+        front_bi = bi_list[0]
+        if len(bi_list) < 2 or not isinstance(bi_list[1], Bi):
+            return False
+        next_bi = bi_list[1]
+        if front_bi.bi_type == next_bi.bi_type:
+            return False
+        candidate_fx = None
+        for fx in fenxing_list:
+            if fx.mid_idx >= next_bi.end_idx:
+                break
+            if fx.mid_idx <= front_bi.end_idx:
+                continue
+            if front_bi.is_up() and fx.fenxing_type != FenXingType.BOTTOM:
+                continue
+            if front_bi.is_down() and fx.fenxing_type != FenXingType.TOP:
+                continue
+            candidate_value = fx.low_price if front_bi.is_up() else fx.high_price
+            if (candidate_value < next_bi.end_price if front_bi.is_up() else candidate_value > next_bi.end_price):
+                candidate_fx = fx
+                break
+
+        if candidate_fx is None:
+            return False
+
+        start_fx = None
+        for fx in fenxing_list:
+            if fx.mid_idx >= candidate_fx.mid_idx:
+                break
+            if fx.fenxing_type == candidate_fx.fenxing_type:
+                continue
+            start_fx = fx
+        if start_fx is None:
+            return False
+
+        reverse_bi = None
+        reverse_right_fx = None
+        for later_fx in fenxing_list[candidate_fx.idx + 1:]:
+            if later_fx.idx is None or later_fx.idx >= next_bi.right_fx.idx:
+                break
+            if later_fx.fenxing_type == candidate_fx.fenxing_type:
+                continue
+            try:
+                candidate_bi = Bi.from_fenxing(candidate_fx, later_fx, all_klines, prefix_merged, prefix_gap)
+            except ValueError:
+                continue
+            if candidate_bi.is_finished and (
+                    reverse_bi is None
+                    or (candidate_bi.end_price > reverse_bi.end_price if candidate_bi.is_up() else candidate_bi.end_price < reverse_bi.end_price)
+            ):
+                reverse_bi = candidate_bi
+                reverse_right_fx = later_fx
+        if reverse_bi is None:
+            return False
+
+        extreme_idx = candidate_fx.low_idx if front_bi.is_up() else candidate_fx.high_idx
+        start_idx = start_fx.high_idx if front_bi.is_up() else start_fx.low_idx
+        first_bi = FakeBiFront(
+            end_idx=extreme_idx,
+            start_price=start_fx.high_price if front_bi.is_up() else start_fx.low_price,
+            end_price=candidate_fx.low_price if front_bi.is_up() else candidate_fx.high_price,
+            bi_type=BiDirectionType.DOWN if front_bi.is_up() else BiDirectionType.UP,
+            all_klines=all_klines,
+        )
+        first_bi.start_idx = start_idx
+        first_bi.start_time = all_klines[start_idx].trade_datetime
+        first_bi.end_time = candidate_fx.trade_datetime
+        first_bi.real_origin_kline_count = extreme_idx - start_idx + 1
+        (
+            first_bi.real_merged_kline_count,
+            first_bi.has_gap_count,
+        ) = BiBase.calculate_bi_real_merged_kline_count_and_gap_count(
+            start_idx, extreme_idx, all_klines, prefix_merged, prefix_gap
+        )
+        try:
+            remaining_bi = Bi.from_fenxing(reverse_right_fx, next_bi.right_fx, all_klines, prefix_merged, prefix_gap)
+        except ValueError as error:
+            return False
+        if not remaining_bi.is_finished:
+            return False
+        bi_list[0:2] = [first_bi, reverse_bi, remaining_bi]
+        return True
+
     def split_bi_by_internal_extreme():
         """用相邻两笔区间内的更极值分型重接两笔端点。"""
-        for bi_index in range(len(bi_list) - 1):
+        for bi_index in range(0, len(bi_list) - 1):
             current_bi = bi_list[bi_index]
             next_bi = bi_list[bi_index + 1]
             if not isinstance(current_bi, Bi) or not isinstance(next_bi, Bi):
@@ -848,7 +1004,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 continue
 
             if (
-                    replaced_current_bi.end_idx >= replaced_next_bi.start_idx
+                    replaced_current_bi.end_idx > replaced_next_bi.start_idx
                     or not replaced_next_bi.is_finished
             ):
                 continue
@@ -1052,6 +1208,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     bi_list = list(bi_finish_deque)
     split_fake_front_bi_by_internal_extreme()
+    split_fake_front_bi_by_internal_extreme_permissively()
+    split_initial_fake_front_by_internal_extreme()
     while split_bi_by_internal_extreme():
         pass
 
