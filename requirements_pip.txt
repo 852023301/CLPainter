@@ -1,4 +1,6 @@
 DBUtils
+SQLAlchemy>=2.0
+alembic>=1.13
 python-dotenv
 ray[default]>=2.32.0
 database>=2.0.7
