@@ -40,6 +40,7 @@ run_parallel_scripts() {
 
 cd "${PROJECT_ROOT}"
 
+run_script "meta_info.py"
 run_script "data_from_tdata_1day.py"
 
 if ! run_parallel_scripts \

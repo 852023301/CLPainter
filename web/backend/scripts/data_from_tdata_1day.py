@@ -7,8 +7,12 @@ import pickle
 from pathlib import Path
 import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from ddp import MysqlConnection
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
 from CLPainter.web.backend.app._config.settings import settings
+from CLPainter.web.backend.app.db.base import engine
+from CLPainter.web.backend.app.db.models import Instrument
 
 START_DATE = "2009-01-01"
 END_DATE = None
@@ -24,6 +28,38 @@ ASSET_CLASS_DIRS = {
     "index": "asset_class=index",
     "etf": "asset_class=fund",
 }
+SOURCE_CODE_SUFFIXES = ("CSI", "CNI", "SH", "SZ", "BJ")
+
+
+def to_source_code(chart_code):
+    """将 Instrument 中的图表代码还原为数据源代码，例如 000001SZ -> 000001.SZ。"""
+    for suffix in SOURCE_CODE_SUFFIXES:
+        if chart_code.endswith(suffix):
+            return f"{chart_code[:-len(suffix)]}.{suffix}"
+    return chart_code
+
+
+def load_instrument_info(asset_class):
+    """从 Instrument 读取当前有效标的的上市日期与精度。"""
+    today = datetime.date.today()
+    with Session(engine) as session:
+        instruments = session.scalars(
+            select(Instrument).where(
+                Instrument.market == "cn",
+                Instrument.asset_class == asset_class,
+                Instrument.list_date.is_not(None),
+                Instrument.list_date <= today,
+                or_(Instrument.delist_date.is_(None), Instrument.delist_date > today),
+            )
+        ).all()
+
+    return {
+        to_source_code(instrument.code): {
+            "list_date": instrument.list_date.strftime("%Y-%m-%d"),
+            "price_precision": instrument.price_precision,
+        }
+        for instrument in instruments
+    }
 
 
 def load_old_pv_list(code, asset_class, start_date):
@@ -132,7 +168,7 @@ def clean_stale_files(dsc_path, generated_files):
 
 
 def change_data_type_and_save(columns, dates, field_arrays, info_dict,
-                              dsc_path, precision=2, asset_class="stock"):
+                              dsc_path, precision=None, asset_class="stock"):
     """并行转换有效标的K线，返回本轮成功生成的文件名集合。"""
     file_names = set()
     dsc_path = Path(dsc_path)
@@ -141,9 +177,13 @@ def change_data_type_and_save(columns, dates, field_arrays, info_dict,
 
     with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(columns)))) as executor:
         for idx, column_name in enumerate(columns):
-            original_start_date = info_dict.get(column_name)
-            if original_start_date is None:
+            instrument = info_dict.get(column_name)
+            if instrument is None:
                 continue
+            original_start_date = instrument["list_date"]
+            symbol_precision = instrument.get("price_precision", precision)
+            if symbol_precision is None:
+                raise ValueError(f"{column_name} 缺少价格精度")
 
             data_start_date = max(START_DATE, original_start_date) if START_DATE else original_start_date
             file_name = f"{column_name.replace('.', '')}.pkl"
@@ -156,7 +196,7 @@ def change_data_type_and_save(columns, dates, field_arrays, info_dict,
                 data_start_date,
                 original_start_date,
                 dsc_path / file_name,
-                precision,
+                symbol_precision,
                 asset_class,
             )
             futures[future] = file_name
@@ -172,12 +212,7 @@ if __name__ == "__main__":
     #########################################
     # 个股
     generated_files = set()
-    with MysqlConnection() as sql:
-        stock_info = sql.query_pandas(
-            f"select stock_code,start_date from stock_info where start_date <= '{datetime.datetime.now().date()}' and end_date > '{datetime.datetime.now().date()}' ")
-
-    stock_info_dict = dict(
-        zip(stock_info['stock_code'], pd.DatetimeIndex(stock_info['start_date']).strftime("%Y-%m-%d")))
+    stock_info_dict = load_instrument_info("stock")
 
 
     d = fetch_data(DR_FIELDS, start_date=START_DATE, end_date=END_DATE)
@@ -196,11 +231,7 @@ if __name__ == "__main__":
 
     #########################################
     #  指数
-    with MysqlConnection() as sql:
-        index_info = sql.query_pandas(
-            f"select index_code,start_date from index_info where start_date <= '{datetime.datetime.now().date()}' and end_date > '{datetime.datetime.now().date()}' ")
-    index_info_dict = dict(
-        zip(index_info['index_code'], pd.DatetimeIndex(index_info['start_date']).strftime("%Y-%m-%d")))
+    index_info_dict = load_instrument_info("index")
 
     index_map = {
 
@@ -237,6 +268,7 @@ if __name__ == "__main__":
             if start_date is None:
                 print(f"指数 {code} 缺少 start_date，不处理")
                 continue
+            start_date = start_date["list_date"]
 
             future = executor.submit(
                 write_index_data,
@@ -257,11 +289,7 @@ if __name__ == "__main__":
 
     #########################################
     # etf
-    with MysqlConnection() as sql:
-        etf_info = sql.query_pandas(
-            f"select stock_code,start_date from etf_info where start_date <= '{datetime.datetime.now().date()}' and end_date > '{datetime.datetime.now().date()}' ")
-
-    etf_info_dict = dict(zip(etf_info['stock_code'], pd.DatetimeIndex(etf_info['start_date']).strftime("%Y-%m-%d")))
+    etf_info_dict = load_instrument_info("fund")
 
     cols = [f"etf_{column}_dr" for column in FIELDS]
     d = fetch_data(cols,start_date=START_DATE,end_date=END_DATE)
@@ -273,7 +301,7 @@ if __name__ == "__main__":
     del d
 
     generated_files.update(change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
-                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["etf"]), precision=3, asset_class="etf"))
+                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["etf"]), asset_class="etf"))
     del etf_field_arrays
 
     clean_stale_files(Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), generated_files)
