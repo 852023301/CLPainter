@@ -55,7 +55,17 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
             处理后的K线列表
         """
 
-    origin_klines = [OriginKLine(pd.Timestamp(kl[0]), *kl[1:]) for kl in raw_klines]
+    origin_klines = [
+        OriginKLine(
+            pd.Timestamp(kl[0]),
+            open=float(kl[1]),
+            close=float(kl[2]),
+            low=float(kl[3]),
+            high=float(kl[4]),
+            volume=float(kl[5]),
+        )
+        for kl in raw_klines
+    ]
     gaps_list = []
 
     for idx, kl in enumerate(origin_klines):

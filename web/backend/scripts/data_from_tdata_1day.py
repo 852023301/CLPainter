@@ -189,44 +189,22 @@ def query_index_data(start_date, end_date):
 
 
 def write_index_data(code, index_data, start_date, dsc_path):
-    """按旧数据规则清洗指数缺失值、裁剪时间范围并保存标准K线。"""
+    """严格校验指数OHLCV缺失值、裁剪时间范围并保存标准K线。"""
     effective_start_date = max(START_DATE, start_date) if START_DATE else start_date
     concat_data = index_data.copy()
     concat_data = concat_data[concat_data.index >= effective_start_date]
     if END_DATE:
         concat_data = concat_data[concat_data.index <= END_DATE]
 
+    if concat_data.empty:
+        raise ValueError(f"{code} 指数无有效数据，跳过")
+    if not np.isfinite(concat_data.to_numpy(dtype=float)).all():
+        raise ValueError(f"{code} 指数OHLCV存在空值，跳过")
+
     concat_data.index = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
-    final_list = []
-    previous_close = None
-    for trade_date, row in zip(concat_data.index, concat_data.to_dict("records")):
-        volume = row["volume"]
-        if volume is None or not np.isfinite(volume):
-            volume = 0.0
-
-        close = row["close"]
-        if close is None or not np.isfinite(close):
-            if previous_close is None:
-                continue
-            close = previous_close
-            if (
-                row["high"] is not None
-                and np.isfinite(row["high"])
-                and close > row["high"]
-            ) or (
-                row["low"] is not None
-                and np.isfinite(row["low"])
-                and close < row["low"]
-            ):
-                raise ValueError(f"{code} 指数缺失值无法安全填补，跳过")
-
-        filled_values = {}
-        for field in ("open", "high", "low"):
-            value = row[field]
-            filled_values[field] = float(value) if value is not None and np.isfinite(value) else close
-
-        final_list.append([trade_date, filled_values["open"], float(close), filled_values["low"], filled_values["high"], float(volume)])
-        previous_close = float(close)
+    final_list = concat_data.reset_index().values.tolist()
+    if not final_list:
+        raise ValueError(f"{code} 指数清洗后无有效数据，跳过")
     save_pv_list(
         dsc_path / f"{code.replace('.', '')}.pkl",
         load_old_pv_list(code, "index", start_date),
@@ -343,6 +321,7 @@ if __name__ == "__main__":
                 continue
             file_names.add(futures[future])
     print(f"index: 数据源 {len(index_data_by_code)}，无元数据跳过 {skipped_count}，已保存 {len(file_names)}，保存失败跳过 {len(futures) - len(file_names)}")
+    clean_stale_files(index_dsc_path, file_names)
 
     generated_files.update(file_names)
     del index_data_by_code
