@@ -466,6 +466,9 @@
 
     // 从后端传入的数据
     const candleData = {{ candle_data | safe }};
+    const changeData = {{ change_data | safe }};
+    const changeLookup = {};
+    (changeData || []).forEach(item => { changeLookup[item.time] = item; });
     const biData = {{ bi_data | safe }};
     const xdData = {{ xd_data | safe }};
     const zhongshuData = {{ zhongshu_data | safe }};
@@ -1189,6 +1192,15 @@
             const close = data.close.toFixed(currentPrecision);
             const priceClass = isUp ? 'up' : 'down';
             const arrow = isUp ? '↑' : '↓';
+            const changeInfo = changeLookup[param.time];
+            let changeHtml = '';
+            if (changeInfo) {
+                const changeClass = changeInfo.change_pct >= 0 ? 'up' : 'down';
+                const sign = changeInfo.change_pct >= 0 ? '+' : '';
+                changeHtml = `
+                    <div><span class="label">涨幅:</span><span class="value ${changeClass}">${sign}${changeInfo.change_pct.toFixed(2)}%</span></div>
+                `;
+            }
 
            tooltip.innerHTML = `
                     <div><span class="label">日期:</span><span class="value">${formatDateTime(param.time)}</span></div>
@@ -1196,6 +1208,7 @@
                     <div><span class="label">最高:</span><span class="value ${priceClass}">${high}</span></div>
                     <div><span class="label">最低:</span><span class="value ${priceClass}">${low}</span></div>
                     <div><span class="label">收盘:</span><span class="value ${priceClass}">${close} ${arrow}</span></div>
+                    ${changeHtml}
                 `;
 
             const x = param.point.x + 15;

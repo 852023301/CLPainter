@@ -12,6 +12,8 @@ SOURCE_FREQUENCY = "freq=1day"
 TARGET_FREQUENCY = "freq=1quarter"
 MARKET_DIR = "market=cn"
 FIELDS = ["open", "close", "low", "high", "volume"]
+EXTENDED_FIELDS = [*FIELDS, "change_pct"]
+LEGACY_EIGHT_FIELDS = [*FIELDS, "change", "change_pct"]
 ASSET_CLASS_DIRS = {
     "stock": "asset_class=stock",
     "index": "asset_class=index",
@@ -27,7 +29,7 @@ def load_daily_list(source_path: Path) -> list:
         daily_list = pickle.load(file)
     if not isinstance(daily_list, list):
         raise ValueError(f"日K数据格式错误，应为 list: {source_path}")
-    if any(len(row) != len(FIELDS) + 1 for row in daily_list):
+    if any(len(row) not in (len(FIELDS) + 1, len(EXTENDED_FIELDS) + 1, len(LEGACY_EIGHT_FIELDS) + 1) for row in daily_list):
         raise ValueError(f"日K数据字段数量错误: {source_path}")
     return daily_list
 
@@ -36,7 +38,13 @@ def aggregate_daily_to_quarterly(daily_list: list) -> list:
     if not daily_list:
         return []
 
-    daily = pd.DataFrame(daily_list, columns=["trade_date", *FIELDS])
+    row_width = len(daily_list[0])
+    field_names = {
+        len(FIELDS): FIELDS,
+        len(EXTENDED_FIELDS): EXTENDED_FIELDS,
+        len(LEGACY_EIGHT_FIELDS): LEGACY_EIGHT_FIELDS,
+    }[row_width - 1]
+    daily = pd.DataFrame(daily_list, columns=["trade_date", *field_names])
     daily["trade_date"] = pd.to_datetime(daily["trade_date"], errors="raise")
     daily = daily.sort_values("trade_date")
     if daily["trade_date"].duplicated().any():
@@ -51,10 +59,21 @@ def aggregate_daily_to_quarterly(daily_list: list) -> list:
         "high": "max",
         "volume": "sum",
     })
-    return [
+    return with_change_fields([
         [trade_date.strftime("%Y-%m-%d"), *map(float, row)]
         for trade_date, row in zip(quarterly["trade_date"], quarterly[FIELDS].to_numpy())
-    ]
+    ])
+
+
+def with_change_fields(rows):
+    previous_close = None
+    result = []
+    for row in rows:
+        close = row[2]
+        change_pct = 0.0 if previous_close in (None, 0) else (close - previous_close) / previous_close * 100
+        result.append([row[0], *row[1:6], round(change_pct, 6)])
+        previous_close = close
+    return result
 
 
 def save_quarterly_list(output_path: Path, quarterly_list: list) -> None:

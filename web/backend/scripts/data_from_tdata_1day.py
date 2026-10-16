@@ -1,6 +1,7 @@
 # 只需要未复权（除权）数据
 from bisect import bisect_left, bisect_right
 from tdata import fetch_data
+from ddp import MysqlConnection
 import numpy as np
 import pandas as pd
 import pickle
@@ -20,6 +21,8 @@ MAX_WORKERS = 10
 MARKET_DIR = "market=cn"
 ASSET_CLASS_DIR = "asset_class=stock"
 FIELDS = ["open", "close", "low", "high", "volume"]
+EXTENDED_FIELDS = [*FIELDS, "change_pct"]
+LEGACY_EIGHT_FIELDS = [*FIELDS, "change", "change_pct"]
 DR_FIELDS = [f"{j}_dr" for j in FIELDS]
 OLD_DATA_CUTOFF = "2008-12-31"
 OLD_DATA_ROOT = Path(settings.OLD_DATA_DIR)
@@ -94,6 +97,7 @@ def load_old_pv_list(code, asset_class, start_date):
 def save_pv_list(output_path, old_list, new_list, code):
     """拼接旧新数据并校验日期顺序。"""
     final_list = old_list + new_list
+    final_list = append_change_fields(final_list)
     dates = [row[0] for row in final_list]
     if any(date_previous >= date_current for date_previous, date_current in zip(dates, dates[1:])):
         raise ValueError(f"{code} 拼接后日期非严格递增")
@@ -139,19 +143,90 @@ def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
     return True
 
 
-def write_index_data(index_name, code, index_data, start_date, dsc_path):
-    """将指数批量数据裁剪为标准K线列表并保存。"""
+def append_change_fields(pv_list):
+    """按前一收盘价计算涨幅，首条无前收时填0。"""
+    if not pv_list:
+        return []
+    if any(len(row) not in (len(FIELDS) + 1, len(EXTENDED_FIELDS) + 1, len(LEGACY_EIGHT_FIELDS) + 1) for row in pv_list):
+        raise ValueError("K线字段数量错误，无法计算涨幅")
+
+    result = []
+    previous_close = None
+    for row in pv_list:
+        close = float(row[2])
+        change_pct = (
+            0.0
+            if previous_close in (None, 0)
+            else (close - previous_close) / previous_close * 100
+        )
+        result.append([row[0], *row[1:6], round(change_pct, 6)])
+        previous_close = close
+    return result
+
+
+def query_index_data(start_date, end_date):
+    """从MySQL index_data表读取全部指数OHLCV数据，并按指数代码分组。"""
+    end_condition = f"AND trade_date <= '{end_date}'" if end_date else ""
+    start_condition = f"AND trade_date >= '{start_date}'" if start_date else ""
+    query = (
+        "SELECT index_code, trade_date, open, close, low, high, volume "
+        "FROM index_data "
+        "WHERE 1=1 "
+        f"{start_condition} "
+        f"{end_condition} "
+        "ORDER BY index_code, trade_date"
+    )
+    with MysqlConnection() as sql:
+        frame = sql.query_pandas(query)
+
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"])
+    if frame.empty:
+        raise ValueError("index_data没有可用数据")
+    return {
+        index_code: data_frame.set_index("trade_date")[FIELDS]
+        for index_code, data_frame in frame.groupby("index_code", sort=False)
+    }
+
+
+def write_index_data(code, index_data, start_date, dsc_path):
+    """按旧数据规则清洗指数缺失值、裁剪时间范围并保存标准K线。"""
     effective_start_date = max(START_DATE, start_date) if START_DATE else start_date
-    columns = ["open", "close", "low", "high", "volume"]
-    data = [index_data[f"{index_name}_{column}"] for column in columns]
-    concat_data = pd.concat(data, axis=1)
-    concat_data.columns = columns
+    concat_data = index_data.copy()
     concat_data = concat_data[concat_data.index >= effective_start_date]
     if END_DATE:
         concat_data = concat_data[concat_data.index <= END_DATE]
 
     concat_data.index = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
-    final_list = concat_data.reset_index().values.tolist()
+    final_list = []
+    previous_close = None
+    for trade_date, row in zip(concat_data.index, concat_data.to_dict("records")):
+        volume = row["volume"]
+        if volume is None or not np.isfinite(volume):
+            volume = 0.0
+
+        close = row["close"]
+        if close is None or not np.isfinite(close):
+            if previous_close is None:
+                continue
+            close = previous_close
+            if (
+                row["high"] is not None
+                and np.isfinite(row["high"])
+                and close > row["high"]
+            ) or (
+                row["low"] is not None
+                and np.isfinite(row["low"])
+                and close < row["low"]
+            ):
+                raise ValueError(f"{code} 指数缺失值无法安全填补，跳过")
+
+        filled_values = {}
+        for field in ("open", "high", "low"):
+            value = row[field]
+            filled_values[field] = float(value) if value is not None and np.isfinite(value) else close
+
+        final_list.append([trade_date, filled_values["open"], float(close), filled_values["low"], filled_values["high"], float(volume)])
+        previous_close = float(close)
     save_pv_list(
         dsc_path / f"{code.replace('.', '')}.pkl",
         load_old_pv_list(code, "index", start_date),
@@ -233,37 +308,16 @@ if __name__ == "__main__":
     #  指数
     index_info_dict = load_instrument_info("index")
 
-    index_map = {
-
-        "hs300": "000300.SH",
-        "zz500": "000905.SH",
-        "zz1000": "000852.SH",
-        "cybz": "399006.SZ",
-        "zz985": "000985.SH",
-        "kc50": "000688.SH",
-        "szzs": "000001.SH",
-        "sz50": "000016.SH",
-        "szcz": "399001.SZ",
-        "gz2000": "399303.SZ",
-        "zz2000": "932000.SH",
-        "zzhl": "000922.SH",
-        "a500": "000510.SH",
-        # "bz50": "899050.BJ",
-        "kczz": "000680.SH",
-    }
-
     file_names = set()
     dsc_path = Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR)
-    columns = FIELDS
-    index_data_names = [f"{index_name}_{column}" for index_name in index_map for column in columns]
-    index_data = fetch_data(index_data_names, start_date=START_DATE, end_date=END_DATE)
+    index_data_by_code = query_index_data(START_DATE, END_DATE)
     dsc_path.mkdir(parents=True, exist_ok=True)
     index_dsc_path = Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["index"])
     index_dsc_path.mkdir(parents=True, exist_ok=True)
 
     futures = {}
-    with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(index_map)))) as executor:
-        for index_name, code in index_map.items():
+    with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(index_data_by_code)))) as executor:
+        for code in index_data_by_code:
             start_date = index_info_dict.get(code)
             if start_date is None:
                 print(f"指数 {code} 缺少 start_date，不处理")
@@ -272,20 +326,26 @@ if __name__ == "__main__":
 
             future = executor.submit(
                 write_index_data,
-                index_name,
                 code,
-                index_data,
+                index_data_by_code[code],
                 start_date,
                 index_dsc_path,
             )
             futures[future] = f"{code.replace('.', '')}.pkl"
 
+        skipped_count = len(index_data_by_code) - len(futures)
         for future in as_completed(futures):
-            future.result()
+            code = futures[future].removesuffix(".pkl")
+            try:
+                future.result()
+            except (FileNotFoundError, ValueError) as error:
+                print(f"指数 {code} 跳过: {error}")
+                continue
             file_names.add(futures[future])
+    print(f"index: 数据源 {len(index_data_by_code)}，无元数据跳过 {skipped_count}，已保存 {len(file_names)}，保存失败跳过 {len(futures) - len(file_names)}")
 
     generated_files.update(file_names)
-    del index_data
+    del index_data_by_code
 
     #########################################
     # etf

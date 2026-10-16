@@ -248,6 +248,16 @@ class _DataCache:
             }
             for index, kline in enumerate(klines)
         ]
+        previous_close = None
+        change_data = []
+        for kline in klines:
+            close = float(kline.close)
+            change_pct = 0.0 if previous_close in (None, 0) else (close - previous_close) / previous_close * 100
+            change_data.append({
+                "time": chart_dates[len(change_data)],
+                "change_pct": round(change_pct, 6),
+            })
+            previous_close = close
         bi_data = []
         for bi in self._bi_list:
             bi_dict = bi.to_dict()
@@ -333,6 +343,7 @@ class _DataCache:
         }
         self._chart_payload = {
             "candle_data": serialized(candle_data),
+            "change_data": serialized(change_data),
             "bi_data": serialized(bi_data),
             "xd_data": serialized(xd_data),
             "zhongshu_data": serialized(zhongshu_data(self._bi_zhongshu_list or [])),

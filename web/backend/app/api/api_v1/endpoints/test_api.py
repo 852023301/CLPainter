@@ -138,7 +138,7 @@ async def lightweight_charts_demo(
                     Instrument.code == symbol,
                 )
             )
-        instrument_display_name = instrument.display_name if instrument is not None else symbol
+            instrument_display_name = instrument.display_name if instrument is not None else symbol
         instrument_name_version = hashlib.sha256(instrument_display_name.encode("utf-8")).hexdigest()[:16]
         instrument_updated_at = (
             instrument.updated_at.isoformat()
@@ -192,13 +192,14 @@ def _build_lightweight_charts_page(
     symbol: str,
     frequency: str,
     cache_version: str,
-    frequency_versions: tuple[int, ...],
-    market: str,
-    asset_class: str,
-    display_name: str,
+            frequency_versions: tuple[int, ...],
+            market: str,
+            asset_class: str,
+            display_name: str,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency, market, asset_class)
+    payload.setdefault("change_data", "[]")
     payload["frequency"] = frequency
     payload["symbol"] = symbol
     payload["frequency_options"] = [
