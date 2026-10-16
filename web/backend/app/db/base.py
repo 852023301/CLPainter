@@ -1,3 +1,5 @@
+import os
+
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
@@ -11,7 +13,11 @@ class Base(DeclarativeBase):
 
 
 DATABASE_PATH = Path(settings.DATA_DIR).parent / "instrument.db"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
+if DATABASE_PATH.exists() and not os.access(DATABASE_PATH, os.W_OK):
+    DATABASE_URL = f"sqlite:///file:{DATABASE_PATH}?mode=ro&immutable=1&uri=true"
+else:
+    DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(
     DATABASE_URL,
@@ -23,5 +29,4 @@ engine = create_engine(
 def configure_sqlite_pragma(dbapi_connection, _connection_record) -> None:
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.execute("PRAGMA journal_mode=WAL")
     cursor.close()

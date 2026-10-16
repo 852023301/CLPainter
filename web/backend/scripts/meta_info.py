@@ -20,21 +20,24 @@ ASSET_CLASS_CONFIG = {
     "stock": {
         "table": "stock_info",
         "code_column": "stock_code",
-        "name_column": "display_name",
+        "name_column": "name",
+        "display_name_column": "display_name",
         "asset_class": "stock",
         "precision": 2,
     },
     "index": {
         "table": "index_info",
         "code_column": "index_code",
-        "name_column": None,
+        "name_column": "name",
+        "display_name_column": "display_name",
         "asset_class": "index",
         "precision": 2,
     },
     "etf": {
         "table": "etf_info",
         "code_column": "stock_code",
-        "name_column": "display_name",
+        "name_column": "name",
+        "display_name_column": "display_name",
         "asset_class": "fund",
         "precision": 3,
     },
@@ -51,8 +54,9 @@ def query_active_info(config: dict) -> list[Instrument]:
     today = datetime.date.today()
     with MysqlConnection() as sql:
         frame = sql.query_pandas(
-            f"SELECT {config['code_column']}, "
-            f"{config['name_column'] or config['code_column']}, "
+            f"SELECT {config['code_column']} AS source_code, "
+            f"{config['name_column'] or config['code_column']} AS source_name, "
+            f"{config['display_name_column'] or config['code_column']} AS source_display_name, "
             "start_date "
             f"FROM {config['table']} "
             f"WHERE start_date <= '{today}' AND end_date > '{today}'"
@@ -62,11 +66,13 @@ def query_active_info(config: dict) -> list[Instrument]:
     for row in frame.itertuples(index=False):
         source_code = str(row[0])
         source_name = str(row[1]).strip()
-        list_date = row[2].date() if hasattr(row[2], "date") else row[2]
+        source_display_name = str(row[2]).strip() or source_name
+        list_date = row[3].date() if hasattr(row[3], "date") else row[3]
         instruments.append(
             Instrument(
                 code=chart_code(source_code),
-                name=source_name,
+                name=source_name or source_display_name,
+                display_name=source_display_name,
                 price_precision=config["precision"],
                 market=MARKET,
                 asset_class=config["asset_class"],
@@ -114,6 +120,7 @@ def sync_asset_class(config: dict) -> tuple[int, int]:
                 existing_map[identity] = instrument
                 continue
             existing.name = instrument.name
+            existing.display_name = instrument.display_name
             existing.price_precision = instrument.price_precision
             existing.list_date = instrument.list_date
             existing.delist_date = instrument.delist_date

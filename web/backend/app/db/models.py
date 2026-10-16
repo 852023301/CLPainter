@@ -17,6 +17,7 @@ class Instrument(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(String(16), nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     price_precision: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     market: Mapped[str] = mapped_column(String(16), nullable=False)
     asset_class: Mapped[str] = mapped_column(String(32), nullable=False)

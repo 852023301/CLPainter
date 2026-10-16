@@ -1,14 +1,21 @@
 import gzip
+import hashlib
 import logging
 import re
+from pathlib import Path
 from functools import lru_cache
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
+from ....db.base import engine
+from ....db.models import Instrument
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -19,6 +26,8 @@ router = APIRouter()
 
 _SIMPLE_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _SIMPLE_FREQUENCIES = frozenset(key.removeprefix("freq=") for key in SUPPORTED_CHART_FREQUENCIES)
+_SEARCH_LIMIT = 20
+_TEMPLATE_PATH = Path(settings.APP_DIR) / "templates" / "lightweight_charts_demo.html"
 
 
 def _normalize_frequency(value: str) -> str:
@@ -38,6 +47,67 @@ def _normalize_directory_value(value: str, prefix: str, field_name: str) -> str:
 template_dir = f"{settings.APP_DIR}/templates"
 templates = Jinja2Templates(directory=template_dir)
 templates.env.cache = None
+
+
+@router.get("/instrument/search")
+async def search_instruments(
+    q: str = Query(min_length=1, max_length=64),
+    frequency: str = "1day",
+):
+    """按代码或简称搜索当前有效标的，并返回图表地址。"""
+    keyword = q.strip()
+    if not keyword:
+        return {"results": []}
+    try:
+        frequency_key = _normalize_frequency(frequency)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    code_keyword = keyword.replace(".", "").upper()
+    name_keyword = f"%{keyword}%"
+    with Session(engine) as session:
+        instruments = session.scalars(
+            select(Instrument)
+            .where(
+                Instrument.code.like(f"%{code_keyword}%")
+                | Instrument.name.like(name_keyword)
+                | Instrument.display_name.like(name_keyword)
+            )
+            .order_by(Instrument.code, Instrument.asset_class)
+            .limit(_SEARCH_LIMIT * 2)
+        ).all()
+
+    exact_keyword = code_keyword
+    instruments = sorted(
+        instruments,
+        key=lambda item: (
+            item.code != exact_keyword,
+            not item.code.startswith(exact_keyword),
+            not item.name.startswith(keyword),
+            not item.display_name.startswith(keyword),
+            item.code,
+        ),
+    )[:_SEARCH_LIMIT]
+
+    def build_result(instrument: Instrument) -> dict:
+        query = urlencode(
+            {
+                "symbol": instrument.code,
+                "frequency": frequency_key.removeprefix("freq="),
+                "market": instrument.market,
+                "asset_class": instrument.asset_class,
+            }
+        )
+        return {
+            "code": instrument.code,
+            "name": instrument.name,
+            "display_name": instrument.display_name,
+            "market": instrument.market,
+            "asset_class": instrument.asset_class,
+            "url": f"/api/v1/test_api/lightweight_charts_demo?{query}",
+        }
+
+    return {"results": [build_result(instrument) for instrument in instruments]}
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
@@ -60,6 +130,21 @@ async def lightweight_charts_demo(
         market_key = _normalize_directory_value(market, "market=", "市场")
         asset_class_key = _normalize_directory_value(asset_class, "asset_class=", "资产类别")
         frequency_versions = get_chart_payload_versions(symbol, market_key, asset_class_key)
+        with Session(engine) as session:
+            instrument = session.scalar(
+                select(Instrument).where(
+                    Instrument.market == market_key.removeprefix("market="),
+                    Instrument.asset_class == asset_class_key.removeprefix("asset_class="),
+                    Instrument.code == symbol,
+                )
+            )
+        instrument_display_name = instrument.display_name if instrument is not None else symbol
+        instrument_name_version = hashlib.sha256(instrument_display_name.encode("utf-8")).hexdigest()[:16]
+        instrument_updated_at = (
+            instrument.updated_at.isoformat()
+            if instrument is not None and instrument.updated_at is not None
+            else ""
+        )
     except ValueError as error:
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
 
@@ -74,12 +159,17 @@ async def lightweight_charts_demo(
             frequency_versions,
             market_key,
             asset_class_key,
+            instrument_display_name,
         )
     except Exception as error:
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=500)
 
-    etag = f'W/"{symbol}-{frequency_key}-{market_key}-{asset_class_key}-{cache_version}"'
+    template_version = str(_TEMPLATE_PATH.stat().st_mtime_ns)
+    etag = (
+        f'W/"{symbol}-{frequency_key}-{market_key}-{asset_class_key}-'
+        f'{instrument_name_version}-{instrument_updated_at}-{template_version}-{cache_version}"'
+    )
     common_headers = {"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Accept-Encoding"}
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=common_headers)
@@ -105,10 +195,12 @@ def _build_lightweight_charts_page(
     frequency_versions: tuple[int, ...],
     market: str,
     asset_class: str,
+    display_name: str,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency, market, asset_class)
     payload["frequency"] = frequency
+    payload["symbol"] = symbol
     payload["frequency_options"] = [
         {
             "value": value,
@@ -117,6 +209,7 @@ def _build_lightweight_charts_page(
         }
         for index, (value, label) in enumerate(SUPPORTED_CHART_FREQUENCIES.items())
     ]
+    payload["instrument_display_name"] = display_name
     template = templates.env.get_template("lightweight_charts_demo.html")
     return template.render(**payload)
 

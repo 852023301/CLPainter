@@ -24,6 +24,76 @@
             margin-bottom: 20px;
         }
 
+        .instrument-search {
+            position: relative;
+            width: min(420px, 100%);
+            margin-bottom: 12px;
+        }
+
+        .instrument-search input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 9px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+            outline: none;
+        }
+
+        .instrument-search input:focus {
+            border-color: #e64545;
+            box-shadow: 0 0 0 2px rgba(230, 69, 69, 0.12);
+        }
+
+        .search-results {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            max-height: 360px;
+            overflow-y: auto;
+            display: none;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 3000;
+        }
+
+        .search-result {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .search-result.active,
+        .search-result:hover {
+            background: #fff2f2;
+        }
+
+        .search-result-code {
+            color: #333;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .search-result-name {
+            color: #555;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .search-empty {
+            padding: 10px 12px;
+            color: #777;
+            font-size: 13px;
+        }
+
         #chart {
             width: 100%;
             height: 600px;
@@ -202,7 +272,16 @@
     }
 </script>
 <div class="container">
-    <h1>📊 Lightweight Charts 简单示例</h1>
+    <h1>📊 {{ instrument_display_name }} {{ symbol }}</h1>
+
+    <div class="instrument-search">
+        <input type="search"
+               id="instrumentSearchInput"
+               placeholder="搜索代码 / 简称，例如：000001SZ、平安银行"
+               autocomplete="off"
+               aria-label="搜索股票代码或简称">
+        <div id="instrumentSearchResults" class="search-results" role="listbox"></div>
+    </div>
 
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:16px;">
         <div id="frequencyTabs" class="frequency-tabs" aria-label="K线周期">
@@ -270,6 +349,111 @@
         return v === null ? def : v;
     };
     const lsSetString = (k, v) => localStorage.setItem(k, v);
+
+    const searchInput = document.getElementById('instrumentSearchInput');
+    const searchResultsElement = document.getElementById('instrumentSearchResults');
+    let searchAbortController = null;
+    let searchTimer = null;
+    let activeResultIndex = -1;
+    let searchResults = [];
+
+    const hideSearchResults = () => {
+        searchResultsElement.style.display = 'none';
+        activeResultIndex = -1;
+    };
+
+    const highlightActiveResult = () => {
+        [...searchResultsElement.querySelectorAll('.search-result')].forEach((item, index) => {
+            item.classList.toggle('active', index === activeResultIndex);
+        });
+        const activeItem = searchResultsElement.querySelector('.search-result.active');
+        if (activeItem) activeItem.scrollIntoView({block: 'nearest'});
+    };
+
+    const renderSearchResults = () => {
+        searchResultsElement.innerHTML = '';
+        if (!searchResults.length) {
+            const emptyElement = document.createElement('div');
+            emptyElement.className = 'search-empty';
+            emptyElement.textContent = '没有匹配的标的';
+            searchResultsElement.appendChild(emptyElement);
+        } else {
+            searchResults.forEach((result) => {
+                const item = document.createElement('div');
+                item.className = 'search-result';
+                item.setAttribute('role', 'option');
+
+                const code = document.createElement('span');
+                code.className = 'search-result-code';
+                code.textContent = result.code;
+
+                const name = document.createElement('span');
+                name.className = 'search-result-name';
+                name.textContent = `${result.display_name} · ${result.asset_class}`;
+
+                item.append(code, name);
+                item.addEventListener('mousedown', event => {
+                    event.preventDefault();
+                    window.location.assign(result.url);
+                });
+                searchResultsElement.appendChild(item);
+            });
+        }
+        searchResultsElement.style.display = 'block';
+        activeResultIndex = -1;
+    };
+
+    const searchInstruments = async () => {
+        const keyword = searchInput.value.trim();
+        if (!keyword) {
+            hideSearchResults();
+            return;
+        }
+
+        if (searchAbortController) searchAbortController.abort();
+        searchAbortController = new AbortController();
+        const params = new URLSearchParams(window.location.search);
+        const frequency = params.get('frequency') || '1day';
+        const query = new URLSearchParams({q: keyword, frequency});
+        try {
+            const response = await fetch(`/api/v1/test_api/instrument/search?${query}`, {
+                signal: searchAbortController.signal
+            });
+            if (!response.ok) throw new Error(`搜索失败: ${response.status}`);
+            const payload = await response.json();
+            searchResults = payload.results || [];
+            renderSearchResults();
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error(error);
+            }
+        }
+    };
+
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(searchInstruments, 200);
+    });
+    searchInput.addEventListener('keydown', event => {
+        if (event.key === 'ArrowDown' && searchResults.length) {
+            event.preventDefault();
+            activeResultIndex = (activeResultIndex + 1) % searchResults.length;
+            highlightActiveResult();
+        } else if (event.key === 'ArrowUp' && searchResults.length) {
+            event.preventDefault();
+            activeResultIndex = (activeResultIndex - 1 + searchResults.length) % searchResults.length;
+            highlightActiveResult();
+        } else if (event.key === 'Enter') {
+            const result = searchResults[activeResultIndex >= 0 ? activeResultIndex : 0];
+            if (result) window.location.assign(result.url);
+        } else if (event.key === 'Escape') {
+            hideSearchResults();
+        }
+    });
+    searchInput.addEventListener('blur', () => setTimeout(hideSearchResults, 150));
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.instrument-search')) hideSearchResults();
+    });
 
     document.querySelectorAll('#frequencyTabs .frequency-tab').forEach(button => {
         button.addEventListener('click', () => {
