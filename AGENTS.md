@@ -173,3 +173,5 @@ ssh CL "tail -50 /root/CLPainter/web/backend/nohup.out"
 5. **Node REPL 编辑**: 含中文的文件始终通过 Node REPL 编辑，避免 PowerShell 编码问题。
 6. **Node REPL 持久性**: `const`/`let` 声明在调用间持久；如遇 "Identifier already declared"，使用 `mcp__node_repl__js_reset` 重置后重新声明，或改用 `var`。
 7. **只做必要的改动**： 尽量在不改变原本核心逻辑的前提下去做修改，若是原本的逻辑存在漏洞，需要仔细分析后向我描述漏洞，然后由我决定是否需要进一步修改
+8. **避免个案式修复**：修改笔、线段等缠论核心逻辑时，不要针对单个标的持续叠加特判；应逐个收紧 queue-gap、fallback、endpoint-repair 等兜底启发式的触发条件、边界和停止条件，优先消除上游划分错误。
+9. **稳扎稳打**： 每修改一次，都要调用现有脚本（例如dump_stock_caches.py）做测试，确认不会对现有的其他频率、其他市场、其他标的种类造成影响，才能确认修改

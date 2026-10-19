@@ -75,6 +75,47 @@ def _chart_time(value):
     return int(value.replace(tzinfo=timezone.utc).timestamp())
 
 
+def _instrument_precision(symbol: str, market_dir: str, asset_class_dir: str) -> int:
+    """优先从Instrument读取精度，缺失元数据时保留旧默认值。"""
+    from CLPainter.web.backend.app.db.base import engine
+    from CLPainter.web.backend.app.db.models import Instrument
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    market = market_dir.removeprefix("market=")
+    asset_class = asset_class_dir.removeprefix("asset_class=")
+    with Session(engine) as session:
+        precision = session.scalar(
+            select(Instrument.price_precision).where(
+                Instrument.code == symbol,
+                Instrument.market == market,
+                Instrument.asset_class == asset_class,
+            )
+        )
+    return 2 if precision is None else int(precision)
+
+
+def _source_identity(
+    source_file: Path,
+    frequency: str | None,
+    market_dir: str,
+    asset_class_dir: str,
+) -> tuple[str, str, str]:
+    """使用源文件目录识别数据身份，避免单标的导出时误传默认身份。"""
+    frequency = frequency or source_file.parent.parent.parent.name
+    market_dir = (
+        market_dir
+        if market_dir != DEFAULT_MARKET_DIR
+        else source_file.parent.parent.name
+    )
+    asset_class_dir = (
+        asset_class_dir
+        if asset_class_dir != DEFAULT_ASSET_CLASS_DIR
+        else source_file.parent.name
+    )
+    return frequency, market_dir, asset_class_dir
+
+
 def load_raw_data(data_file=None) -> List[List]:
     """
     加载原始K线数据
@@ -571,18 +612,26 @@ def dump_data_cache_to_pickle(
     if not source_file.exists():
         raise FileNotFoundError(f"数据文件不存在: {source_file}")
 
+    frequency, market_dir, asset_class_dir = _source_identity(
+        source_file,
+        frequency,
+        market_dir,
+        asset_class_dir,
+    )
     _DataCache.reset_instance()
     cache = _DataCache(source_file)
     cache.ensure_loaded()
-    chart_precision = precision if precision is not None else (
-        2 if asset_class_dir == "asset_class=stock" else 3
+    chart_precision = precision if precision is not None else _instrument_precision(
+        source_file.stem,
+        market_dir,
+        asset_class_dir,
     )
     chart_payload = cache.build_chart_payload(precision=chart_precision)
     _atomic_pickle_dump(
         chart_payload,
         get_chart_payload_path(
             source_file.stem,
-            frequency or source_file.parent.name,
+            frequency,
             market_dir,
             asset_class_dir,
         ),
@@ -592,14 +641,14 @@ def dump_data_cache_to_pickle(
         _DataCache.reset_instance()
         return get_chart_payload_path(
             source_file.stem,
-            frequency or source_file.parent.name,
+            frequency,
             market_dir,
             asset_class_dir,
         )
 
     destination = get_cache_dump_path(
         source_file.stem,
-        frequency or "freq=1day",
+        frequency,
         market_dir,
         asset_class_dir,
         dump_dir,

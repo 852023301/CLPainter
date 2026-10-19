@@ -66,6 +66,9 @@ def generate_origin_klines(raw_klines: List[List]) -> Tuple[List[OriginKLine], L
         )
         for kl in raw_klines
     ]
+    unexpected_lengths = {len(kl) for kl in raw_klines} - {6, 7}
+    if unexpected_lengths:
+        raise ValueError(f"原始K线字段数异常: {sorted(unexpected_lengths)}")
     gaps_list = []
 
     for idx, kl in enumerate(origin_klines):
