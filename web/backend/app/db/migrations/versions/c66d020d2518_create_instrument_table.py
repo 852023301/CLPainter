@@ -29,6 +29,28 @@ def upgrade() -> None:
     sa.UniqueConstraint('market', 'asset_class', 'code', name='uq_instrument_identity')
     )
 
+    op.create_table('watchlist_board',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('name', sa.String(length=64), nullable=False),
+    sa.Column('sort_order', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('watchlist_item',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('board_id', sa.Integer(), sa.ForeignKey('watchlist_board.id', ondelete='CASCADE'), nullable=False),
+    sa.Column('instrument_id', sa.Integer(), sa.ForeignKey('instrument.id', ondelete='CASCADE'), nullable=False),
+    sa.Column('sort_order', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('board_id', 'instrument_id', name='uq_watchlist_item')
+    )
+    op.create_index('ix_watchlist_item_board_order', 'watchlist_item', ['board_id', 'sort_order'], unique=False)
+
 
 def downgrade() -> None:
+    op.drop_index('ix_watchlist_item_board_order', table_name='watchlist_item')
+    op.drop_table('watchlist_item')
+    op.drop_table('watchlist_board')
     op.drop_table('instrument')

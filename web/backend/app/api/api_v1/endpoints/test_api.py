@@ -11,12 +11,13 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
 from ....db.base import engine
-from ....db.models import Instrument
+from ....db.models import Instrument, WatchlistBoard, WatchlistItem
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -36,6 +37,7 @@ _LAZY_MODULES = {
     "rsi": "rsi_data",
     "macd": "macd_data",
 }
+_WATCHLIST_NAME_PATTERN = re.compile(r"^\S.{0,62}\S$|^\S$")
 
 
 def _normalize_frequency(value: str) -> str:
@@ -51,6 +53,18 @@ def _normalize_directory_value(value: str, prefix: str, field_name: str) -> str:
     if not _SIMPLE_VALUE_PATTERN.fullmatch(value):
         raise ValueError(f"非法的{field_name}: {value}")
     return f"{prefix}{value}"
+
+
+class WatchlistBoardCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class WatchlistBoardRename(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class WatchlistItemCreate(BaseModel):
+    instrument_id: int = Field(gt=0)
 
 template_dir = f"{settings.APP_DIR}/templates"
 templates = Jinja2Templates(directory=template_dir)
@@ -118,6 +132,146 @@ async def search_instruments(
     return {"results": [build_result(instrument) for instrument in instruments]}
 
 
+def _validate_watchlist_name(name: str) -> str:
+    normalized_name = name.strip()
+    if not _WATCHLIST_NAME_PATTERN.fullmatch(normalized_name):
+        raise HTTPException(status_code=400, detail="板块名称不能为空，且长度不能超过64个字符")
+    return normalized_name
+
+
+def _get_watchlist_board(session: Session, board_id: int) -> WatchlistBoard:
+    board = session.get(WatchlistBoard, board_id)
+    if board is None:
+        raise HTTPException(status_code=404, detail="自选板块不存在")
+    return board
+
+
+def _serialize_watchlist_board(session: Session, board: WatchlistBoard) -> dict:
+    items = session.execute(
+        select(WatchlistItem, Instrument)
+        .join(Instrument, WatchlistItem.instrument_id == Instrument.id)
+        .where(WatchlistItem.board_id == board.id)
+        .order_by(WatchlistItem.sort_order, WatchlistItem.id)
+    ).all()
+    return {
+        "id": board.id,
+        "name": board.name,
+        "sort_order": board.sort_order,
+        "items": [
+            {
+                "instrument_id": item.instrument_id,
+                "code": instrument.code,
+                "name": instrument.name,
+                "display_name": instrument.display_name,
+                "market": instrument.market,
+                "asset_class": instrument.asset_class,
+                "url": (
+                    "/api/v1/test_api/lightweight_charts_demo?"
+                    + urlencode(
+                        {
+                            "symbol": instrument.code,
+                            "market": instrument.market,
+                            "asset_class": instrument.asset_class,
+                        }
+                    )
+                ),
+            }
+            for item, instrument in items
+        ],
+    }
+
+
+@router.get("/watchlists")
+async def list_watchlists():
+    """获取全部自选板块及其标的。"""
+    with Session(engine) as session:
+        boards = session.scalars(select(WatchlistBoard).order_by(WatchlistBoard.sort_order, WatchlistBoard.id)).all()
+        return {"boards": [_serialize_watchlist_board(session, board) for board in boards]}
+
+
+@router.post("/watchlists", status_code=201)
+async def create_watchlist(payload: WatchlistBoardCreate):
+    """创建自选板块。"""
+    name = _validate_watchlist_name(payload.name)
+    with Session(engine) as session:
+        if session.scalar(select(func.count()).select_from(WatchlistBoard).where(WatchlistBoard.name == name)):
+            raise HTTPException(status_code=400, detail="板块名称已存在")
+        sort_order = session.scalar(select(func.coalesce(func.max(WatchlistBoard.sort_order), -1))) + 1
+        board = WatchlistBoard(name=name, sort_order=sort_order)
+        session.add(board)
+        session.commit()
+        session.refresh(board)
+        return _serialize_watchlist_board(session, board)
+
+
+@router.patch("/watchlists/{board_id}")
+async def rename_watchlist(board_id: int, payload: WatchlistBoardRename):
+    """修改自选板块名称。"""
+    name = _validate_watchlist_name(payload.name)
+    with Session(engine) as session:
+        board = _get_watchlist_board(session, board_id)
+        duplicated_board = session.scalar(select(WatchlistBoard).where(WatchlistBoard.name == name, WatchlistBoard.id != board_id))
+        if duplicated_board is not None:
+            raise HTTPException(status_code=400, detail="板块名称已存在")
+        board.name = name
+        session.commit()
+        session.refresh(board)
+        return _serialize_watchlist_board(session, board)
+
+
+@router.delete("/watchlists/{board_id}", status_code=204)
+async def delete_watchlist(board_id: int):
+    """删除自选板块。"""
+    with Session(engine) as session:
+        board = _get_watchlist_board(session, board_id)
+        session.delete(board)
+        session.commit()
+
+
+@router.post("/watchlists/{board_id}/items", status_code=201)
+async def add_watchlist_item(board_id: int, payload: WatchlistItemCreate):
+    """添加标的到自选板块。"""
+    with Session(engine) as session:
+        board = _get_watchlist_board(session, board_id)
+        instrument = session.get(Instrument, payload.instrument_id)
+        if instrument is None:
+            raise HTTPException(status_code=404, detail="标的不存在")
+        exists = session.scalar(
+            select(func.count())
+            .select_from(WatchlistItem)
+            .where(WatchlistItem.board_id == board.id, WatchlistItem.instrument_id == instrument.id)
+        )
+        if exists:
+            raise HTTPException(status_code=400, detail="该标的已在板块中")
+        sort_order = (
+            session.scalar(
+                select(func.coalesce(func.max(WatchlistItem.sort_order), -1)).where(WatchlistItem.board_id == board.id)
+            )
+            + 1
+        )
+        session.add(
+            WatchlistItem(board_id=board.id, instrument_id=instrument.id, sort_order=sort_order)
+        )
+        session.commit()
+        return _serialize_watchlist_board(session, board)
+
+
+@router.delete("/watchlists/{board_id}/items/{instrument_id}", status_code=204)
+async def remove_watchlist_item(board_id: int, instrument_id: int):
+    """从自选板块移除标的。"""
+    with Session(engine) as session:
+        board = _get_watchlist_board(session, board_id)
+        deleted_count = session.execute(
+            delete(WatchlistItem).where(
+                WatchlistItem.board_id == board.id,
+                WatchlistItem.instrument_id == instrument_id,
+            )
+        ).rowcount
+        if not deleted_count:
+            raise HTTPException(status_code=404, detail="标的不在板块中")
+        session.commit()
+
+
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
 async def lightweight_charts_demo(
     request: Request,
@@ -147,6 +301,7 @@ async def lightweight_charts_demo(
                 )
             )
             instrument_display_name = instrument.display_name if instrument is not None else symbol
+            instrument_id = instrument.id if instrument is not None else None
         instrument_name_version = hashlib.sha256(instrument_display_name.encode("utf-8")).hexdigest()[:16]
         instrument_updated_at = (
             instrument.updated_at.isoformat()
@@ -168,6 +323,7 @@ async def lightweight_charts_demo(
             market_key,
             asset_class_key,
             instrument_display_name,
+            instrument_id,
         )
     except Exception as error:
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
@@ -236,6 +392,7 @@ def _build_lightweight_charts_page(
             market: str,
             asset_class: str,
             display_name: str,
+            instrument_id: int | None,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency, market, asset_class)
@@ -263,6 +420,7 @@ def _build_lightweight_charts_page(
         for index, (value, label) in enumerate(SUPPORTED_CHART_FREQUENCIES.items())
     ]
     payload["instrument_display_name"] = display_name
+    payload["instrument_id"] = instrument_id
     template = templates.env.get_template("lightweight_charts_demo.html")
     return template.render(**payload)
 

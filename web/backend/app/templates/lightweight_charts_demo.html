@@ -94,6 +94,153 @@
             font-size: 13px;
         }
 
+        .toolbar-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .watchlist-panel {
+            position: relative;
+            flex: 0 0 300px;
+        }
+
+        .watchlist-button {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: white;
+            color: #333;
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .watchlist-button:hover {
+            border-color: #e64545;
+        }
+
+        .watchlist-content {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            width: min(420px, calc(100vw - 40px));
+            max-height: 480px;
+            overflow-y: auto;
+            display: none;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 3000;
+        }
+
+        .watchlist-board {
+            border: 1px solid #eee;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+
+        .watchlist-board-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 7px 8px;
+            background: #fafafa;
+        }
+
+        .watchlist-board-name {
+            overflow: hidden;
+            color: #333;
+            font-weight: 600;
+            font-size: 13px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .watchlist-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .watchlist-action {
+            padding: 2px 5px;
+            border: 0;
+            border-radius: 3px;
+            background: transparent;
+            color: #666;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .watchlist-action:hover {
+            background: #fff2f2;
+            color: #e64545;
+        }
+
+        .watchlist-items {
+            padding: 4px 0;
+        }
+
+        .watchlist-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        .watchlist-item:hover {
+            background: #fff2f2;
+        }
+
+        .watchlist-item-link {
+            flex: 1;
+            color: #333;
+            text-decoration: none;
+        }
+
+        .watchlist-item-name {
+            margin-left: 8px;
+            color: #666;
+        }
+
+        .watchlist-empty {
+            padding: 6px 8px;
+            color: #777;
+            font-size: 12px;
+        }
+
+        .watchlist-create {
+            display: flex;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .watchlist-input,
+        .watchlist-select {
+            min-width: 0;
+            border: 1px solid #d9d9d9;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
+        .watchlist-input {
+            flex: 1;
+            padding: 5px 7px;
+        }
+
+        .watchlist-select {
+            max-width: 140px;
+        }
+
         #chart {
             width: 100%;
             height: 600px;
@@ -274,13 +421,25 @@
 <div class="container">
     <h1>📊 {{ instrument_display_name }} {{ symbol }}</h1>
 
-    <div class="instrument-search">
-        <input type="search"
-               id="instrumentSearchInput"
-               placeholder="搜索代码 / 简称，例如：000001SZ、平安银行"
-               autocomplete="off"
-               aria-label="搜索股票代码或简称">
-        <div id="instrumentSearchResults" class="search-results" role="listbox"></div>
+    <div class="toolbar-row">
+        <div class="instrument-search">
+            <input type="search"
+                   id="instrumentSearchInput"
+                   placeholder="搜索代码 / 简称，例如：000001SZ、平安银行"
+                   autocomplete="off"
+                   aria-label="搜索股票代码或简称">
+            <div id="instrumentSearchResults" class="search-results" role="listbox"></div>
+        </div>
+        <div class="watchlist-panel">
+            <button type="button" id="watchlistToggle" class="watchlist-button" aria-expanded="false">★ 自选板块</button>
+            <div id="watchlistContent" class="watchlist-content" aria-label="自选板块管理">
+                <div id="watchlistBoards"></div>
+                <div class="watchlist-create">
+                    <input type="text" id="watchlistNameInput" class="watchlist-input" placeholder="新板块名称" maxlength="64" aria-label="新板块名称">
+                    <button type="button" id="watchlistCreateButton">新建</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div style="margin-bottom:10px;display:flex;align-items:center;gap:16px;">
@@ -455,6 +614,192 @@
         if (!event.target.closest('.instrument-search')) hideSearchResults();
     });
 
+    const watchlistToggle = document.getElementById('watchlistToggle');
+    const watchlistContent = document.getElementById('watchlistContent');
+    const watchlistBoards = document.getElementById('watchlistBoards');
+    const watchlistNameInput = document.getElementById('watchlistNameInput');
+    const watchlistCreateButton = document.getElementById('watchlistCreateButton');
+    let watchlists = [];
+    let selectedWatchlistBoardId = null;
+
+    const requestWatchlist = async (url, options = {}) => {
+        const response = await fetch(url, {
+            headers: {'Content-Type': 'application/json'},
+            ...options,
+        });
+        if (!response.ok) {
+            let detail = `请求失败: ${response.status}`;
+            try {
+                detail = (await response.json()).detail || detail;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        return response.status === 204 ? null : response.json();
+    };
+
+    const renderWatchlists = () => {
+        watchlistBoards.innerHTML = '';
+        if (!watchlists.length) {
+            const empty = document.createElement('div');
+            empty.className = 'watchlist-empty';
+            empty.textContent = '暂无自选板块';
+            watchlistBoards.appendChild(empty);
+            return;
+        }
+
+        watchlists.forEach(board => {
+            const boardElement = document.createElement('div');
+            boardElement.className = 'watchlist-board';
+            const header = document.createElement('div');
+            header.className = 'watchlist-board-header';
+            const name = document.createElement('div');
+            name.className = 'watchlist-board-name';
+            name.textContent = `${board.name} (${board.items.length})`;
+
+            const actions = document.createElement('div');
+            actions.className = 'watchlist-actions';
+            const addButton = document.createElement('button');
+            addButton.type = 'button';
+            addButton.className = 'watchlist-action';
+            addButton.textContent = '加当前';
+            addButton.title = '把当前标的加入该板块';
+            addButton.addEventListener('click', async () => {
+                try {
+                    const payload = await requestWatchlist(`/api/v1/test_api/watchlists/${board.id}/items`, {
+                        method: 'POST',
+                        body: JSON.stringify({instrument_id: window.currentInstrumentId}),
+                    });
+                    watchlists = watchlists.map(item => item.id === payload.id ? payload : item);
+                    renderWatchlists();
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+            const renameButton = document.createElement('button');
+            renameButton.type = 'button';
+            renameButton.className = 'watchlist-action';
+            renameButton.textContent = '改名';
+            renameButton.addEventListener('click', async () => {
+                const newName = prompt('请输入新的板块名称', board.name);
+                if (!newName || newName.trim() === board.name) return;
+                try {
+                    const payload = await requestWatchlist(`/api/v1/test_api/watchlists/${board.id}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({name: newName}),
+                    });
+                    watchlists = watchlists.map(item => item.id === payload.id ? payload : item);
+                    renderWatchlists();
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'watchlist-action';
+            deleteButton.textContent = '删除';
+            deleteButton.addEventListener('click', async () => {
+                if (!confirm(`确定删除板块“${board.name}”吗？`)) return;
+                try {
+                    await requestWatchlist(`/api/v1/test_api/watchlists/${board.id}`, {method: 'DELETE'});
+                    watchlists = watchlists.filter(item => item.id !== board.id);
+                    renderWatchlists();
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+            actions.append(addButton, renameButton, deleteButton);
+            header.append(name, actions);
+
+            const itemsElement = document.createElement('div');
+            itemsElement.className = 'watchlist-items';
+            if (!board.items.length) {
+                const empty = document.createElement('div');
+                empty.className = 'watchlist-empty';
+                empty.textContent = '暂无标的';
+                itemsElement.appendChild(empty);
+            }
+            board.items.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'watchlist-item';
+                const link = document.createElement('a');
+                link.className = 'watchlist-item-link';
+                link.href = item.url;
+                const params = new URLSearchParams(window.location.search);
+                const frequency = params.get('frequency');
+                if (frequency) link.search += `&frequency=${encodeURIComponent(frequency)}`;
+                const code = document.createElement('span');
+                code.textContent = item.code;
+                const itemName = document.createElement('span');
+                itemName.className = 'watchlist-item-name';
+                itemName.textContent = `${item.display_name} · ${item.asset_class}`;
+                link.append(code, itemName);
+
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className = 'watchlist-action';
+                removeButton.textContent = '移除';
+                removeButton.addEventListener('click', async () => {
+                    try {
+                        await requestWatchlist(
+                            `/api/v1/test_api/watchlists/${board.id}/items/${item.instrument_id}`,
+                            {method: 'DELETE'}
+                        );
+                        board.items = board.items.filter(candidate => candidate.instrument_id !== item.instrument_id);
+                        renderWatchlists();
+                    } catch (error) {
+                        alert(error.message);
+                    }
+                });
+                row.append(link, removeButton);
+                itemsElement.appendChild(row);
+            });
+
+            boardElement.append(header, itemsElement);
+            watchlistBoards.appendChild(boardElement);
+        });
+    };
+
+    const loadWatchlists = async () => {
+        try {
+            const payload = await requestWatchlist('/api/v1/test_api/watchlists');
+            watchlists = payload.boards || [];
+            renderWatchlists();
+        } catch (error) {
+            console.error('自选板块加载失败:', error);
+        }
+    };
+
+    watchlistToggle.addEventListener('click', () => {
+        const expanded = watchlistToggle.getAttribute('aria-expanded') === 'true';
+        watchlistToggle.setAttribute('aria-expanded', String(!expanded));
+        watchlistContent.style.display = expanded ? 'none' : 'block';
+    });
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.watchlist-panel')) {
+            watchlistContent.style.display = 'none';
+            watchlistToggle.setAttribute('aria-expanded', 'false');
+        }
+    });
+    watchlistCreateButton.addEventListener('click', async () => {
+        const name = watchlistNameInput.value.trim();
+        if (!name) return;
+        try {
+            const board = await requestWatchlist('/api/v1/test_api/watchlists', {
+                method: 'POST',
+                body: JSON.stringify({name}),
+            });
+            watchlists.push(board);
+            watchlistNameInput.value = '';
+            renderWatchlists();
+        } catch (error) {
+            alert(error.message);
+        }
+    });
+    watchlistNameInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') watchlistCreateButton.click();
+    });
+    loadWatchlists();
+
     document.querySelectorAll('#frequencyTabs .frequency-tab').forEach(button => {
         button.addEventListener('click', () => {
             if (button.classList.contains('active') || button.disabled) return;
@@ -487,6 +832,7 @@
     const currentFrequency = {{ frequency | tojson }};
     const currentMarket = {{ market | tojson }};
     const currentAssetClass = {{ asset_class | tojson }};
+    window.currentInstrumentId = {{ instrument_id | tojson }};
 
     console.log('收到的K线数据:', candleData.length);
     console.log('收到的笔数据:', biData.length);
