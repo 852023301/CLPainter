@@ -1204,7 +1204,7 @@
         let isSyncingTimeRange = false;
 
         function getInitialLogicalRange() {
-            const INITIAL_CANDLE_COUNT = 180;
+            const INITIAL_CANDLE_COUNT = 50;
             const lastIndex = Math.max(candleData.length - 1, 0);
             return {
                 from: Math.max(lastIndex - INITIAL_CANDLE_COUNT + 1, -1),

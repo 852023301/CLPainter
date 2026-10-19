@@ -189,6 +189,8 @@ def generate_zhongshu_from_xianduan(
             _xianduan_low_price(first_xian_duan),
             _xianduan_low_price(third_xian_duan),
         )
+        if zhongshu_high_price < zhongshu_low_price:
+            continue
 
         if last_zhongshu is None or (
             last_zhongshu.is_finished

@@ -172,3 +172,4 @@ ssh CL "tail -50 /root/CLPainter/web/backend/nohup.out"
 4. **浏览器验证需许可**: 仅在用户明确要求时使用浏览器验证。
 5. **Node REPL 编辑**: 含中文的文件始终通过 Node REPL 编辑，避免 PowerShell 编码问题。
 6. **Node REPL 持久性**: `const`/`let` 声明在调用间持久；如遇 "Identifier already declared"，使用 `mcp__node_repl__js_reset` 重置后重新声明，或改用 `var`。
+7. **只做必要的改动**： 尽量在不改变原本核心逻辑的前提下去做修改，若是原本的逻辑存在漏洞，需要仔细分析后向我描述漏洞，然后由我决定是否需要进一步修改
