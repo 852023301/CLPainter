@@ -475,14 +475,18 @@
     const zhongshuInXianduanData = {{ zhongshu_in_xianduan_data | safe }};
     const xianduanZhongshuData = {{ xianduan_zhongshu_data | safe }};
     const xianduanZhongshuAnotherData = {{ xianduan_zhongshu_another_data | safe }};
-    const gapsData = {{ gaps_data | safe }};
+    let gapsData = {{ gaps_data | safe }};
     const volumeData = {{ volume_data | safe }};
-        const macdData = {{ macd_data | safe }};  // {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
-        const maData = {{ ma_data | safe }};      // 后端计算的 MA 列表:   [{key, label, color, values:[{time,value}]}]
-        const bollData = {{ boll_data | safe }};  // 后端计算的 BOLL 列表: [{key, label, color, values:[{time,value}]}]
-        const rsiData = {{ rsi_data | safe }};    // 后端计算的 RSI 列表:  [{key, label, color, values:[{time,value}]}]
+        let macdData = {{ macd_data | safe }};  // {lines:[DIFF,DEA], stats:[per-bar], markers:[area]}
+        let maData = {{ ma_data | safe }};      // 后端计算的 MA 列表:   [{key, label, color, values:[{time,value}]}]
+        let bollData = {{ boll_data | safe }};  // 后端计算的 BOLL 列表: [{key, label, color, values:[{time,value}]}]
+        let rsiData = {{ rsi_data | safe }};    // 后端计算的 RSI 列表:  [{key, label, color, values:[{time,value}]}]
         const indicatorParams = {{ indicator_params | tojson }};
     const currentPrecision = {{ precision }};  // 当前精度
+    const currentSymbol = {{ symbol | tojson }};
+    const currentFrequency = {{ frequency | tojson }};
+    const currentMarket = {{ market | tojson }};
+    const currentAssetClass = {{ asset_class | tojson }};
 
     console.log('收到的K线数据:', candleData.length);
     console.log('收到的笔数据:', biData.length);
@@ -765,7 +769,48 @@
             return map;
         }
 
-        const maSeriesMap = buildOverlaySeries(maData, { visible: false });
+        const maSeriesMap = {};
+        const maPeriods = (indicatorParams.ma || {}).periods || [];
+        const chartModulePromises = {};
+
+        function fetchChartModule(module) {
+            chartModulePromises[module] = chartModulePromises[module] || fetch(
+                `/api/v1/test_api/lightweight_charts_module`
+                + `?symbol=${encodeURIComponent(currentSymbol)}`
+                + `&frequency=${encodeURIComponent(currentFrequency.replace('freq=', ''))}`
+                + `&market=${encodeURIComponent(currentMarket.replace('market=', ''))}`
+                + `&asset_class=${encodeURIComponent(currentAssetClass.replace('asset_class=', ''))}`
+                + `&module=${encodeURIComponent(module)}`
+            ).then(response => {
+                if (!response.ok) throw new Error(`图表模块加载失败: ${response.status}`);
+                return response.json();
+            });
+            return chartModulePromises[module];
+        }
+
+        function ensureMaSeries(item, visible) {
+            if (!item) return;
+            if (maSeriesMap[item.key]) {
+                maSeriesMap[item.key].applyOptions({ visible });
+                return;
+            }
+            fetchChartModule('ma').then(payload => {
+                const moduleData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data || [];
+                const moduleItem = moduleData.find(data => data.key === item.key);
+                if (!moduleItem || maSeriesMap[moduleItem.key]) return;
+                const series = chart.addLineSeries({
+                    color: moduleItem.color,
+                    lineWidth: 1,
+                    lastValueVisible: true,
+                    priceLineVisible: false,
+                    lineStyle: 0,
+                    crosshairMarkerVisible: true,
+                    visible,
+                });
+                series.setData(moduleItem.values);
+                maSeriesMap[moduleItem.key] = series;
+            }).catch(error => console.error(error));
+        }
 
         // 通用下拉控件: 点击触发器仅展开/收起(不改变显隐); 复选框控制单条显隐; 全选联动
         function setupIndicatorGroup(cfg) {
@@ -805,11 +850,12 @@
                 lbl.appendChild(dot);
                 lbl.appendChild(document.createTextNode(item.label));
                 itemsContainer.appendChild(lbl);
-                cfg.seriesMap[item.key].applyOptions({ visible });
+                if (cfg.seriesMap[item.key]) cfg.seriesMap[item.key].applyOptions({ visible });
 
                 cb.addEventListener('change', () => {
                     lsSetBool(cfg.prefix + item.key, cb.checked);
-                    cfg.seriesMap[item.key].applyOptions({ visible: cb.checked });
+                    if (cfg.seriesMap[item.key]) cfg.seriesMap[item.key].applyOptions({ visible: cb.checked });
+                    else if (cfg.prefix === 'ma:') ensureMaSeries(item, cb.checked);
                     syncSelectAll();
                 });
             });
@@ -818,7 +864,11 @@
                 boxes().forEach(b => {
                     b.checked = selectAll.checked;
                     lsSetBool(cfg.prefix + b.dataset.key, selectAll.checked);
-                    cfg.seriesMap[b.dataset.key].applyOptions({ visible: selectAll.checked });
+                    if (cfg.seriesMap[b.dataset.key]) cfg.seriesMap[b.dataset.key].applyOptions({ visible: selectAll.checked });
+                    else if (cfg.prefix === 'ma:') {
+                        const item = cfg.data.find(data => data.key === b.dataset.key);
+                        ensureMaSeries(item, selectAll.checked);
+                    }
                 });
             });
 
@@ -830,7 +880,11 @@
             dropdownId: 'maDropdown',
             itemsId: 'maItems',
             selectAllId: 'maSelectAll',
-            data: maData,
+            data: maPeriods.map((period, index) => ({
+                key: `MA${period}`,
+                label: `MA${period}`,
+                color: `hsl(${(index * 27) % 360},65%,45%)`,
+            })),
             seriesMap: maSeriesMap,
             prefix: 'ma:',
             defaultVisible: false,
@@ -918,9 +972,35 @@
         const DEFAULT_PANELS = ['macd', 'boll', 'rsi', 'volume'];
         INDICATOR_HEIGHT.macd = 180;
         const panels = [];  // 各面板运行时状态
+        let initialPanelsReady = false;
+
+        function updateIndicatorLookups() {
+            Object.keys(rsiLookup).forEach(key => delete rsiLookup[key]);
+            (rsiData[0] || { values: [] }).values.forEach(v => { rsiLookup[v.time] = v.value; });
+            Object.keys(macdLookup).forEach(key => delete macdLookup[key]);
+            Object.keys(macdStatLookup).forEach(key => delete macdStatLookup[key]);
+            (macdData.stats || []).forEach(s => {
+                macdLookup[s.time] = s.macd;
+                macdStatLookup[s.time] = s;
+            });
+        }
+
+        async function ensureIndicatorData(indicator) {
+            if (indicator === 'volume') return;
+            if (indicator === 'boll' && bollData.length) return;
+            if (indicator === 'rsi' && rsiData.length) return;
+            if (indicator === 'macd' && macdData.stats.length) return;
+            const payload = await fetchChartModule(indicator);
+            const moduleData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data;
+            if (indicator === 'boll') bollData = moduleData || [];
+            else if (indicator === 'rsi') rsiData = moduleData || [];
+            else if (indicator === 'macd') macdData = moduleData || { lines: [], stats: [], markers: [] };
+            updateIndicatorLookups();
+        }
 
         // 在指定面板上(重新)构建某指标的系列; 切换指标时先移除旧系列(含依附其上的价格线)
         function buildIndicator(meta, indicator) {
+            const build = async () => {
             const { chart, container, valueLabel } = meta;
             meta.addedSeries.forEach(s => { try { chart.removeSeries(s); } catch (e) {} });
             meta.addedSeries = [];
@@ -928,6 +1008,13 @@
             meta.lookup = {};
             meta.labelRenderer = null;
             valueLabel.style.display = 'none';
+
+            try {
+                await ensureIndicatorData(indicator);
+            } catch (error) {
+                console.error(`指标${indicator}加载失败:`, error);
+                return;
+            }
 
             const h = INDICATOR_HEIGHT[indicator] || 120;
             chart.applyOptions({ height: h });
@@ -959,10 +1046,10 @@
                 meta.addedSeries.push(cs);
                 meta.primarySeries = cs;
                 meta.lookup = bollLookup;
-                const lines = buildSubSeries(chart, bollData);
-                Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
                 const _bollMaps = {};
                 (bollData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _bollMaps[it.key] = m; });
+                const lines = buildSubSeries(chart, bollData);
+                Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
                 meta.labelRenderer = (t) => {
                     const vl = meta.valueLabel;
                     const upM = _bollMaps['BOLL_UP'], dnM = _bollMaps['BOLL_DOWN'];
@@ -1061,6 +1148,17 @@
             const lr = chart.timeScale().getVisibleLogicalRange();
             if (lr) meta.chart.timeScale().setVisibleLogicalRange(lr);
             else meta.chart.timeScale().fitContent();
+            };
+            build()
+                .catch(error => console.error(`面板${meta.idx + 1}渲染失败:`, error))
+                .finally(() => {
+                    meta.ready = true;
+                    meta.chart.timeScale().setVisibleLogicalRange(getInitialLogicalRange());
+                    if (panels.length === 4 && panels.every(panel => panel.ready)) {
+                        initialPanelsReady = true;
+                        applyInitialLogicalRange();
+                    }
+                });
         }
 
         // 初始化一个面板: 创建图表实例、填充下拉选项、绑定切换事件、构建初始指标
@@ -1085,7 +1183,7 @@
 
             select.addEventListener('change', () => {
                 lsSetString('panel:v3:' + idx, select.value);
-                buildIndicator(meta, select.value);
+            buildIndicator(meta, select.value);
             });
 
             buildIndicator(meta, initKey);
@@ -1105,8 +1203,24 @@
         const subChartList = panels.map(p => p.chart);
         let isSyncingTimeRange = false;
 
+        function getInitialLogicalRange() {
+            const INITIAL_CANDLE_COUNT = 180;
+            const lastIndex = Math.max(candleData.length - 1, 0);
+            return {
+                from: Math.max(lastIndex - INITIAL_CANDLE_COUNT + 1, -1),
+                to: lastIndex + 2,
+            };
+        }
+
+        function applyInitialLogicalRange() {
+            const initialLogicalRange = getInitialLogicalRange();
+            chart.timeScale().setVisibleLogicalRange(initialLogicalRange);
+            subChartList.forEach(sub => sub.timeScale().setVisibleLogicalRange(initialLogicalRange));
+        }
+
         function applyLogicalRange(logicalRange, source) {
             if (isSyncingTimeRange || !logicalRange) return;
+            if (source !== chart && !initialPanelsReady) return;
             isSyncingTimeRange = true;
             if (source !== chart) chart.timeScale().setVisibleLogicalRange(logicalRange);
             subChartList.filter(c => c !== source).forEach(c => c.timeScale().setVisibleLogicalRange(logicalRange));
@@ -1116,8 +1230,7 @@
         chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, chart));
         subChartList.forEach(sub => sub.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, sub)));
 
-        chart.timeScale().fitContent();
-        subChartList.forEach(sub => sub.timeScale().fitContent());
+        applyInitialLogicalRange();
 
         // 响应式宽度
         window.addEventListener('resize', () => {
@@ -1242,7 +1355,17 @@
             }));
         }
 
-        displayGapsWithMarkers(gapsData);
+        let gapPromise = null;
+
+        function ensureGapMarkers() {
+            gapPromise = gapPromise || fetchChartModule('gaps').then(payload => {
+                gapsData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data || [];
+                displayGapsWithMarkers(gapsData);
+                updateHighLowMarkers();
+                return gapsData;
+            });
+            return gapPromise;
+        }
 
         // 缺口显示开关
         const showGapsToggle = document.getElementById('showGapsToggle');
@@ -1251,7 +1374,11 @@
         showGapsToggle.checked = lsGetBool('gaps:visible', false);
         showGapsToggle.addEventListener('change', () => {
             lsSetBool('gaps:visible', showGapsToggle.checked);
-            updateHighLowMarkers();
+            if (showGapsToggle.checked && !gapMarkers.length) {
+                ensureGapMarkers().catch(error => console.error('缺口数据加载失败:', error));
+            } else {
+                updateHighLowMarkers();
+            }
 
 
         

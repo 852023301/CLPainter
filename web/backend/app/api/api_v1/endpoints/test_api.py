@@ -1,5 +1,6 @@
 import gzip
 import hashlib
+import json
 import logging
 import re
 from pathlib import Path
@@ -28,6 +29,13 @@ _SIMPLE_VALUE_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 _SIMPLE_FREQUENCIES = frozenset(key.removeprefix("freq=") for key in SUPPORTED_CHART_FREQUENCIES)
 _SEARCH_LIMIT = 20
 _TEMPLATE_PATH = Path(settings.APP_DIR) / "templates" / "lightweight_charts_demo.html"
+_LAZY_MODULES = {
+    "ma": "ma_data",
+    "gaps": "gaps_data",
+    "boll": "boll_data",
+    "rsi": "rsi_data",
+    "macd": "macd_data",
+}
 
 
 def _normalize_frequency(value: str) -> str:
@@ -187,6 +195,38 @@ async def lightweight_charts_demo(
     return HTMLResponse(content=html_content, headers=common_headers)
 
 
+@router.get("/lightweight_charts_module")
+async def lightweight_charts_module(
+    symbol: str,
+    frequency: str,
+    market: str,
+    asset_class: str,
+    module: str,
+):
+    """按需返回指标模块，减少首屏HTML体积。"""
+    try:
+        frequency_key = _normalize_frequency(frequency)
+        market_key = _normalize_directory_value(market, "market=", "市场")
+        asset_class_key = _normalize_directory_value(asset_class, "asset_class=", "资产类别")
+        field = _LAZY_MODULES.get(module)
+        if field is None:
+            raise ValueError(f"不支持的图表模块: {module}")
+        payload = await run_in_threadpool(
+            load_chart_payload, symbol, frequency_key, market_key, asset_class_key
+        )
+        if field not in payload:
+            raise ValueError(f"图表缓存缺少模块字段: {field}")
+        return Response(
+            content=json.dumps({"module": module, "data": payload[field]}),
+            media_type="application/json",
+            headers={"Cache-Control": "no-store"},
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
 @lru_cache(maxsize=16)
 def _build_lightweight_charts_page(
     symbol: str,
@@ -199,9 +239,21 @@ def _build_lightweight_charts_page(
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency, market, asset_class)
+    payload = {
+        key: value
+        for key, value in payload.items()
+        if key not in _LAZY_MODULES.values()
+    }
+    payload.setdefault("ma_data", "[]")
+    payload.setdefault("gaps_data", "[]")
+    payload.setdefault("boll_data", "[]")
+    payload.setdefault("rsi_data", "[]")
+    payload.setdefault("macd_data", "{\"lines\":[],\"stats\":[],\"markers\":[]}")
     payload.setdefault("change_data", "[]")
     payload["frequency"] = frequency
     payload["symbol"] = symbol
+    payload["market"] = market
+    payload["asset_class"] = asset_class
     payload["frequency_options"] = [
         {
             "value": value,
