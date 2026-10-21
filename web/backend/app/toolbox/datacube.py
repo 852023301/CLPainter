@@ -259,7 +259,7 @@ class _DataCache:
                 self._bi_zhongshu_in_xianduan_list,
             )
 
-        if len(self._xianduan_list) > 5:
+        if len(self._xianduan_list) >= 4:
             self._xianduan_zhongshu_list = generate_zhongshu_from_xianduan(self._xianduan_list)
 
         self._xianduan_tezhengxulie_list = generate_xianduan_tezheng_xu_lie(self._xianduan_list)

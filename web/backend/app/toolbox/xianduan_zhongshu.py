@@ -239,7 +239,66 @@ def generate_zhongshu_from_xianduan(
         last_zhongshu.extend(last_xian_duan)
         last_zhongshu.set_finished()
 
+    if not zhongshu_list and xianduan_idx_start is None and xianduan_idx_end is None:
+        opening_zhongshu = _opening_xianduan_zhongshu(xian_duan_list)
+        if opening_zhongshu is not None:
+            zhongshu_list.append(opening_zhongshu)
+
     return zhongshu_list
+
+
+def _opening_xianduan_zhongshu(xian_duan_list: List[XianDuanBase]) -> Optional[XianDuanZhongShu]:
+    """常规五段确认失败时，补图表开头由离开段确认的第一段中枢。
+
+    线段数量通常远少于笔。前三段已经重叠、第四段仍落在重叠区间内时，
+    前面没有进入段也不能把这个中枢丢掉。已有中枢的结果不走这里。
+    """
+    if len(xian_duan_list) < 4:
+        return None
+
+    first_xian_duan = xian_duan_list[0]
+    third_xian_duan = xian_duan_list[2]
+    exit_xian_duan = xian_duan_list[3]
+    zhongshu_high_price = min(
+        _xianduan_high_price(first_xian_duan),
+        _xianduan_high_price(third_xian_duan),
+    )
+    zhongshu_low_price = max(
+        _xianduan_low_price(first_xian_duan),
+        _xianduan_low_price(third_xian_duan),
+    )
+    if zhongshu_high_price < zhongshu_low_price:
+        return None
+    if not (
+        _xianduan_high_price(exit_xian_duan) >= zhongshu_low_price
+        and _xianduan_low_price(exit_xian_duan) <= zhongshu_high_price
+    ):
+        return None
+
+    zhongshu = XianDuanZhongShu(
+        start_xianduan_idx=0,
+        end_xianduan_idx=2,
+        xian_duan_list=xian_duan_list,
+    )
+    for idx in range(3, len(xian_duan_list)):
+        current_xian_duan = xian_duan_list[idx]
+        if zhongshu.is_in_zhongshu(
+            _xianduan_high_price(current_xian_duan),
+            _xianduan_low_price(current_xian_duan),
+        ):
+            continue
+        reference_xian_duan = xian_duan_list[idx - 3]
+        if current_xian_duan.is_up() == reference_xian_duan.is_up():
+            stop_idx = idx - 2
+        else:
+            stop_idx = idx - 1
+        zhongshu.extend(xian_duan_list[stop_idx])
+        zhongshu.set_finished()
+        return zhongshu
+
+    zhongshu.extend(xian_duan_list[-1])
+    zhongshu.set_finished()
+    return zhongshu
 
 
 def generate_xianduan_zhongshu_another(

@@ -1755,6 +1755,53 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         fake_xianduan.right_tzxl = left_xianduan.right_tzxl
         return fake_xianduan if fake_xianduan.has_enough_bi() else left_xianduan
 
+    def _extend_confirmed_segment_past_penetrated_tail(segment: XianDuan) -> XianDuan:
+        """尾段被更极值的同向特征序列穿透时，把已确认线段延到新的极值终点。
+
+        只接受延伸后自身仍然成立、且新尾段不再被反向笔穿透的终点。
+        这样不会退回“取最后一个完成分界”而把中间已成立的反向段吞掉。
+        """
+        current = segment
+        while isinstance(current, XianDuan) and current.left_tzxl is not None:
+            tail = make_fake_last_after_xianduan(current)
+            if tail is None or not _range_breaks_start(tail.start_bi_idx, tail.end_bi_idx, tail.is_up()):
+                return current
+
+            replacement: Optional[XianDuan] = None
+            for tzxl in tzxl_list:
+                if tzxl.start_time <= current.end_time or tzxl.start_time > tail.end_time:
+                    continue
+                if current.is_up():
+                    endpoint_is_more_extreme = _price_is_more_extreme(
+                        float(tzxl.start_price), float(current.end_price), True
+                    )
+                    if not tzxl.is_top() or not endpoint_is_more_extreme:
+                        continue
+                elif not tzxl.is_bottom() or not _price_is_more_extreme(
+                    float(tzxl.start_price), float(current.end_price), False
+                ):
+                    continue
+
+                extended = XianDuan.from_tzxl(current.left_tzxl, tzxl, bi_list)
+                if not extended.is_finished or _range_breaks_start(
+                    extended.start_bi_idx, extended.end_bi_idx, extended.is_up()
+                ):
+                    continue
+                extended_tail = make_fake_last_after_xianduan(extended)
+                if extended_tail is None or not extended_tail.has_enough_bi():
+                    continue
+                if _range_breaks_start(extended_tail.start_bi_idx, extended_tail.end_bi_idx, extended_tail.is_up()):
+                    continue
+                if replacement is None or _price_is_more_extreme(
+                    float(extended.end_price), float(replacement.end_price), extended.is_up()
+                ):
+                    replacement = extended
+
+            if replacement is None:
+                return current
+            current = replacement
+        return current
+
     def find_confirmed_xianduan_pair() -> List[XianDuanBase]:
         """主流程无结果时，寻找最早的已确认线段并补齐末尾假线段。"""
         for left_idx in range(len(tzxl_list)):
@@ -1776,6 +1823,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             if best_split_idx is None or best_left_xianduan is None:
                 continue
 
+            best_left_xianduan = _extend_confirmed_segment_past_penetrated_tail(best_left_xianduan)
             fake_last_xianduan = make_fake_last_after_xianduan(best_left_xianduan)
             if fake_last_xianduan is not None:
                 fake_first_xianduan = make_fake_first_before_xianduan(best_left_xianduan)
