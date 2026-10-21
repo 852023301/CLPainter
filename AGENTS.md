@@ -2,6 +2,25 @@
 
 本文档为 AI 代理在 CLPainter 项目中工作提供指南。仅保留与本项目相关的部分。
 
+## 硬门禁
+
+修改 `web/backend/app/toolbox/` 下的 Python 代码后，任务没有完成。必须用本次修改之后新启动的全量 `web/backend/scripts/dump_stock_caches.py` 跑完，并同时满足下面三条，才允许说“已确认”：
+
+- 进程退出码为 0。
+- 日志中没有 `导出失败`、`Traceback` 或其他未捕获异常。
+- 没有飞书失败汇总。脚本只在存在失败时发送飞书；只要发出失败汇总，本次即未通过。
+
+以下情况都不能代替这次全量运行，也不能据此声称已确认：已有 dump 进程仍在运行、只复算了部分标的或周期、远程服务还没部署、用户已经说“修改”。用户明确要求修改时可以直接改代码，但全量 dump 未通过前只能报告“已改、未确认”。
+
+全量运行必须覆盖源目录中的全部频率、市场和资产类别，不能加 `--frequency`、`--market`、`--asset-class` 或 `--symbol` 缩小范围。用独立会话启动，避免命令结束后进程被一起杀掉：
+
+```bash
+cd CLPainter/web/backend
+setsid env PYTHONUNBUFFERED=1 PYTHONPATH="$(cd ../../.. && pwd)" python -u scripts/dump_stock_caches.py > /tmp/clpainter_dump_full.log 2>&1 < /dev/null &
+```
+
+只改文档、前端模板或注释，不改 Python 计算代码时，不要求跑全量 dump。
+
 ## 项目概述
 
 CLPainter 是一个基于缠论的 K 线画线与指标可视化项目（CL 画线）。
@@ -127,7 +146,7 @@ fs.writeFileSync(path, content, 'utf8');
 - **均线颜色**: `calculate_ma_colors`，基于周期种子生成确定性颜色
 - **BOLL (26, 2)**: `calculate_boll_indicator`
 - **RSI (6, 12, 24)**: `calculate_rsi_indicator`
-- **MACD (10, 21, 7)**: `calculate_macd_indicator`（含变色柱、面积、连增统计等完整特性）
+- **MACD (12, 26, 9)**: `calculate_macd_indicator`（含变色柱、面积、连增统计等完整特性）
 
 所有指标在后端计算，前端仅负责渲染。
 
@@ -172,6 +191,6 @@ ssh CL "tail -50 /root/CLPainter/web/backend/nohup.out"
 4. **浏览器验证需许可**: 仅在用户明确要求时使用浏览器验证。
 5. **Node REPL 编辑**: 含中文的文件始终通过 Node REPL 编辑，避免 PowerShell 编码问题。
 6. **Node REPL 持久性**: `const`/`let` 声明在调用间持久；如遇 "Identifier already declared"，使用 `mcp__node_repl__js_reset` 重置后重新声明，或改用 `var`。
-7. **只做必要的改动**： 尽量在不改变原本核心逻辑的前提下去做修改，若是原本的逻辑存在漏洞，需要仔细分析后向我描述漏洞，然后由我决定是否需要进一步修改
+7. **只做必要的改动**： 尽量在不改变原本核心逻辑的前提下去做修改。用户没有明确要求修改时，先描述漏洞和影响范围，等用户决定后再改。用户已经明确要求修改时可以直接改，但全量 dump 未通过前不得声称已经确认。
 8. **避免个案式修复**：修改笔、线段等缠论核心逻辑时，不要针对单个标的持续叠加特判；应逐个收紧 queue-gap、fallback、endpoint-repair 等兜底启发式的触发条件、边界和停止条件，优先消除上游划分错误。
-9. **稳扎稳打**： 每修改一次，都要调用现有脚本（例如dump_stock_caches.py）做测试，确认不会对现有的其他频率、其他市场、其他标的种类造成影响，才能确认修改
+9. **稳扎稳打**： 每次修改 `web/backend/app/toolbox/` 下的 Python 代码后，都必须按文首硬门禁全量运行 `dump_stock_caches.py`。退出码为 0，日志没有导出失败或 Traceback，也没有飞书失败汇总，才算没有影响其他频率、市场和资产类别。
