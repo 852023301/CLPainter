@@ -2143,9 +2143,17 @@
                     <div><span class="label">涨幅:</span><span class="value ${changeClass}">${sign}${changeInfo.change_pct.toFixed(2)}%</span></div>
                 `;
             }
+            const lastCandle = candleData[candleData.length - 1];
+            let toLastHtml = '';
+            if (lastCandle && data.close) {
+                const toLastPct = (lastCandle.close - data.close) / data.close * 100;
+                const toLastClass = toLastPct >= 0 ? 'up' : 'down';
+                const toLastSign = toLastPct >= 0 ? '+' : '';
+                toLastHtml = `<span class="value ${toLastClass}">距今${toLastSign}${toLastPct.toFixed(2)}%</span>`;
+            }
 
            tooltip.innerHTML = `
-                    <div><span class="label">日期:</span><span class="value">${formatDateTime(param.time)}</span></div>
+                    <div><span class="label">日期:</span><span class="value">${formatDateTime(param.time)}</span>${toLastHtml}</div>
                     <div><span class="label">开盘:</span><span class="value ${priceClass}">${open}</span></div>
                     <div><span class="label">最高:</span><span class="value ${priceClass}">${high}</span></div>
                     <div><span class="label">最低:</span><span class="value ${priceClass}">${low}</span></div>
