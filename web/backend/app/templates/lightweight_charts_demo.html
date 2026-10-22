@@ -492,6 +492,72 @@
             border: 1px solid #e6e6e6;
         }
 
+        .range-box {
+            position: absolute;
+            z-index: 4;
+            box-sizing: border-box;
+            border: 1px dashed #e64545;
+            background: rgba(230, 69, 69, 0.12);
+            pointer-events: none;
+        }
+
+        .range-popup {
+            position: absolute;
+            z-index: 1500;
+            width: 236px;
+            padding: 8px 10px 10px;
+            border: 1px solid #e6e6e6;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.97);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+            color: #222;
+            font-size: 12px;
+        }
+
+        .range-popup[hidden],
+        .range-box[hidden] {
+            display: none;
+        }
+
+        .range-popup-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .range-popup-close {
+            border: 0;
+            background: transparent;
+            color: #666;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .range-stat {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 2px 0;
+        }
+
+        .range-stat-label {
+            color: #777;
+        }
+
+        .range-stat-value {
+            font-weight: 600;
+        }
+
+        .range-popup .up {
+            color: #ef5350;
+        }
+
+        .range-popup .down {
+            color: #26a69a;
+        }
+
         .volume-container {
             width: 100%;
             height: 150px;
@@ -2274,6 +2340,249 @@
 
         // 初始标注
         updateHighLowMarkers();
+
+        // 右键画框，统计框选时间范围内的K线
+        const rangeBox = document.createElement('div');
+        rangeBox.className = 'range-box';
+        rangeBox.hidden = true;
+        const rangePopup = document.createElement('div');
+        rangePopup.className = 'range-popup';
+        rangePopup.hidden = true;
+        chartContainer.append(rangeBox, rangePopup);
+
+        const rangeDrag = { active: false, x: 0, y: 0 };
+        let rangeSelection = null;
+        let rangeStatsToken = 0;
+
+        const chartPoint = event => {
+            const bounds = chartContainer.getBoundingClientRect();
+            return {
+                x: Math.max(0, Math.min(chartContainer.clientWidth, event.clientX - bounds.left)),
+                y: Math.max(0, Math.min(chartContainer.clientHeight, event.clientY - bounds.top)),
+            };
+        };
+
+        const paintRangeBox = (x1, y1, x2, y2) => {
+            rangeBox.style.left = Math.min(x1, x2) + 'px';
+            rangeBox.style.top = Math.min(y1, y2) + 'px';
+            rangeBox.style.width = Math.max(1, Math.abs(x2 - x1)) + 'px';
+            rangeBox.style.height = Math.max(1, Math.abs(y2 - y1)) + 'px';
+            rangeBox.hidden = false;
+        };
+
+        const clearRangeSelection = () => {
+            rangeStatsToken += 1;
+            rangeSelection = null;
+            rangeBox.hidden = true;
+            rangePopup.hidden = true;
+            rangePopup.innerHTML = '';
+        };
+
+        const placeRangePopup = () => {
+            rangePopup.hidden = false;
+            const popupWidth = rangePopup.offsetWidth;
+            const popupHeight = rangePopup.offsetHeight;
+            let left = 8;
+            let top = 8;
+            if (!rangeBox.hidden) {
+                left = rangeBox.offsetLeft + rangeBox.offsetWidth + 8;
+                top = rangeBox.offsetTop;
+                if (left + popupWidth > chartContainer.clientWidth - 8) {
+                    left = rangeBox.offsetLeft - popupWidth - 8;
+                }
+                if (left < 8) left = 8;
+                if (top + popupHeight > chartContainer.clientHeight - 8) {
+                    top = chartContainer.clientHeight - popupHeight - 8;
+                }
+                if (top < 8) top = 8;
+            }
+            rangePopup.style.left = left + 'px';
+            rangePopup.style.top = top + 'px';
+        };
+
+        const layoutRangeBox = () => {
+            if (!rangeSelection) return;
+            const x1 = chart.timeScale().logicalToCoordinate(rangeSelection.from);
+            const x2 = chart.timeScale().logicalToCoordinate(rangeSelection.to);
+            const y1 = candlestickSeries.priceToCoordinate(rangeSelection.priceTop);
+            const y2 = candlestickSeries.priceToCoordinate(rangeSelection.priceBottom);
+            if (x1 == null || x2 == null || y1 == null || y2 == null) {
+                rangeBox.hidden = true;
+            } else {
+                const spacing = chart.timeScale().options().barSpacing || 0;
+                paintRangeBox(Math.min(x1, x2) - spacing / 2, y1, Math.max(x1, x2) + spacing / 2, y2);
+            }
+            if (!rangePopup.hidden) placeRangePopup();
+        };
+
+        const logicalIndex = logical => {
+            if (logical == null || Number.isNaN(logical)) return null;
+            return Math.max(0, Math.min(candleData.length - 1, Math.round(logical)));
+        };
+
+        const appendStat = (parent, label, value, className) => {
+            const row = document.createElement('div');
+            row.className = 'range-stat';
+            const name = document.createElement('span');
+            name.className = 'range-stat-label';
+            name.textContent = label;
+            const number = document.createElement('span');
+            number.className = 'range-stat-value' + (className ? ' ' + className : '');
+            number.textContent = value;
+            row.append(name, number);
+            parent.appendChild(row);
+        };
+
+        const showRangeStats = async (from, to, priceTop, priceBottom) => {
+            const token = ++rangeStatsToken;
+            if (!(macdData.stats || []).length) {
+                try {
+                    await ensureIndicatorData('macd');
+                } catch (error) {
+                    console.error('MACD数据加载失败:', error);
+                }
+            }
+            if (token !== rangeStatsToken) return;
+            const start = Math.min(from, to);
+            const end = Math.max(from, to);
+            const bars = candleData.slice(start, end + 1);
+            rangePopup.innerHTML = '';
+            const header = document.createElement('div');
+            header.className = 'range-popup-header';
+            const title = document.createElement('span');
+            title.textContent = '区间统计';
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'range-popup-close';
+            closeButton.textContent = '×';
+            closeButton.title = '关闭';
+            closeButton.addEventListener('click', event => {
+                event.stopPropagation();
+                clearRangeSelection();
+            });
+            header.append(title, closeButton);
+            rangePopup.appendChild(header);
+
+            if (!bars.length) {
+                appendStat(rangePopup, '结果', '范围内没有K线');
+            } else {
+                const first = bars[0];
+                const last = bars[bars.length - 1];
+                const startPrice = first.open;
+                const endPrice = last.close;
+                let high = first.high;
+                let low = first.low;
+                let bullish = 0;
+                let bearish = 0;
+                let flat = 0;
+                let volume = 0;
+                bars.forEach(bar => {
+                    if (bar.high > high) high = bar.high;
+                    if (bar.low < low) low = bar.low;
+                    if (bar.close.toFixed(currentPrecision) === bar.open.toFixed(currentPrecision)) flat += 1;
+                    else if (bar.close > bar.open) bullish += 1;
+                    else bearish += 1;
+                    volume += volumeLookup[bar.time] || 0;
+                });
+                const change = endPrice - startPrice;
+                const changePct = startPrice ? change / startPrice * 100 : 0;
+                const amplitude = startPrice ? (high - low) / startPrice * 100 : 0;
+                const changeClass = change > 0 ? 'up' : change < 0 ? 'down' : '';
+                const signed = value => (value > 0 ? '+' : '') + value.toFixed(currentPrecision);
+                const signedPct = value => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+                appendStat(rangePopup, '开始时间', formatDateTime(first.time));
+                appendStat(rangePopup, '结束时间', formatDateTime(last.time));
+                appendStat(rangePopup, '起始价', startPrice.toFixed(currentPrecision));
+                appendStat(rangePopup, '终止价', endPrice.toFixed(currentPrecision));
+                appendStat(rangePopup, '周期个数', String(bars.length));
+                appendStat(rangePopup, '最高价', high.toFixed(currentPrecision));
+                appendStat(rangePopup, '最低价', low.toFixed(currentPrecision));
+                appendStat(rangePopup, '涨跌值', signed(change), changeClass);
+                appendStat(rangePopup, '涨跌幅', signedPct(changePct), changeClass);
+                appendStat(rangePopup, '振幅', amplitude.toFixed(2) + '%');
+                appendStat(rangePopup, '总成交量', formatVolume(volume));
+                appendStat(rangePopup, '平线数量', String(flat));
+                appendStat(rangePopup, '阳线数量', String(bullish));
+                appendStat(rangePopup, '阴线数量', String(bearish));
+                let redArea = 0;
+                let greenArea = 0;
+                let hasMacd = false;
+                bars.forEach(bar => {
+                    const stat = macdStatLookup[bar.time];
+                    if (!stat || typeof stat.macd !== 'number') return;
+                    hasMacd = true;
+                    const area = stat.macd * 100;
+                    if (area > 0) redArea += area;
+                    else if (area < 0) greenArea += area;
+                });
+                if (!hasMacd) {
+                    appendStat(rangePopup, '阳柱面积', '—');
+                    appendStat(rangePopup, '阴柱面积', '—');
+                } else {
+                    appendStat(rangePopup, '阳柱面积', (redArea > 0 ? '+' : '') + redArea.toFixed(1), redArea > 0 ? 'up' : '');
+                    appendStat(rangePopup, '阴柱面积', greenArea.toFixed(1), greenArea < 0 ? 'down' : '');
+                }
+                if (priceTop == null || priceBottom == null) {
+                    priceTop = high;
+                    priceBottom = low;
+                }
+            }
+
+            rangeSelection = bars.length ? { from: start, to: end, priceTop, priceBottom } : null;
+            layoutRangeBox();
+            placeRangePopup();
+        };
+
+        chartContainer.addEventListener('contextmenu', event => event.preventDefault());
+        chartContainer.addEventListener('mousedown', event => {
+            if (event.button !== 2 || event.target.closest('.range-popup')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const point = chartPoint(event);
+            rangeDrag.active = true;
+            rangeStatsToken += 1;
+            rangeDrag.x = point.x;
+            rangeDrag.y = point.y;
+            rangePopup.hidden = true;
+            paintRangeBox(point.x, point.y, point.x, point.y);
+        }, true);
+        window.addEventListener('mousemove', event => {
+            if (!rangeDrag.active) return;
+            event.preventDefault();
+            const point = chartPoint(event);
+            paintRangeBox(rangeDrag.x, rangeDrag.y, point.x, point.y);
+        });
+        window.addEventListener('mouseup', event => {
+            if (!rangeDrag.active) {
+                if (rangeSelection) layoutRangeBox();
+                return;
+            }
+            rangeDrag.active = false;
+            const point = chartPoint(event);
+            const moved = Math.hypot(point.x - rangeDrag.x, point.y - rangeDrag.y);
+            if (moved < 4) {
+                clearRangeSelection();
+                return;
+            }
+            const from = logicalIndex(chart.timeScale().coordinateToLogical(Math.min(rangeDrag.x, point.x)));
+            const to = logicalIndex(chart.timeScale().coordinateToLogical(Math.max(rangeDrag.x, point.x)));
+            if (from == null || to == null) {
+                clearRangeSelection();
+                return;
+            }
+            const priceA = candlestickSeries.coordinateToPrice(rangeDrag.y);
+            const priceB = candlestickSeries.coordinateToPrice(point.y);
+            const priceTop = priceA == null || priceB == null ? null : Math.max(priceA, priceB);
+            const priceBottom = priceA == null || priceB == null ? null : Math.min(priceA, priceB);
+            showRangeStats(from, to, priceTop, priceBottom);
+        });
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutRangeBox());
+        chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutRangeBox), { passive: true });
+        window.addEventListener('resize', () => layoutRangeBox());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') clearRangeSelection();
+        });
+        rangePopup.addEventListener('mousedown', event => event.stopPropagation());
 
 
     }
