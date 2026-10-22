@@ -256,7 +256,7 @@
         }
 
         .watchlist-list-head {
-            padding: 6px 28px 6px 10px;
+            padding: 6px 48px 6px 10px;
             color: #888;
             font-size: 12px;
             background: #f7f8fa;
@@ -283,7 +283,7 @@
         }
 
         .watchlist-item-link {
-            padding: 7px 28px 7px 10px;
+            padding: 7px 48px 7px 10px;
             color: #222;
             font-size: 13px;
             text-decoration: none;
@@ -311,6 +311,107 @@
         .watchlist-item:hover .watchlist-remove,
         .watchlist-item.active .watchlist-remove {
             display: block;
+        }
+
+        .symbol-heading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .symbol-group-button,
+        .watchlist-group-button {
+            border: 1px solid #f0c2c2;
+            border-radius: 3px;
+            background: #fff;
+            color: #e64545;
+            cursor: pointer;
+        }
+
+        .symbol-group-button {
+            flex: 0 0 auto;
+            padding: 2px 8px;
+            font-size: 12px;
+        }
+
+        .watchlist-item .watchlist-group-button {
+            position: absolute;
+            top: 50%;
+            right: 24px;
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            transform: translateY(-50%);
+            font-size: 14px;
+            line-height: 16px;
+        }
+
+        .symbol-group-button:hover,
+        .watchlist-group-button:hover {
+            background: #fff2f2;
+        }
+
+        .group-picker {
+            position: fixed;
+            z-index: 4000;
+            width: 220px;
+            max-height: min(320px, calc(100vh - 16px));
+            overflow: auto;
+            padding: 8px 10px;
+            border: 1px solid #e6e6e6;
+            border-radius: 4px;
+            background: #fff;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+        }
+
+        .group-picker[hidden] {
+            display: none;
+        }
+
+        .group-picker-title {
+            margin-bottom: 6px;
+            color: #222;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .group-picker-list label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 0;
+            color: #333;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .group-picker-list label:has(input:disabled) {
+            color: #999;
+            cursor: default;
+        }
+
+        .group-picker-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .group-picker-confirm {
+            padding: 4px 10px;
+            border: 0;
+            border-radius: 3px;
+            background: #e64545;
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .group-picker-confirm:disabled {
+            background: #ccc;
+            cursor: not-allowed;
         }
 
         .watchlist-empty {
@@ -620,7 +721,10 @@
     </aside>
     <main class="workspace">
     <div class="workspace-header">
-        <h1>{{ instrument_display_name }} {{ symbol }}</h1>
+        <div class="symbol-heading">
+            <h1>{{ instrument_display_name }} {{ symbol }}</h1>
+            <button type="button" id="symbolGroupButton" class="symbol-group-button" title="加入已有分组">加入分组</button>
+        </div>
         <div class="instrument-search">
             <input type="search"
                    id="instrumentSearchInput"
@@ -866,7 +970,133 @@
         requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     };
 
+    const groupPicker = document.createElement('div');
+    groupPicker.className = 'group-picker';
+    groupPicker.hidden = true;
+    document.body.appendChild(groupPicker);
+
+    const closeGroupPicker = () => {
+        groupPicker.hidden = true;
+    };
+
+    const openGroupPicker = (anchor, instrumentId, displayName) => {
+        if (instrumentId == null) return;
+        groupPicker.innerHTML = '';
+        const title = document.createElement('div');
+        title.className = 'group-picker-title';
+        title.textContent = `调整${displayName}的分组`;
+        groupPicker.appendChild(title);
+        const hint = document.createElement('div');
+        hint.className = 'watchlist-empty';
+        hint.textContent = '勾选加入，取消勾选则移出';
+        groupPicker.appendChild(hint);
+
+        if (!watchlists.length) {
+            const empty = document.createElement('div');
+            empty.className = 'watchlist-empty';
+            empty.textContent = '还没有分组，请先新建';
+            groupPicker.appendChild(empty);
+        } else {
+            const memberOf = new Set(watchlists.filter(board => board.items.some(
+                candidate => String(candidate.instrument_id) === String(instrumentId)
+            )).map(board => board.id));
+            const list = document.createElement('div');
+            list.className = 'group-picker-list';
+            watchlists.forEach(board => {
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = String(board.id);
+                const already = memberOf.has(board.id);
+                checkbox.checked = already;
+                checkbox.dataset.original = already ? '1' : '0';
+                const text = document.createElement('span');
+                text.textContent = board.name;
+                label.append(checkbox, text);
+                list.appendChild(label);
+            });
+            groupPicker.appendChild(list);
+
+            const actions = document.createElement('div');
+            actions.className = 'group-picker-actions';
+            const cancelButton = document.createElement('button');
+            cancelButton.type = 'button';
+            cancelButton.className = 'watchlist-action';
+            cancelButton.textContent = '取消';
+            cancelButton.addEventListener('click', closeGroupPicker);
+            const confirmButton = document.createElement('button');
+            confirmButton.type = 'button';
+            confirmButton.className = 'group-picker-confirm';
+            confirmButton.textContent = '确定';
+            const changedInputs = () => [...list.querySelectorAll('input')].filter(
+                input => (input.checked ? '1' : '0') !== input.dataset.original
+            );
+            const syncConfirm = () => {
+                confirmButton.disabled = changedInputs().length === 0;
+            };
+            list.addEventListener('change', syncConfirm);
+            syncConfirm();
+            confirmButton.addEventListener('click', async () => {
+                const changes = changedInputs();
+                if (!changes.length) return;
+                confirmButton.disabled = true;
+                try {
+                    for (const input of changes) {
+                        const boardId = Number(input.value);
+                        if (input.checked) {
+                            const payload = await requestWatchlist(`/api/v1/test_api/watchlists/${boardId}/items`, {
+                                method: 'POST',
+                                body: JSON.stringify({instrument_id: instrumentId}),
+                            });
+                            watchlists = watchlists.map(item => item.id === payload.id ? payload : item);
+                        } else {
+                            await requestWatchlist(
+                                `/api/v1/test_api/watchlists/${boardId}/items/${instrumentId}`,
+                                {method: 'DELETE'}
+                            );
+                            const board = watchlists.find(item => item.id === boardId);
+                            if (board) {
+                                board.items = board.items.filter(
+                                    candidate => String(candidate.instrument_id) !== String(instrumentId)
+                                );
+                            }
+                        }
+                    }
+                } catch (error) {
+                    alert(error.message);
+                }
+                renderWatchlists();
+            });
+            actions.append(cancelButton, confirmButton);
+            groupPicker.appendChild(actions);
+        }
+
+        groupPicker.hidden = false;
+        const rect = anchor.getBoundingClientRect();
+        let left = rect.right + 6;
+        if (left + 220 > window.innerWidth - 8) left = Math.max(8, rect.left - 226);
+        groupPicker.style.left = left + 'px';
+        groupPicker.style.top = Math.max(8, rect.top) + 'px';
+        const pickerRect = groupPicker.getBoundingClientRect();
+        if (pickerRect.bottom > window.innerHeight - 8) {
+            groupPicker.style.top = Math.max(8, window.innerHeight - pickerRect.height - 8) + 'px';
+        }
+    };
+
+    document.addEventListener('click', event => {
+        if (groupPicker.hidden) return;
+        if (event.target.closest('.group-picker, .watchlist-group-button, .symbol-group-button')) return;
+        closeGroupPicker();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeGroupPicker();
+    });
+    document.getElementById('symbolGroupButton').addEventListener('click', event => {
+        openGroupPicker(event.currentTarget, window.currentInstrumentId, document.querySelector('h1').textContent.trim());
+    });
+
     const renderWatchlists = () => {
+        closeGroupPicker();
         ensureSelectedBoard();
         if (selectedWatchlistBoardId != null) lsSetString('watchlist:boardId', String(selectedWatchlistBoardId));
         const board = currentBoard();
@@ -925,6 +1155,18 @@
             itemName.title = `${item.display_name} · ${item.asset_class}`;
             link.append(code, itemName);
 
+            const groupButton = document.createElement('button');
+            groupButton.type = 'button';
+            groupButton.className = 'watchlist-group-button';
+            groupButton.textContent = '+';
+            groupButton.title = '加入已有分组';
+            groupButton.setAttribute('aria-label', `把${item.display_name}加入分组`);
+            groupButton.addEventListener('click', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                openGroupPicker(groupButton, item.instrument_id, item.display_name);
+            });
+
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
             removeButton.className = 'watchlist-action watchlist-remove';
@@ -943,7 +1185,7 @@
                     alert(error.message);
                 }
             });
-            row.append(link, removeButton);
+            row.append(link, groupButton, removeButton);
             watchlistBoards.appendChild(row);
         });
         const activeRow = watchlistBoards.querySelector('.watchlist-item.active');
