@@ -136,13 +136,46 @@
         }
 
         .watchlist-panel {
+            position: relative;
             display: flex;
-            flex: 0 0 280px;
+            flex: 0 0 var(--watchlist-width, 280px);
             flex-direction: column;
-            width: 280px;
+            width: var(--watchlist-width, 280px);
             min-height: 0;
             background: #f7f8fa;
             border-right: 1px solid #e4e4e4;
+        }
+
+        .watchlist-resizer {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 6;
+            width: 6px;
+            height: 100%;
+            cursor: col-resize;
+            touch-action: none;
+        }
+
+        .watchlist-resizer::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 2px;
+            background: transparent;
+        }
+
+        .watchlist-resizer:hover::after,
+        .app-shell.watchlist-resizing .watchlist-resizer::after {
+            background: #e64545;
+        }
+
+        .app-shell.watchlist-resizing,
+        .app-shell.watchlist-resizing * {
+            cursor: col-resize !important;
+            user-select: none;
         }
 
         .watchlist-header {
@@ -473,6 +506,10 @@
             display: flex;
         }
 
+        .app-shell.watchlist-collapsed .watchlist-resizer {
+            display: none;
+        }
+
         .chart-toolbar {
             position: relative;
             z-index: 5;
@@ -727,7 +764,8 @@
             }
 
             .app-shell.watchlist-collapsed .watchlist-rail,
-            .watchlist-icon-button {
+            .watchlist-icon-button,
+            .watchlist-resizer {
                 display: none;
             }
 
@@ -784,6 +822,7 @@
             </div>
         </div>
         <button type="button" id="watchlistExpand" class="watchlist-rail" title="展开自选" aria-label="展开自选">自选</button>
+        <div id="watchlistResizer" class="watchlist-resizer" role="separator" aria-orientation="vertical" aria-label="调整自选栏宽度" title="拖动调整宽度"></div>
     </aside>
     <main class="workspace">
     <div class="workspace-header">
@@ -1003,6 +1042,10 @@
     let watchlists = [];
     let selectedWatchlistBoardId = null;
     appShell.classList.toggle('watchlist-collapsed', lsGetBool('watchlist:collapsed', false));
+    const savedWatchlistWidth = Number(lsGetString('watchlist:width', ''));
+    if (savedWatchlistWidth >= 160) {
+        appShell.style.setProperty('--watchlist-width', Math.round(savedWatchlistWidth) + 'px');
+    }
 
     const requestWatchlist = async (url, options = {}) => {
         const response = await fetch(url, {
@@ -1278,6 +1321,45 @@
         lsSetBool('watchlist:collapsed', false);
         syncChartWidth();
     });
+
+    const watchlistResizer = document.getElementById('watchlistResizer');
+    const watchlistMinWidth = 160;
+    let watchlistResize = null;
+    const clampWatchlistWidth = (width) => {
+        const maxWidth = Math.max(watchlistMinWidth, Math.min(640, window.innerWidth - 420));
+        return Math.round(Math.max(watchlistMinWidth, Math.min(maxWidth, width)));
+    };
+    const applyWatchlistWidth = (width) => {
+        const next = clampWatchlistWidth(width);
+        appShell.style.setProperty('--watchlist-width', next + 'px');
+        return next;
+    };
+    watchlistResizer.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || appShell.classList.contains('watchlist-collapsed')) return;
+        event.preventDefault();
+        watchlistResize = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startWidth: document.getElementById('watchlistPanel').getBoundingClientRect().width,
+        };
+        appShell.classList.add('watchlist-resizing');
+        watchlistResizer.setPointerCapture(event.pointerId);
+    });
+    watchlistResizer.addEventListener('pointermove', event => {
+        if (!watchlistResize || event.pointerId !== watchlistResize.pointerId) return;
+        applyWatchlistWidth(watchlistResize.startWidth + event.clientX - watchlistResize.startX);
+        syncChartWidth();
+    });
+    const finishWatchlistResize = event => {
+        if (!watchlistResize || (event && event.pointerId !== watchlistResize.pointerId)) return;
+        const width = applyWatchlistWidth(watchlistResize.startWidth + event.clientX - watchlistResize.startX);
+        watchlistResize = null;
+        appShell.classList.remove('watchlist-resizing');
+        lsSetString('watchlist:width', String(width));
+        syncChartWidth();
+    };
+    watchlistResizer.addEventListener('pointerup', finishWatchlistResize);
+    watchlistResizer.addEventListener('pointercancel', finishWatchlistResize);
     watchlistAddCurrent.addEventListener('click', async () => {
         const board = currentBoard();
         if (!board) return;
