@@ -289,7 +289,7 @@
         }
 
         .watchlist-list-head {
-            padding: 6px 48px 6px 18px;
+            padding: 6px 28px 6px 18px;
             color: #888;
             font-size: 12px;
             background: #f7f8fa;
@@ -316,7 +316,7 @@
         }
 
         .watchlist-item-link {
-            padding: 7px 48px 7px 18px;
+            padding: 15px 28px 15px 18px;
             color: #222;
             font-size: 13px;
             text-decoration: none;
@@ -385,35 +385,18 @@
             flex: 1;
         }
 
-        .symbol-group-button,
-        .watchlist-group-button {
+        .symbol-group-button {
+            flex: 0 0 auto;
+            padding: 2px 8px;
             border: 1px solid #f0c2c2;
             border-radius: 3px;
             background: #fff;
             color: #e64545;
+            font-size: 12px;
             cursor: pointer;
         }
 
-        .symbol-group-button {
-            flex: 0 0 auto;
-            padding: 2px 8px;
-            font-size: 12px;
-        }
-
-        .watchlist-item .watchlist-group-button {
-            position: absolute;
-            top: 50%;
-            right: 24px;
-            width: 18px;
-            height: 18px;
-            padding: 0;
-            transform: translateY(-50%);
-            font-size: 14px;
-            line-height: 16px;
-        }
-
-        .symbol-group-button:hover,
-        .watchlist-group-button:hover {
+        .symbol-group-button:hover {
             background: #fff2f2;
         }
 
@@ -1299,7 +1282,7 @@
 
     document.addEventListener('click', event => {
         if (groupPicker.hidden) return;
-        if (event.target.closest('.group-picker, .watchlist-group-button, .symbol-group-button')) return;
+        if (event.target.closest('.group-picker, .symbol-group-button')) return;
         closeGroupPicker();
     });
     document.addEventListener('keydown', event => {
@@ -1404,18 +1387,6 @@
             itemName.title = `${item.display_name} · ${item.asset_class}`;
             link.append(code, itemName);
 
-            const groupButton = document.createElement('button');
-            groupButton.type = 'button';
-            groupButton.className = 'watchlist-group-button';
-            groupButton.textContent = '+';
-            groupButton.title = '加入已有分组';
-            groupButton.setAttribute('aria-label', `把${item.display_name}加入分组`);
-            groupButton.addEventListener('click', event => {
-                event.preventDefault();
-                event.stopPropagation();
-                openGroupPicker(groupButton, item.instrument_id, item.display_name);
-            });
-
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
             removeButton.className = 'watchlist-action watchlist-remove';
@@ -1434,7 +1405,7 @@
                     alert(error.message);
                 }
             });
-            row.append(dragHandle, link, groupButton, removeButton);
+            row.append(dragHandle, link, removeButton);
             watchlistBoards.appendChild(row);
         });
         const activeRow = watchlistBoards.querySelector('.watchlist-item.active');
