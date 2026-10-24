@@ -37,7 +37,7 @@
 
         .workspace-header {
             position: relative;
-            z-index: 6;
+            z-index: 40;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -46,6 +46,8 @@
         }
 
         .workspace-scroll {
+            position: relative;
+            z-index: 1;
             display: flex;
             flex: 1;
             flex-direction: column;
@@ -316,7 +318,7 @@
         }
 
         .watchlist-item-link {
-            padding: 15px 28px 15px 18px;
+            padding: 15px 92px 15px 18px;
             color: #222;
             font-size: 13px;
             text-decoration: none;
@@ -362,6 +364,30 @@
             color: #555;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .watchlist-quote {
+            position: absolute;
+            top: 50%;
+            right: 22px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            color: #888;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.25;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .watchlist-quote.up {
+            color: #ef5350;
+        }
+
+        .watchlist-quote.down {
+            color: #26a69a;
         }
 
         .watchlist-remove {
@@ -527,15 +553,25 @@
         .chart-toolbar,
         .tool-toolbar {
             position: relative;
-            z-index: 5;
             display: flex;
             align-items: center;
             gap: 16px;
             margin: 0 12px 8px;
         }
 
+        .chart-toolbar {
+            z-index: 30;
+        }
+
         .tool-toolbar {
+            z-index: 20;
             gap: 8px;
+        }
+
+        #maDropdown,
+        #layerDropdown {
+            max-height: min(420px, calc(100vh - 180px));
+            overflow-y: auto;
         }
 
         .tool-label {
@@ -1387,6 +1423,21 @@
             itemName.title = `${item.display_name} · ${item.asset_class}`;
             link.append(code, itemName);
 
+            const quote = document.createElement('div');
+            quote.className = 'watchlist-quote';
+            if (item.change == null || item.change_pct == null) {
+                quote.textContent = '—';
+            } else {
+                const precision = Number.isInteger(item.price_precision) ? item.price_precision : 2;
+                const signed = (value, digits) => (value > 0 ? '+' : '') + Number(value).toFixed(digits);
+                quote.classList.add(item.change_pct > 0 ? 'up' : item.change_pct < 0 ? 'down' : 'flat');
+                const changeText = document.createElement('span');
+                changeText.textContent = signed(item.change, precision);
+                const percentText = document.createElement('span');
+                percentText.textContent = signed(item.change_pct, 2) + '%';
+                quote.append(changeText, percentText);
+            }
+
             const removeButton = document.createElement('button');
             removeButton.type = 'button';
             removeButton.className = 'watchlist-action watchlist-remove';
@@ -1405,7 +1456,7 @@
                     alert(error.message);
                 }
             });
-            row.append(dragHandle, link, removeButton);
+            row.append(dragHandle, link, quote, removeButton);
             watchlistBoards.appendChild(row);
         });
         const activeRow = watchlistBoards.querySelector('.watchlist-item.active');
@@ -1905,7 +1956,12 @@
             fetchChartModule('ma').then(payload => {
                 const moduleData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data || [];
                 const moduleItem = moduleData.find(data => data.key === item.key);
-                if (!moduleItem || maSeriesMap[moduleItem.key]) return;
+                if (!moduleItem) return;
+                const wanted = lsGetBool('ma:' + moduleItem.key, false);
+                if (maSeriesMap[moduleItem.key]) {
+                    maSeriesMap[moduleItem.key].applyOptions({ visible: wanted });
+                    return;
+                }
                 const series = chart.addLineSeries({
                     color: moduleItem.color,
                     lineWidth: 1,
@@ -1913,7 +1969,7 @@
                     priceLineVisible: false,
                     lineStyle: 0,
                     crosshairMarkerVisible: true,
-                    visible,
+                    visible: wanted,
                 });
                 series.setData(moduleItem.values);
                 maSeriesMap[moduleItem.key] = series;
@@ -1959,6 +2015,7 @@
                 lbl.appendChild(document.createTextNode(item.label));
                 itemsContainer.appendChild(lbl);
                 if (cfg.seriesMap[item.key]) cfg.seriesMap[item.key].applyOptions({ visible });
+                else if (cfg.prefix === 'ma:' && visible) ensureMaSeries(item, true);
 
                 cb.addEventListener('change', () => {
                     lsSetBool(cfg.prefix + item.key, cb.checked);
@@ -2496,17 +2553,16 @@
 
         // 应用缺口开关初始状态(从 localStorage 读回)
         showGapsToggle.checked = lsGetBool('gaps:visible', false);
-        showGapsToggle.addEventListener('change', () => {
+        const applyGapVisibility = () => {
             lsSetBool('gaps:visible', showGapsToggle.checked);
             if (showGapsToggle.checked && !gapMarkers.length) {
                 ensureGapMarkers().catch(error => console.error('缺口数据加载失败:', error));
             } else {
                 updateHighLowMarkers();
             }
-
-
-        
-        });
+        };
+        showGapsToggle.addEventListener('change', applyGapVisibility);
+        if (showGapsToggle.checked) applyGapVisibility();
 
 
         // ========== 可见范围最高/最低价标注 ==========

@@ -2,6 +2,7 @@ import gzip
 import hashlib
 import json
 import logging
+import pickle
 import re
 from pathlib import Path
 from functools import lru_cache
@@ -150,6 +151,48 @@ def _get_watchlist_board(session: Session, board_id: int) -> WatchlistBoard:
     return board
 
 
+@lru_cache(maxsize=512)
+def _read_daily_quote(path_str: str, mtime_ns: int) -> tuple[float | None, float | None]:
+    """读取日线最后一根相对前收的涨跌和涨跌幅。"""
+    with open(path_str, "rb") as file:
+        rows = pickle.load(file)
+    if not rows or len(rows[-1]) < 3:
+        return None, None
+    close = float(rows[-1][2])
+    if len(rows) < 2 or len(rows[-2]) < 3:
+        return 0.0, 0.0
+    previous_close = float(rows[-2][2])
+    if previous_close == 0:
+        return 0.0, 0.0
+    change = close - previous_close
+    return change, change / previous_close * 100
+
+
+def _latest_daily_quote(instrument: Instrument) -> dict:
+    """返回标的日线最后一根的涨跌；没有数据时字段为空。"""
+    path = (
+        Path(settings.DATA_DIR)
+        / "freq=1day"
+        / f"market={instrument.market}"
+        / f"asset_class={instrument.asset_class}"
+        / f"{instrument.code}.pkl"
+    )
+    empty = {"change": None, "change_pct": None, "price_precision": instrument.price_precision}
+    if not path.is_file():
+        return empty
+    try:
+        change, change_pct = _read_daily_quote(str(path), path.stat().st_mtime_ns)
+    except (OSError, pickle.PickleError, EOFError, ValueError, IndexError, TypeError):
+        return empty
+    if change is None or change_pct is None:
+        return empty
+    return {
+        "change": round(change, instrument.price_precision),
+        "change_pct": round(change_pct, 2),
+        "price_precision": instrument.price_precision,
+    }
+
+
 def _serialize_watchlist_board(session: Session, board: WatchlistBoard) -> dict:
     items = session.execute(
         select(WatchlistItem, Instrument)
@@ -169,6 +212,7 @@ def _serialize_watchlist_board(session: Session, board: WatchlistBoard) -> dict:
                 "display_name": instrument.display_name,
                 "market": instrument.market,
                 "asset_class": instrument.asset_class,
+                **_latest_daily_quote(instrument),
                 "url": (
                     "/api/v1/test_api/lightweight_charts_demo?"
                     + urlencode(
