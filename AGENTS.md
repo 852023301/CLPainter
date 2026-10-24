@@ -23,6 +23,15 @@ setsid env PYTHONUNBUFFERED=1 PYTHONPATH="$(cd ../../.. && pwd)" python -u scrip
 
 只改文档、前端模板或注释，不改 Python 计算代码时，不要求跑全量 dump。
 
+修改 `web/backend/app/templates/lightweight_charts_demo.html` 后，任务没有完成。必须运行：
+
+```bash
+cd CLPainter/web/backend
+python -m unittest tests.test_frontend_template
+```
+
+退出码为 0 才允许说前端检查通过。这个测试锁定已经交付的交互：脚本能解析、自选栏与测量工具还在、下拉菜单不会被主图挡住。它还会实际执行缺口、均线、图层三个开关，确认勾选、取消和换周期后的显示与保存都正确。不能为了变绿删掉或放宽断言。行为有意改变时，在同一次修改里更新对应用例，并说明为什么。浏览器手工验证仍然只在用户明确要求时做，不能代替这次测试。
+
 ## 项目概述
 
 CLPainter 是一个基于缠论的 K 线画线与指标可视化项目（CL 画线）。
@@ -196,3 +205,4 @@ ssh CL "tail -50 /root/CLPainter/web/backend/nohup.out"
 7. **只做必要的改动**： 尽量在不改变原本核心逻辑的前提下去做修改。用户没有明确要求修改时，先描述漏洞和影响范围，等用户决定后再改。用户已经明确要求修改时可以直接改，但全量 dump 未通过前不得声称已经确认。
 8. **避免个案式修复**：修改笔、线段等缠论核心逻辑时，不要针对单个标的持续叠加特判；应逐个收紧 queue-gap、fallback、endpoint-repair 等兜底启发式的触发条件、边界和停止条件，优先消除上游划分错误。
 9. **稳扎稳打**： 每次修改 `web/backend/app/toolbox/` 下的 Python 代码后，都必须按文首硬门禁全量运行 `dump_stock_caches.py`。退出码为 0，日志没有导出失败或 Traceback，也没有飞书失败汇总，才算没有影响其他频率、市场和资产类别。
+10. **前端回归**： 每次修改 `lightweight_charts_demo.html` 后，按文首硬门禁运行 `tests.test_frontend_template`。未通过前不得声称前端没有影响已有功能。
