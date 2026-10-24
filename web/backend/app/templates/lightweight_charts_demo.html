@@ -289,7 +289,7 @@
         }
 
         .watchlist-list-head {
-            padding: 6px 48px 6px 10px;
+            padding: 6px 48px 6px 18px;
             color: #888;
             font-size: 12px;
             background: #f7f8fa;
@@ -316,10 +316,41 @@
         }
 
         .watchlist-item-link {
-            padding: 7px 48px 7px 10px;
+            padding: 7px 48px 7px 18px;
             color: #222;
             font-size: 13px;
             text-decoration: none;
+        }
+
+        .watchlist-drag {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 16px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #c4c4c4;
+            font-size: 11px;
+            letter-spacing: -1px;
+            cursor: grab;
+        }
+
+        .watchlist-drag:active {
+            cursor: grabbing;
+        }
+
+        .watchlist-item.dragging {
+            opacity: 0.45;
+        }
+
+        .watchlist-item.drop-before {
+            box-shadow: inset 0 2px 0 #e64545;
+        }
+
+        .watchlist-item.drop-after {
+            box-shadow: inset 0 -2px 0 #e64545;
         }
 
         .watchlist-item-code {
@@ -1114,6 +1145,7 @@
     const watchlistDelete = document.getElementById('watchlistDelete');
     let watchlists = [];
     let selectedWatchlistBoardId = null;
+    let draggingInstrumentId = null;
     appShell.classList.toggle('watchlist-collapsed', lsGetBool('watchlist:collapsed', false));
     const savedWatchlistWidth = Number(lsGetString('watchlist:width', ''));
     if (savedWatchlistWidth >= 160) {
@@ -1322,6 +1354,41 @@
             const row = document.createElement('div');
             row.className = 'watchlist-item';
             if (String(item.instrument_id) === String(window.currentInstrumentId)) row.classList.add('active');
+            const dragHandle = document.createElement('button');
+            dragHandle.type = 'button';
+            dragHandle.className = 'watchlist-drag';
+            dragHandle.draggable = true;
+            dragHandle.textContent = '⋮⋮';
+            dragHandle.title = '拖动调整顺序';
+            dragHandle.setAttribute('aria-label', `调整${item.display_name}的顺序`);
+            dragHandle.addEventListener('dragstart', event => {
+                draggingInstrumentId = item.instrument_id;
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', String(item.instrument_id));
+                row.classList.add('dragging');
+            });
+            dragHandle.addEventListener('dragend', () => {
+                draggingInstrumentId = null;
+                row.classList.remove('dragging');
+                watchlistBoards.querySelectorAll('.watchlist-item').forEach(el => {
+                    el.classList.remove('drop-before', 'drop-after');
+                });
+            });
+            row.addEventListener('dragover', event => {
+                if (draggingInstrumentId == null || String(draggingInstrumentId) === String(item.instrument_id)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                const after = event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+                watchlistBoards.querySelectorAll('.watchlist-item').forEach(el => {
+                    el.classList.toggle('drop-before', el === row && !after);
+                    el.classList.toggle('drop-after', el === row && after);
+                });
+            });
+            row.addEventListener('drop', event => {
+                event.preventDefault();
+                const after = row.classList.contains('drop-after');
+                reorderWatchlistItem(board, draggingInstrumentId, item.instrument_id, after);
+            });
             const link = document.createElement('a');
             link.className = 'watchlist-item-link';
             link.href = item.url;
@@ -1367,11 +1434,39 @@
                     alert(error.message);
                 }
             });
-            row.append(link, groupButton, removeButton);
+            row.append(dragHandle, link, groupButton, removeButton);
             watchlistBoards.appendChild(row);
         });
         const activeRow = watchlistBoards.querySelector('.watchlist-item.active');
         if (activeRow) activeRow.scrollIntoView({block: 'nearest'});
+    };
+
+    const reorderWatchlistItem = async (board, sourceId, targetId, after) => {
+        if (sourceId == null || String(sourceId) === String(targetId)) return;
+        const ids = board.items.map(item => item.instrument_id);
+        const from = ids.findIndex(id => String(id) === String(sourceId));
+        if (from < 0) return;
+        ids.splice(from, 1);
+        let to = ids.findIndex(id => String(id) === String(targetId));
+        if (to < 0) return;
+        if (after) to += 1;
+        ids.splice(to, 0, sourceId);
+        const previous = board.items.slice();
+        const byId = new Map(board.items.map(item => [String(item.instrument_id), item]));
+        board.items = ids.map(id => byId.get(String(id)));
+        renderWatchlists();
+        try {
+            const payload = await requestWatchlist(`/api/v1/test_api/watchlists/${board.id}/items/order`, {
+                method: 'PUT',
+                body: JSON.stringify({instrument_ids: ids}),
+            });
+            watchlists = watchlists.map(item => item.id === payload.id ? payload : item);
+            renderWatchlists();
+        } catch (error) {
+            board.items = previous;
+            renderWatchlists();
+            alert(error.message);
+        }
     };
 
     const loadWatchlists = async () => {

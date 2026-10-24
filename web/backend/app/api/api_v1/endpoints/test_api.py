@@ -66,6 +66,10 @@ class WatchlistBoardRename(BaseModel):
 class WatchlistItemCreate(BaseModel):
     instrument_id: int = Field(gt=0)
 
+
+class WatchlistItemOrder(BaseModel):
+    instrument_ids: list[int] = Field(min_length=1)
+
 template_dir = f"{settings.APP_DIR}/templates"
 templates = Jinja2Templates(directory=template_dir)
 templates.env.cache = None
@@ -252,6 +256,23 @@ async def add_watchlist_item(board_id: int, payload: WatchlistItemCreate):
         session.add(
             WatchlistItem(board_id=board.id, instrument_id=instrument.id, sort_order=sort_order)
         )
+        session.commit()
+        return _serialize_watchlist_board(session, board)
+
+
+@router.put("/watchlists/{board_id}/items/order")
+async def reorder_watchlist_items(board_id: int, payload: WatchlistItemOrder):
+    """按给定顺序重排自选板块内的标的。"""
+    with Session(engine) as session:
+        board = _get_watchlist_board(session, board_id)
+        items = session.scalars(select(WatchlistItem).where(WatchlistItem.board_id == board.id)).all()
+        current_ids = {item.instrument_id for item in items}
+        requested_ids = payload.instrument_ids
+        if len(requested_ids) != len(set(requested_ids)) or set(requested_ids) != current_ids:
+            raise HTTPException(status_code=400, detail="标的顺序与板块内容不一致")
+        order = {instrument_id: index for index, instrument_id in enumerate(requested_ids)}
+        for item in items:
+            item.sort_order = order[item.instrument_id]
         session.commit()
         return _serialize_watchlist_board(session, board)
 
