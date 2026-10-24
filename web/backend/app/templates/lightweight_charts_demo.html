@@ -510,13 +510,80 @@
             display: none;
         }
 
-        .chart-toolbar {
+        .chart-toolbar,
+        .tool-toolbar {
             position: relative;
             z-index: 5;
             display: flex;
             align-items: center;
             gap: 16px;
             margin: 0 12px 8px;
+        }
+
+        .tool-toolbar {
+            gap: 8px;
+        }
+
+        .tool-label {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .tool-button {
+            padding: 4px 10px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #fff;
+            color: #333;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .tool-button.active {
+            border-color: #e64545;
+            background: #e64545;
+            color: #fff;
+        }
+
+        .tool-hint {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .measure-overlay {
+            position: absolute;
+            left: 0;
+            top: 0;
+            z-index: 6;
+            overflow: visible;
+            pointer-events: none;
+        }
+
+        .measure-label {
+            position: absolute;
+            z-index: 7;
+            padding: 4px 6px;
+            border: 1px solid #e6e6e6;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+            font-size: 12px;
+            line-height: 1.45;
+            white-space: pre-line;
+            pointer-events: none;
+        }
+
+        .measure-label.up {
+            color: #ef5350;
+        }
+
+        .measure-label.down {
+            color: #26a69a;
+        }
+
+        #chart.measure-mode,
+        #chart.measure-mode * {
+            cursor: crosshair !important;
         }
 
         #chart {
@@ -870,6 +937,12 @@
                 <div id="layerItems"></div>
             </div>
         </div>
+    </div>
+
+    <div class="tool-toolbar" aria-label="画线工具">
+        <span class="tool-label">工具</span>
+        <button type="button" id="toolDistance" class="tool-button" aria-pressed="false" title="点击两点，测量周期、涨跌点数和涨跌幅度。右键或 Esc 取消">距离测量</button>
+        <span id="toolDistanceHint" class="tool-hint" hidden>点击起点，再点击终点</span>
     </div>
 
     <div class="workspace-scroll">
@@ -2618,6 +2691,12 @@
         chartContainer.addEventListener('contextmenu', event => event.preventDefault());
         chartContainer.addEventListener('mousedown', event => {
             if (event.button !== 2 || event.target.closest('.range-popup')) return;
+            if (measureState.enabled || measureState.start || measureState.end) {
+                event.preventDefault();
+                event.stopPropagation();
+                clearMeasure();
+                return;
+            }
             event.preventDefault();
             event.stopPropagation();
             const point = chartPoint(event);
@@ -2665,6 +2744,156 @@
             if (event.key === 'Escape') clearRangeSelection();
         });
         rangePopup.addEventListener('mousedown', event => event.stopPropagation());
+
+        // 距离测量：两次点击确定起点和终点，显示周期、涨跌点数、涨跌幅度
+        const measureSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        measureSvg.setAttribute('class', 'measure-overlay');
+        const measureLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        measureLine.setAttribute('stroke-width', '1.5');
+        const measureStartDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        const measureEndDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        [measureStartDot, measureEndDot].forEach(dot => {
+            dot.setAttribute('r', '3');
+            dot.setAttribute('fill', '#fff');
+            dot.setAttribute('stroke-width', '1.5');
+        });
+        measureSvg.append(measureLine, measureStartDot, measureEndDot);
+        const measureLabel = document.createElement('div');
+        measureLabel.className = 'measure-label';
+        measureLabel.hidden = true;
+        chartContainer.append(measureSvg, measureLabel);
+
+        const distanceButton = document.getElementById('toolDistance');
+        const distanceHint = document.getElementById('toolDistanceHint');
+        const measureState = { enabled: false, start: null, end: null };
+
+        const signedText = (value, digits) => (value > 0 ? '+' : '') + value.toFixed(digits);
+
+        const measurePointFromParam = param => {
+            if (!param || !param.point) return null;
+            const logical = param.logical != null
+                ? param.logical
+                : chart.timeScale().coordinateToLogical(param.point.x);
+            const index = logicalIndex(logical);
+            const price = candlestickSeries.coordinateToPrice(param.point.y);
+            if (index == null || price == null) return null;
+            return { index, price };
+        };
+
+        const measurePixels = point => {
+            const x = chart.timeScale().logicalToCoordinate(point.index);
+            const y = candlestickSeries.priceToCoordinate(point.price);
+            if (x == null || y == null) return null;
+            return { x, y };
+        };
+
+        const updateDistanceHint = () => {
+            if (!measureState.enabled) {
+                distanceHint.hidden = true;
+                return;
+            }
+            distanceHint.hidden = false;
+            if (!measureState.start) distanceHint.textContent = '点击起点，再点击终点，右键取消';
+            else if (!measureState.end) distanceHint.textContent = '点击终点，右键取消';
+            else distanceHint.textContent = '可再次点击重新测量，右键取消';
+        };
+
+        const renderMeasure = (target) => {
+            measureSvg.setAttribute('width', String(chartContainer.clientWidth));
+            measureSvg.setAttribute('height', String(chartContainer.clientHeight));
+            const endPoint = measureState.end || target;
+            const startPx = measureState.start ? measurePixels(measureState.start) : null;
+            const endPx = endPoint ? measurePixels(endPoint) : null;
+            if (!startPx || !endPx) {
+                measureLine.style.display = 'none';
+                measureStartDot.style.display = 'none';
+                measureEndDot.style.display = 'none';
+                measureLabel.hidden = true;
+                return;
+            }
+            const delta = endPoint.price - measureState.start.price;
+            const color = delta > 0 ? '#ef5350' : delta < 0 ? '#26a69a' : '#758694';
+            measureLine.style.display = '';
+            measureLine.setAttribute('x1', String(startPx.x));
+            measureLine.setAttribute('y1', String(startPx.y));
+            measureLine.setAttribute('x2', String(endPx.x));
+            measureLine.setAttribute('y2', String(endPx.y));
+            measureLine.setAttribute('stroke', color);
+            [measureStartDot, measureEndDot].forEach(dot => {
+                dot.style.display = '';
+                dot.setAttribute('stroke', color);
+            });
+            measureStartDot.setAttribute('cx', String(startPx.x));
+            measureStartDot.setAttribute('cy', String(startPx.y));
+            measureEndDot.setAttribute('cx', String(endPx.x));
+            measureEndDot.setAttribute('cy', String(endPx.y));
+            const periods = Math.abs(endPoint.index - measureState.start.index);
+            const pct = measureState.start.price ? delta / measureState.start.price * 100 : 0;
+            measureLabel.className = 'measure-label' + (delta > 0 ? ' up' : delta < 0 ? ' down' : '');
+            measureLabel.textContent = `周期 ${periods}\n涨跌 ${signedText(delta, currentPrecision)}\n幅度 ${signedText(pct, 2)}%`;
+            measureLabel.hidden = false;
+            const labelWidth = measureLabel.offsetWidth;
+            const labelHeight = measureLabel.offsetHeight;
+            let left = (startPx.x + endPx.x) / 2 + 8;
+            let top = (startPx.y + endPx.y) / 2 - labelHeight - 8;
+            if (left + labelWidth > chartContainer.clientWidth - 8) left = chartContainer.clientWidth - labelWidth - 8;
+            if (left < 8) left = 8;
+            if (top < 8) top = Math.min(chartContainer.clientHeight - labelHeight - 8, (startPx.y + endPx.y) / 2 + 8);
+            if (top + labelHeight > chartContainer.clientHeight - 8) top = chartContainer.clientHeight - labelHeight - 8;
+            measureLabel.style.left = left + 'px';
+            measureLabel.style.top = top + 'px';
+        };
+
+        const clearMeasure = () => {
+            measureState.enabled = false;
+            measureState.start = null;
+            measureState.end = null;
+            distanceButton.classList.remove('active');
+            distanceButton.setAttribute('aria-pressed', 'false');
+            chartContainer.classList.remove('measure-mode');
+            updateDistanceHint();
+            renderMeasure(null);
+        };
+
+        distanceButton.addEventListener('click', () => {
+            measureState.enabled = !measureState.enabled;
+            distanceButton.classList.toggle('active', measureState.enabled);
+            distanceButton.setAttribute('aria-pressed', String(measureState.enabled));
+            chartContainer.classList.toggle('measure-mode', measureState.enabled);
+            if (!measureState.enabled && !measureState.end) {
+                measureState.start = null;
+                renderMeasure(null);
+            }
+            updateDistanceHint();
+        });
+
+        chart.subscribeClick(param => {
+            if (!measureState.enabled) return;
+            const point = measurePointFromParam(param);
+            if (!point) return;
+            if (!measureState.start || measureState.end) {
+                measureState.start = point;
+                measureState.end = null;
+            } else {
+                measureState.end = point;
+            }
+            updateDistanceHint();
+            renderMeasure(measureState.end);
+        });
+        chart.subscribeCrosshairMove(param => {
+            if (!measureState.enabled || !measureState.start || measureState.end) return;
+            renderMeasure(measurePointFromParam(param));
+        });
+        const layoutMeasure = () => {
+            if (!measureState.start) return;
+            renderMeasure(measureState.end);
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutMeasure());
+        chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutMeasure), { passive: true });
+        window.addEventListener('resize', () => layoutMeasure());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') clearMeasure();
+        });
 
 
     }
