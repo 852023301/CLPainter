@@ -162,7 +162,11 @@ class FrontendTemplateTest(unittest.TestCase):
 
     def test_distance_measure_contract(self):
         self.assertIn('id="toolDistance"', self.html)
+        self.assertIn('id="toolRectangle"', self.html)
         self.assertIn("const color = '#7c4dff'", self.scripts)
+        self.assertIn("shape.setAttribute('stroke', '#00838f')", self.scripts)
+        self.assertIn("rectState.boxes.push", self.scripts)
+        self.assertIn("rectState.enabled || rectState.start || rectState.boxes.length", self.scripts)
         self.assertIn("measureState.enabled || measureState.start || measureState.end", self.scripts)
         self.assertIn("clearMeasure()", self.scripts)
         self.assertIn("周期 ${periods}", self.scripts)

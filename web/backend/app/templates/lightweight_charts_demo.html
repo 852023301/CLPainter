@@ -632,7 +632,9 @@
         }
 
         #chart.measure-mode,
-        #chart.measure-mode * {
+        #chart.measure-mode *,
+        #chart.rectangle-mode,
+        #chart.rectangle-mode * {
             cursor: crosshair !important;
         }
 
@@ -992,7 +994,9 @@
     <div class="tool-toolbar" aria-label="画线工具">
         <span class="tool-label">工具</span>
         <button type="button" id="toolDistance" class="tool-button" aria-pressed="false" title="点击两点，测量周期、涨跌点数和涨跌幅度。右键或 Esc 取消">距离测量</button>
+        <button type="button" id="toolRectangle" class="tool-button" aria-pressed="false" title="点击两个对角画出方框。右键或 Esc 取消">画方框</button>
         <span id="toolDistanceHint" class="tool-hint" hidden>点击起点，再点击终点</span>
+        <span id="toolRectangleHint" class="tool-hint" hidden>点击一个角，再点击对角</span>
     </div>
 
     <div class="workspace-scroll">
@@ -2813,6 +2817,12 @@
         chartContainer.addEventListener('contextmenu', event => event.preventDefault());
         chartContainer.addEventListener('mousedown', event => {
             if (event.button !== 2 || event.target.closest('.range-popup')) return;
+            if (rectState.enabled || rectState.start || rectState.boxes.length) {
+                event.preventDefault();
+                event.stopPropagation();
+                clearRect();
+                return;
+            }
             if (measureState.enabled || measureState.start || measureState.end) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -2979,9 +2989,11 @@
 
         distanceButton.addEventListener('click', () => {
             measureState.enabled = !measureState.enabled;
+            if (measureState.enabled) setRectangleEnabled(false);
             distanceButton.classList.toggle('active', measureState.enabled);
             distanceButton.setAttribute('aria-pressed', String(measureState.enabled));
             chartContainer.classList.toggle('measure-mode', measureState.enabled);
+            chartContainer.classList.toggle('rectangle-mode', rectState.enabled);
             if (!measureState.enabled && !measureState.end) {
                 measureState.start = null;
                 renderMeasure(null);
@@ -3015,6 +3027,137 @@
         window.addEventListener('resize', () => layoutMeasure());
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') clearMeasure();
+        });
+
+        // 画方框：可连续画多个，两次点击确定一个方框的对角
+        const rectSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        rectSvg.setAttribute('class', 'measure-overlay');
+        chartContainer.append(rectSvg);
+
+        const rectangleButton = document.getElementById('toolRectangle');
+        const rectangleHint = document.getElementById('toolRectangleHint');
+        const rectState = { enabled: false, start: null, preview: null, boxes: [] };
+
+        const createRectShape = () => {
+            const shape = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            shape.setAttribute('fill', 'rgba(0, 131, 143, 0.12)');
+            shape.setAttribute('stroke', '#00838f');
+            shape.setAttribute('stroke-width', '1.5');
+            return shape;
+        };
+
+        const updateRectangleHint = () => {
+            if (!rectState.enabled) {
+                rectangleHint.hidden = true;
+                return;
+            }
+            rectangleHint.hidden = false;
+            if (rectState.start) rectangleHint.textContent = '点击对角完成这个方框，右键取消当前框';
+            else if (rectState.boxes.length) rectangleHint.textContent = '可继续画下一个方框，右键清除全部';
+            else rectangleHint.textContent = '点击一个角，再点击对角，右键取消';
+        };
+
+        const placeRect = (shape, start, end) => {
+            const startPx = measurePixels(start);
+            const endPx = measurePixels(end);
+            if (!startPx || !endPx) return false;
+            shape.setAttribute('x', String(Math.min(startPx.x, endPx.x)));
+            shape.setAttribute('y', String(Math.min(startPx.y, endPx.y)));
+            shape.setAttribute('width', String(Math.max(1, Math.abs(endPx.x - startPx.x))));
+            shape.setAttribute('height', String(Math.max(1, Math.abs(endPx.y - startPx.y))));
+            return true;
+        };
+
+        const renderRect = () => {
+            rectSvg.setAttribute('width', String(chartContainer.clientWidth));
+            rectSvg.setAttribute('height', String(chartContainer.clientHeight));
+            while (rectSvg.firstChild) rectSvg.removeChild(rectSvg.firstChild);
+            rectState.boxes.forEach(box => {
+                const shape = createRectShape();
+                if (placeRect(shape, box.start, box.end)) rectSvg.append(shape);
+            });
+            if (rectState.start && rectState.preview) {
+                const shape = createRectShape();
+                if (placeRect(shape, rectState.start, rectState.preview)) rectSvg.append(shape);
+            }
+        };
+
+        const clearRect = () => {
+            if (rectState.start) {
+                rectState.start = null;
+                rectState.preview = null;
+                updateRectangleHint();
+                renderRect();
+                return;
+            }
+            rectState.enabled = false;
+            rectState.preview = null;
+            rectState.boxes = [];
+            rectangleButton.classList.remove('active');
+            rectangleButton.setAttribute('aria-pressed', 'false');
+            chartContainer.classList.remove('rectangle-mode');
+            updateRectangleHint();
+            renderRect();
+        };
+
+        const setRectangleEnabled = (enabled) => {
+            rectState.enabled = enabled;
+            rectangleButton.classList.toggle('active', enabled);
+            rectangleButton.setAttribute('aria-pressed', String(enabled));
+            chartContainer.classList.toggle('rectangle-mode', enabled);
+            if (!enabled) {
+                rectState.start = null;
+                rectState.preview = null;
+                renderRect();
+            }
+            updateRectangleHint();
+        };
+
+        rectangleButton.addEventListener('click', () => {
+            const enabled = !rectState.enabled;
+            if (enabled) {
+                measureState.enabled = false;
+                distanceButton.classList.remove('active');
+                distanceButton.setAttribute('aria-pressed', 'false');
+                chartContainer.classList.remove('measure-mode');
+                if (!measureState.end) {
+                    measureState.start = null;
+                    renderMeasure(null);
+                }
+                updateDistanceHint();
+            }
+            setRectangleEnabled(enabled);
+        });
+
+        chart.subscribeClick(param => {
+            if (!rectState.enabled) return;
+            const point = measurePointFromParam(param);
+            if (!point) return;
+            if (!rectState.start) {
+                rectState.start = point;
+                rectState.preview = null;
+            } else {
+                rectState.boxes.push({start: rectState.start, end: point});
+                rectState.start = null;
+                rectState.preview = null;
+            }
+            updateRectangleHint();
+            renderRect();
+        });
+        chart.subscribeCrosshairMove(param => {
+            if (!rectState.enabled || !rectState.start) return;
+            rectState.preview = measurePointFromParam(param);
+            renderRect();
+        });
+        const layoutRect = () => {
+            if (!rectState.start && !rectState.boxes.length) return;
+            renderRect();
+        };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutRect());
+        chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutRect), { passive: true });
+        window.addEventListener('resize', () => layoutRect());
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') clearRect();
         });
 
 
