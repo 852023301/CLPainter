@@ -634,7 +634,9 @@
         #chart.measure-mode,
         #chart.measure-mode *,
         #chart.rectangle-mode,
-        #chart.rectangle-mode * {
+        #chart.rectangle-mode *,
+        #chart.trend-mode,
+        #chart.trend-mode * {
             cursor: crosshair !important;
         }
 
@@ -995,8 +997,10 @@
         <span class="tool-label">工具</span>
         <button type="button" id="toolDistance" class="tool-button" aria-pressed="false" title="点击两点，测量周期、涨跌点数和涨跌幅度。右键或 Esc 取消">距离测量</button>
         <button type="button" id="toolRectangle" class="tool-button" aria-pressed="false" title="点击两个对角画出方框。右键或 Esc 取消">画方框</button>
+        <button type="button" id="toolTrend" class="tool-button" aria-pressed="false" title="点击两点画出两端无限延长的直线。右键或 Esc 取消">趋势线</button>
         <span id="toolDistanceHint" class="tool-hint" hidden>点击起点，再点击终点</span>
         <span id="toolRectangleHint" class="tool-hint" hidden>点击一个角，再点击对角</span>
+        <span id="toolTrendHint" class="tool-hint" hidden>点击起点，再点击方向点</span>
     </div>
 
     <div class="workspace-scroll">
@@ -2817,10 +2821,9 @@
         chartContainer.addEventListener('contextmenu', event => event.preventDefault());
         chartContainer.addEventListener('mousedown', event => {
             if (event.button !== 2 || event.target.closest('.range-popup')) return;
-            if (rectState.enabled || rectState.start || rectState.boxes.length) {
+            if (undoLatestShape()) {
                 event.preventDefault();
                 event.stopPropagation();
-                clearRect();
                 return;
             }
             if (measureState.enabled || measureState.start || measureState.end) {
@@ -2989,11 +2992,15 @@
 
         distanceButton.addEventListener('click', () => {
             measureState.enabled = !measureState.enabled;
-            if (measureState.enabled) setRectangleEnabled(false);
+            if (measureState.enabled) {
+                setRectangleEnabled(false);
+                setTrendEnabled(false);
+            }
             distanceButton.classList.toggle('active', measureState.enabled);
             distanceButton.setAttribute('aria-pressed', String(measureState.enabled));
             chartContainer.classList.toggle('measure-mode', measureState.enabled);
             chartContainer.classList.toggle('rectangle-mode', rectState.enabled);
+            chartContainer.classList.toggle('trend-mode', trendState.enabled);
             if (!measureState.enabled && !measureState.end) {
                 measureState.start = null;
                 renderMeasure(null);
@@ -3053,7 +3060,7 @@
             }
             rectangleHint.hidden = false;
             if (rectState.start) rectangleHint.textContent = '点击对角完成这个方框，右键取消当前框';
-            else if (rectState.boxes.length) rectangleHint.textContent = '可继续画下一个方框，右键清除全部';
+            else if (rectState.boxes.length) rectangleHint.textContent = '可继续画下一个方框，右键逐个取消';
             else rectangleHint.textContent = '点击一个角，再点击对角，右键取消';
         };
 
@@ -3090,9 +3097,14 @@
                 renderRect();
                 return;
             }
+            if (rectState.boxes.length) {
+                rectState.boxes.pop();
+                updateRectangleHint();
+                renderRect();
+                return;
+            }
             rectState.enabled = false;
             rectState.preview = null;
-            rectState.boxes = [];
             rectangleButton.classList.remove('active');
             rectangleButton.setAttribute('aria-pressed', 'false');
             chartContainer.classList.remove('rectangle-mode');
@@ -3120,6 +3132,7 @@
                 distanceButton.classList.remove('active');
                 distanceButton.setAttribute('aria-pressed', 'false');
                 chartContainer.classList.remove('measure-mode');
+                setTrendEnabled(false);
                 if (!measureState.end) {
                     measureState.start = null;
                     renderMeasure(null);
@@ -3138,6 +3151,7 @@
                 rectState.preview = null;
             } else {
                 rectState.boxes.push({start: rectState.start, end: point});
+                shapeOrder.push('rect');
                 rectState.start = null;
                 rectState.preview = null;
             }
@@ -3157,8 +3171,212 @@
         chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutRect), { passive: true });
         window.addEventListener('resize', () => layoutRect());
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') clearRect();
+            if (event.key === 'Escape') undoLatestShape();
         });
+
+        // 趋势线：两点确定方向，向两端无限延长，可同时保留多条
+        const trendSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        trendSvg.setAttribute('class', 'measure-overlay');
+        chartContainer.append(trendSvg);
+
+        const trendButton = document.getElementById('toolTrend');
+        const trendHint = document.getElementById('toolTrendHint');
+        const trendState = { enabled: false, start: null, preview: null, lines: [] };
+
+        const createTrendLine = () => {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('stroke', '#111');
+            line.setAttribute('stroke-width', '1.5');
+            return line;
+        };
+
+        const clipInfiniteLine = (x1, y1, x2, y2, width, height) => {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return null;
+            const candidates = [];
+            const addEdge = (t) => {
+                const x = x1 + t * dx;
+                const y = y1 + t * dy;
+                if (x >= -1 && x <= width + 1 && y >= -1 && y <= height + 1) candidates.push({x, y, t});
+            };
+            if (Math.abs(dx) > 1e-6) {
+                addEdge((0 - x1) / dx);
+                addEdge((width - x1) / dx);
+            }
+            if (Math.abs(dy) > 1e-6) {
+                addEdge((0 - y1) / dy);
+                addEdge((height - y1) / dy);
+            }
+            if (candidates.length < 2) return null;
+            candidates.sort((a, b) => a.t - b.t);
+            return [candidates[0], candidates[candidates.length - 1]];
+        };
+
+        const updateTrendHint = () => {
+            if (!trendState.enabled) {
+                trendHint.hidden = true;
+                return;
+            }
+            trendHint.hidden = false;
+            if (trendState.start) trendHint.textContent = '点击第二个点确定方向，右键取消当前线';
+            else if (trendState.lines.length) trendHint.textContent = '可继续画下一条趋势线，右键逐个取消';
+            else trendHint.textContent = '点击起点，再点击方向点，右键取消';
+        };
+
+        const placeTrend = (line, start, end) => {
+            const startPx = measurePixels(start);
+            const endPx = measurePixels(end);
+            if (!startPx || !endPx) return false;
+            const clipped = clipInfiniteLine(
+                startPx.x, startPx.y, endPx.x, endPx.y,
+                chartContainer.clientWidth, chartContainer.clientHeight
+            );
+            if (!clipped) return false;
+            line.setAttribute('x1', String(clipped[0].x));
+            line.setAttribute('y1', String(clipped[0].y));
+            line.setAttribute('x2', String(clipped[1].x));
+            line.setAttribute('y2', String(clipped[1].y));
+            return true;
+        };
+
+        const renderTrend = () => {
+            trendSvg.setAttribute('width', String(chartContainer.clientWidth));
+            trendSvg.setAttribute('height', String(chartContainer.clientHeight));
+            while (trendSvg.firstChild) trendSvg.removeChild(trendSvg.firstChild);
+            trendState.lines.forEach(item => {
+                const line = createTrendLine();
+                if (placeTrend(line, item.start, item.end)) trendSvg.append(line);
+            });
+            if (trendState.start && trendState.preview) {
+                const line = createTrendLine();
+                if (placeTrend(line, trendState.start, trendState.preview)) trendSvg.append(line);
+            }
+        };
+
+        const clearTrend = () => {
+            if (trendState.start) {
+                trendState.start = null;
+                trendState.preview = null;
+                updateTrendHint();
+                renderTrend();
+                return;
+            }
+            if (trendState.lines.length) {
+                trendState.lines.pop();
+                updateTrendHint();
+                renderTrend();
+                return;
+            }
+            trendState.enabled = false;
+            trendState.preview = null;
+            trendButton.classList.remove('active');
+            trendButton.setAttribute('aria-pressed', 'false');
+            chartContainer.classList.remove('trend-mode');
+            updateTrendHint();
+            renderTrend();
+        };
+
+        const setTrendEnabled = (enabled) => {
+            trendState.enabled = enabled;
+            trendButton.classList.toggle('active', enabled);
+            trendButton.setAttribute('aria-pressed', String(enabled));
+            chartContainer.classList.toggle('trend-mode', enabled);
+            if (!enabled) {
+                trendState.start = null;
+                trendState.preview = null;
+                renderTrend();
+            }
+            updateTrendHint();
+        };
+
+        trendButton.addEventListener('click', () => {
+            const enabled = !trendState.enabled;
+            if (enabled) {
+                measureState.enabled = false;
+                distanceButton.classList.remove('active');
+                distanceButton.setAttribute('aria-pressed', 'false');
+                chartContainer.classList.remove('measure-mode');
+                if (!measureState.end) {
+                    measureState.start = null;
+                    renderMeasure(null);
+                }
+                updateDistanceHint();
+                setRectangleEnabled(false);
+            }
+            setTrendEnabled(enabled);
+        });
+
+        chart.subscribeClick(param => {
+            if (!trendState.enabled) return;
+            const point = measurePointFromParam(param);
+            if (!point) return;
+            if (!trendState.start) {
+                trendState.start = point;
+                trendState.preview = null;
+            } else {
+                trendState.lines.push({start: trendState.start, end: point});
+                shapeOrder.push('trend');
+                trendState.start = null;
+                trendState.preview = null;
+            }
+            updateTrendHint();
+            renderTrend();
+        });
+        chart.subscribeCrosshairMove(param => {
+            if (!trendState.enabled || !trendState.start) return;
+            trendState.preview = measurePointFromParam(param);
+            renderTrend();
+        });
+        const layoutTrend = () => {
+            if (!trendState.start && !trendState.lines.length) return;
+            renderTrend();
+        };
+        const shapeOrder = [];
+        const deactivateDrawingTools = () => {
+            if (trendState.enabled) setTrendEnabled(false);
+            if (rectState.enabled) setRectangleEnabled(false);
+        };
+
+        const undoLatestShape = () => {
+            if (trendState.start || rectState.start) {
+                if (trendState.start) {
+                    trendState.start = null;
+                    trendState.preview = null;
+                    updateTrendHint();
+                    renderTrend();
+                }
+                if (rectState.start) {
+                    rectState.start = null;
+                    rectState.preview = null;
+                    updateRectangleHint();
+                    renderRect();
+                }
+                if (!shapeOrder.length) deactivateDrawingTools();
+                return true;
+            }
+            const kind = shapeOrder.pop();
+            if (kind === 'rect') {
+                rectState.boxes.pop();
+                updateRectangleHint();
+                renderRect();
+            } else if (kind === 'trend') {
+                trendState.lines.pop();
+                updateTrendHint();
+                renderTrend();
+            } else if (trendState.enabled || rectState.enabled) {
+                deactivateDrawingTools();
+                return true;
+            } else {
+                return false;
+            }
+            if (!shapeOrder.length) deactivateDrawingTools();
+            return true;
+        };
+
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutTrend());
+        chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutTrend), { passive: true });
+        window.addEventListener('resize', () => layoutTrend());
 
 
     }
