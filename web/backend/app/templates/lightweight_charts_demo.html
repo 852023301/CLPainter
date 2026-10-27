@@ -137,6 +137,28 @@
             font-size: 13px;
         }
 
+        .search-history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            border-bottom: 1px solid #eee;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .search-history-clear {
+            border: 0;
+            background: transparent;
+            color: #888;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .search-history-clear:hover {
+            color: #e64545;
+        }
+
         .watchlist-panel {
             position: relative;
             display: flex;
@@ -1064,15 +1086,67 @@
     let hideSearchTimer = null;
     let activeResultIndex = -1;
     let searchResults = [];
+    let showingSearchHistory = false;
+    const SEARCH_HISTORY_KEY = 'search:history';
+    const SEARCH_HISTORY_LIMIT = 20;
+
+    const readSearchHistory = () => {
+        try {
+            const parsed = JSON.parse(lsGetString(SEARCH_HISTORY_KEY, '[]'));
+            return Array.isArray(parsed) ? parsed.filter(item => item && item.code && item.url) : [];
+        } catch (_) {
+            return [];
+        }
+    };
+
+    const rememberSearchResult = (result) => {
+        if (!result || !result.code || !result.url) return;
+        const history = readSearchHistory().filter(item => item.url !== result.url);
+        history.unshift({
+            code: result.code,
+            display_name: result.display_name,
+            asset_class: result.asset_class,
+            url: result.url,
+        });
+        lsSetString(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, SEARCH_HISTORY_LIMIT)));
+    };
+
+    const openSearchResult = (result) => {
+        if (!result || !result.url) return;
+        rememberSearchResult(result);
+        const params = new URLSearchParams(window.location.search);
+        const frequency = params.get('frequency');
+        let target = result.url;
+        if (frequency) {
+            const next = new URL(result.url, window.location.origin);
+            next.searchParams.set('frequency', frequency);
+            target = next.pathname + next.search;
+        }
+        window.location.assign(target);
+    };
 
     const hideSearchResults = () => {
         searchResultsElement.style.display = 'none';
         activeResultIndex = -1;
     };
 
+    const showSearchHistory = () => {
+        const history = readSearchHistory();
+        if (!history.length) {
+            hideSearchResults();
+            return;
+        }
+        showingSearchHistory = true;
+        searchResults = history;
+        renderSearchResults();
+    };
+
     const showSearchResults = () => {
         clearTimeout(hideSearchTimer);
-        if (!searchInput.value.trim()) return;
+        if (!searchInput.value.trim()) {
+            showSearchHistory();
+            return;
+        }
         if (searchResultsElement.childElementCount) {
             searchResultsElement.style.display = 'block';
             return;
@@ -1090,10 +1164,30 @@
 
     const renderSearchResults = () => {
         searchResultsElement.innerHTML = '';
+        if (showingSearchHistory) {
+            const header = document.createElement('div');
+            header.className = 'search-history-header';
+            const title = document.createElement('span');
+            title.textContent = '最近搜索';
+            const clearButton = document.createElement('button');
+            clearButton.type = 'button';
+            clearButton.className = 'search-history-clear';
+            clearButton.textContent = '清除';
+            clearButton.addEventListener('mousedown', event => {
+                event.preventDefault();
+                event.stopPropagation();
+                lsSetString(SEARCH_HISTORY_KEY, '[]');
+                searchResults = [];
+                showingSearchHistory = false;
+                hideSearchResults();
+            });
+            header.append(title, clearButton);
+            searchResultsElement.appendChild(header);
+        }
         if (!searchResults.length) {
             const emptyElement = document.createElement('div');
             emptyElement.className = 'search-empty';
-            emptyElement.textContent = '没有匹配的标的';
+            emptyElement.textContent = showingSearchHistory ? '暂无搜索记录' : '没有匹配的标的';
             searchResultsElement.appendChild(emptyElement);
         } else {
             searchResults.forEach((result) => {
@@ -1112,7 +1206,7 @@
                 item.append(code, name);
                 item.addEventListener('mousedown', event => {
                     event.preventDefault();
-                    window.location.assign(result.url);
+                    openSearchResult(result);
                 });
                 searchResultsElement.appendChild(item);
             });
@@ -1124,9 +1218,10 @@
     const searchInstruments = async () => {
         const keyword = searchInput.value.trim();
         if (!keyword) {
-            hideSearchResults();
+            showSearchHistory();
             return;
         }
+        showingSearchHistory = false;
 
         if (searchAbortController) searchAbortController.abort();
         searchAbortController = new AbortController();
@@ -1163,7 +1258,7 @@
             highlightActiveResult();
         } else if (event.key === 'Enter') {
             const result = searchResults[activeResultIndex >= 0 ? activeResultIndex : 0];
-            if (result) window.location.assign(result.url);
+            if (result) openSearchResult(result);
         } else if (event.key === 'Escape') {
             hideSearchResults();
         }

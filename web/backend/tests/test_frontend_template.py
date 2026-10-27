@@ -134,6 +134,9 @@ class FrontendTemplateTest(unittest.TestCase):
             "item.change_pct",
             "searchInput.addEventListener('focus', showSearchResults)",
             "searchInput.addEventListener('click', showSearchResults)",
+            "search:history",
+            "const SEARCH_HISTORY_LIMIT = 20;",
+            "rememberSearchResult",
         ):
             self.assertIn(marker, self.html)
 
