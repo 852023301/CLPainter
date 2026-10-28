@@ -742,20 +742,23 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         if fake_earliest_bi is not None:
             bi_finish_deque.appendleft(fake_earliest_bi)
 
-    def split_fake_front_bi_by_internal_extreme():
-        """用首伪笔内部极值替换首笔终点和下一条笔起点。"""
+    def split_fake_front_bi_by_internal_extreme(permissive: bool = False) -> bool:
+        """用首伪笔内部极值替换首笔终点和下一条笔起点。
+
+        permissive 为真时，搜索停在下一笔起点，并且重接后的下一笔终点必须不变。
+        """
         if not bi_list or not isinstance(bi_list[0], FakeBiFront):
             return False
-
-        front_bi = bi_list[0]
         if len(bi_list) < 2 or not isinstance(bi_list[1], Bi):
             return False
 
+        front_bi = bi_list[0]
         next_bi = bi_list[1]
+        stop_mid = next_bi.start_idx if permissive else next_bi.left_fx.mid_idx
         extreme_fx = None
         extreme_value = front_bi.end_price
         for candidate_fx in fenxing_list:
-            if candidate_fx.mid_idx >= next_bi.left_fx.mid_idx:
+            if candidate_fx.mid_idx >= stop_mid:
                 break
             if candidate_fx.mid_idx <= front_bi.start_idx:
                 continue
@@ -764,11 +767,9 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 extreme_value = candidate_value
                 extreme_fx = candidate_fx
 
-        if (
-                extreme_fx is None
-                or extreme_fx.mid_idx <= front_bi.start_idx
-                or extreme_fx.mid_idx >= next_bi.left_fx.mid_idx
-        ):
+        if extreme_fx is None or extreme_fx.mid_idx >= next_bi.left_fx.mid_idx:
+            return False
+        if not permissive and extreme_fx.mid_idx <= front_bi.start_idx:
             return False
 
         try:
@@ -781,83 +782,15 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             )
         except ValueError:
             return False
-        if not replaced_next_bi.is_finished:
+        if not replaced_next_bi.is_finished or (permissive and replaced_next_bi.end_idx != next_bi.end_idx):
             return False
 
-        extreme_idx = extreme_fx.low_idx if front_bi.is_down() else extreme_fx.high_idx
+        is_down = front_bi.is_down()
+        extreme_idx = extreme_fx.low_idx if is_down else extreme_fx.high_idx
         historic_bi = FakeBiFront(
             end_idx=extreme_idx,
             start_price=front_bi.start_price,
-            end_price=extreme_fx.low_price if front_bi.is_down() else extreme_fx.high_price,
-            bi_type=front_bi.bi_type,
-            all_klines=all_klines,
-        )
-        historic_bi.start_idx = front_bi.start_idx
-        historic_bi.start_time = front_bi.start_time
-        historic_bi.end_time = extreme_fx.trade_datetime
-        (
-            historic_bi.real_merged_kline_count,
-            historic_bi.has_gap_count,
-        ) = BiBase.calculate_bi_real_merged_kline_count_and_gap_count(
-            historic_bi.start_idx,
-            historic_bi.end_idx,
-            all_klines,
-            prefix_merged,
-            prefix_gap,
-        )
-        historic_bi.real_origin_kline_count = historic_bi.end_idx - historic_bi.start_idx + 1
-        if not historic_bi.is_kline_count_enough() or historic_bi.start_idx >= historic_bi.end_idx:
-            return False
-
-        bi_list[0:2] = [historic_bi, replaced_next_bi]
-        return True
-
-    def split_fake_front_bi_by_internal_extreme_permissively():
-        """宽松处理无法满足严格边界的首伪笔。"""
-        if not bi_list or not isinstance(bi_list[0], FakeBiFront):
-            return False
-
-        front_bi = bi_list[0]
-        if len(bi_list) < 2 or not isinstance(bi_list[1], Bi):
-            return False
-
-        next_bi = bi_list[1]
-        extreme_fx = None
-        extreme_value = front_bi.end_price
-        for candidate_fx in fenxing_list:
-            if candidate_fx.mid_idx >= next_bi.start_idx:
-                break
-            if candidate_fx.mid_idx <= front_bi.start_idx:
-                continue
-            candidate_value = candidate_fx.low_price if front_bi.is_down() else candidate_fx.high_price
-            if (candidate_value < extreme_value) if front_bi.is_down() else (candidate_value > extreme_value):
-                extreme_value = candidate_value
-                extreme_fx = candidate_fx
-
-        if (
-                extreme_fx is None
-                or extreme_fx.mid_idx >= next_bi.left_fx.mid_idx
-        ):
-            return False
-
-        try:
-            replaced_next_bi = Bi.from_fenxing(
-                extreme_fx,
-                next_bi.right_fx,
-                all_klines,
-                prefix_merged,
-                prefix_gap,
-            )
-        except ValueError:
-            return False
-        if not replaced_next_bi.is_finished or replaced_next_bi.end_idx != next_bi.end_idx:
-            return False
-
-        extreme_idx = extreme_fx.low_idx if front_bi.is_down() else extreme_fx.high_idx
-        historic_bi = FakeBiFront(
-            end_idx=extreme_idx,
-            start_price=front_bi.start_price,
-            end_price=extreme_fx.low_price if front_bi.is_down() else extreme_fx.high_price,
+            end_price=extreme_fx.low_price if is_down else extreme_fx.high_price,
             bi_type=front_bi.bi_type,
             all_klines=all_klines,
         )
@@ -1072,73 +1005,73 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
         return False
 
-    def make_fake_last_bi():
-
-        nonlocal bi_lm, bi_mr, all_klines, bi_list
-        if len(bi_list) < 1:
-            return
-        # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔，适用于图中最后一根K线没有形成分型结构导致疑似lm后缺失显示两笔（一完成一未完成）的情况 ===
-        start_idx = bi_lm.right_fx.right_idx
-        end_idx = len(all_klines) - 1
-        init_highest_price = bi_lm.right_fx.high_price
-        init_lowest_price = bi_lm.right_fx.low_price
-
-        if start_idx < end_idx:
-            highest_price, lowest_price, highest_idx, lowest_idx = BiBase.get_highest_lowest_price(
-                init_highest_price, init_lowest_price, start_idx, end_idx, all_klines, high_prices, low_prices)
-
-            # 遍历后续分型（避免列表切片拷贝），找到 mid_idx 命中极值点的第一个分型
-            new_bi_mr = None
-            for i in range(bi_lm.right_fx.idx + 1, len(fenxing_list)):
-                fx = fenxing_list[i]
-                if fx.mid_idx == highest_idx or fx.mid_idx == lowest_idx:
-                    new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
-                    break
-
-            if new_bi_mr is not None and new_bi_mr.is_finished and new_bi_mr.bi_type != bi_lm.bi_type:
-                bi_list.append(new_bi_mr)
-
-            if new_bi_mr is None:
-                new_bi_mr = bi_lm
-
-            # === 漏网之鱼2号：在1号笔之后创建反向 FakeBiLast ===
-            # 只需计算反方向极值（UP笔→找最低，DOWN笔→找最高），避免冗余双向扫描
-            is_up = new_bi_mr.bi_type == BiDirectionType.UP
-            scan_start = new_bi_mr.right_fx.right_idx
-            sl = slice(scan_start, end_idx + 1)
-
-            if is_up:
-                local_idx = int(np.argmin(low_prices[sl]))
-                extreme_idx = scan_start + local_idx
-                extreme_price = float(low_prices[extreme_idx])
-                fake_type = BiDirectionType.DOWN
-            else:
-                local_idx = int(np.argmax(high_prices[sl]))
-                extreme_idx = scan_start + local_idx
-                extreme_price = float(high_prices[extreme_idx])
-                fake_type = BiDirectionType.UP
-
-            fake_bi_mr = FakeBiLast.from_fenxing(
-                left_fx=new_bi_mr.right_fx, right_fx_mid_idx=extreme_idx,
-                start_price=new_bi_mr.end_price, end_price=extreme_price,
-                bi_type=fake_type, all_klines=all_klines,
-                prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-
-            if fake_bi_mr.is_finished:
-                if new_bi_mr.is_finished:
-                    bi_list.append(fake_bi_mr)
-            else:
-                if bi_lm.bi_type is not None and fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(
-                        fake_bi_mr.end_price):
-                    fake_bi_mr = FakeBiLast.from_fenxing(
-                        left_fx=bi_lm.left_fx, right_fx_mid_idx=fake_bi_mr.end_idx,
-                        start_price=bi_lm.start_price, end_price=fake_bi_mr.end_price,
-                        bi_type=bi_lm.bi_type, all_klines=all_klines,
-                        prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-
-                    if bi_list[-1] is bi_lm:
-                        bi_list.pop()
-                    bi_list.append(fake_bi_mr)
+    # def make_fake_last_bi():
+    #
+    #     nonlocal bi_lm, bi_mr, all_klines, bi_list
+    #     if len(bi_list) < 1:
+    #         return
+    #     # === 漏网之鱼1号：在最后一笔之后寻找可成立的真实笔，适用于图中最后一根K线没有形成分型结构导致疑似lm后缺失显示两笔（一完成一未完成）的情况 ===
+    #     start_idx = bi_lm.right_fx.right_idx
+    #     end_idx = len(all_klines) - 1
+    #     init_highest_price = bi_lm.right_fx.high_price
+    #     init_lowest_price = bi_lm.right_fx.low_price
+    #
+    #     if start_idx < end_idx:
+    #         highest_price, lowest_price, highest_idx, lowest_idx = BiBase.get_highest_lowest_price(
+    #             init_highest_price, init_lowest_price, start_idx, end_idx, all_klines, high_prices, low_prices)
+    #
+    #         # 遍历后续分型（避免列表切片拷贝），找到 mid_idx 命中极值点的第一个分型
+    #         new_bi_mr = None
+    #         for i in range(bi_lm.right_fx.idx + 1, len(fenxing_list)):
+    #             fx = fenxing_list[i]
+    #             if fx.mid_idx == highest_idx or fx.mid_idx == lowest_idx:
+    #                 new_bi_mr = Bi.from_fenxing(bi_lm.right_fx, fx, all_klines, prefix_merged, prefix_gap)
+    #                 break
+    #
+    #         if new_bi_mr is not None and new_bi_mr.is_finished and new_bi_mr.bi_type != bi_lm.bi_type:
+    #             bi_list.append(new_bi_mr)
+    #
+    #         if new_bi_mr is None:
+    #             new_bi_mr = bi_lm
+    #
+    #         # === 漏网之鱼2号：在1号笔之后创建反向 FakeBiLast ===
+    #         # 只需计算反方向极值（UP笔→找最低，DOWN笔→找最高），避免冗余双向扫描
+    #         is_up = new_bi_mr.bi_type == BiDirectionType.UP
+    #         scan_start = new_bi_mr.right_fx.right_idx
+    #         sl = slice(scan_start, end_idx + 1)
+    #
+    #         if is_up:
+    #             local_idx = int(np.argmin(low_prices[sl]))
+    #             extreme_idx = scan_start + local_idx
+    #             extreme_price = float(low_prices[extreme_idx])
+    #             fake_type = BiDirectionType.DOWN
+    #         else:
+    #             local_idx = int(np.argmax(high_prices[sl]))
+    #             extreme_idx = scan_start + local_idx
+    #             extreme_price = float(high_prices[extreme_idx])
+    #             fake_type = BiDirectionType.UP
+    #
+    #         fake_bi_mr = FakeBiLast.from_fenxing(
+    #             left_fx=new_bi_mr.right_fx, right_fx_mid_idx=extreme_idx,
+    #             start_price=new_bi_mr.end_price, end_price=extreme_price,
+    #             bi_type=fake_type, all_klines=all_klines,
+    #             prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+    #
+    #         if fake_bi_mr.is_finished:
+    #             if new_bi_mr.is_finished:
+    #                 bi_list.append(fake_bi_mr)
+    #         else:
+    #             if bi_lm.bi_type is not None and fake_bi_mr.bi_type == bi_lm.bi_type and bi_lm.extends_beyond_end(
+    #                     fake_bi_mr.end_price):
+    #                 fake_bi_mr = FakeBiLast.from_fenxing(
+    #                     left_fx=bi_lm.left_fx, right_fx_mid_idx=fake_bi_mr.end_idx,
+    #                     start_price=bi_lm.start_price, end_price=fake_bi_mr.end_price,
+    #                     bi_type=bi_lm.bi_type, all_klines=all_klines,
+    #                     prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+    #
+    #                 if bi_list[-1] is bi_lm:
+    #                     bi_list.pop()
+    #                 bi_list.append(fake_bi_mr)
 
     def make_fake_last_bi_v2():
 
@@ -1571,7 +1504,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     bi_list = list(bi_finish_deque)
     prepend_initial_extreme_bi()
     split_fake_front_bi_by_internal_extreme()
-    split_fake_front_bi_by_internal_extreme_permissively()
+    split_fake_front_bi_by_internal_extreme(permissive=True)
     split_initial_fake_front_by_internal_extreme()
     while split_bi_by_internal_extreme():
         pass
