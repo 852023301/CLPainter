@@ -625,6 +625,19 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 low_prices[local_min_idx] <= all_klines[origin_first_kline_index].low_price:
             first_kline_index = local_min_idx
 
+        # 向左延长不能穿过比终点更极端的价格，否则第一笔的极值不在端点分型上。
+        if first_kline_index != origin_first_kline_index:
+            if first_bi.is_up():
+                covered_extreme = float(np.max(high_prices[first_kline_index:origin_first_kline_index + 1]))
+                endpoint_extreme = float(first_bi.end_price)
+                blocks_extension = covered_extreme > endpoint_extreme + 1e-8
+            else:
+                covered_extreme = float(np.min(low_prices[first_kline_index:origin_first_kline_index + 1]))
+                endpoint_extreme = float(first_bi.end_price)
+                blocks_extension = covered_extreme < endpoint_extreme - 1e-8
+            if blocks_extension:
+                first_kline_index = origin_first_kline_index
+
         # 如果能找到更早更极值的笔，则延长
         first_bi_extend = False
         if first_kline_index != origin_first_kline_index:
@@ -880,6 +893,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         if front_bi.bi_type == next_bi.bi_type:
             return False
         candidate_fx = None
+        candidate_extreme = None
         for fx in fenxing_list:
             if fx.mid_idx >= next_bi.end_idx:
                 break
@@ -890,9 +904,20 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             if front_bi.is_down() and fx.fenxing_type != FenXingType.TOP:
                 continue
             candidate_value = fx.low_price if front_bi.is_up() else fx.high_price
-            if (candidate_value < next_bi.end_price if front_bi.is_up() else candidate_value > next_bi.end_price):
+            is_beyond_next_end = (
+                candidate_value < next_bi.end_price
+                if front_bi.is_up()
+                else candidate_value > next_bi.end_price
+            )
+            if not is_beyond_next_end:
+                continue
+            if candidate_fx is None or (
+                candidate_value < candidate_extreme
+                if front_bi.is_up()
+                else candidate_value > candidate_extreme
+            ):
                 candidate_fx = fx
-                break
+                candidate_extreme = candidate_value
 
         if candidate_fx is None:
             return False
@@ -946,13 +971,45 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         ) = BiBase.calculate_bi_real_merged_kline_count_and_gap_count(
             start_idx, extreme_idx, all_klines, prefix_merged, prefix_gap
         )
+        remaining_bi = None
+        if reverse_right_fx is not next_bi.right_fx:
+            try:
+                remaining_bi = Bi.from_fenxing(reverse_right_fx, next_bi.right_fx, all_klines, prefix_merged, prefix_gap)
+            except ValueError:
+                return False
+            if not remaining_bi.is_finished:
+                return False
+        if first_bi.is_kline_count_enough():
+            bi_list[0:2] = [first_bi, reverse_bi] if remaining_bi is None else [first_bi, reverse_bi, remaining_bi]
+            return True
+
+        # 最近的反向分型凑不够五根K线时，保留已经合格的首笔，只把下一笔拆到这个极值。
+        if not front_bi.is_kline_count_enough():
+            return False
+        end_fx = None
+        for fx in fenxing_list:
+            if fx.trade_datetime != front_bi.end_time:
+                continue
+            if front_bi.is_up() != fx.is_top():
+                continue
+            end_fx = fx
+            break
+        if end_fx is None:
+            return False
         try:
-            remaining_bi = Bi.from_fenxing(reverse_right_fx, next_bi.right_fx, all_klines, prefix_merged, prefix_gap)
-        except ValueError as error:
+            connector = Bi.from_fenxing(end_fx, candidate_fx, all_klines, prefix_merged, prefix_gap)
+        except ValueError:
             return False
-        if not remaining_bi.is_finished:
+        if (
+            not connector.is_finished
+            or not connector.is_kline_count_enough()
+            or connector.end_idx > reverse_bi.start_idx
+        ):
             return False
-        bi_list[0:2] = [first_bi, reverse_bi, remaining_bi]
+        rebuilt = [front_bi, connector, reverse_bi]
+        if remaining_bi is not None:
+            rebuilt.append(remaining_bi)
+        bi_list[0:2] = rebuilt
         return True
 
     def split_bi_by_internal_extreme():

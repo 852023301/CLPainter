@@ -7,6 +7,7 @@ import pandas as pd
 import pickle
 from pathlib import Path
 import datetime
+import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -105,6 +106,59 @@ def save_pv_list(output_path, old_list, new_list, code):
         pickle.dump(final_list, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 
+def _is_missing_number(value):
+    """空值、NaN 和无穷大视为缺失。"""
+    if value is None:
+        return True
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return True
+    return not math.isfinite(number)
+
+
+def _is_missing_ohl_price(value):
+    """开高低的 0、空值和无穷大视为缺失；收盘价里的 0 不走这里。"""
+    return _is_missing_number(value) or float(value) == 0.0
+
+
+def fill_missing_pv_rows(dates, opens, closes, lows, highs, volumes):
+    """填补缺失行情。开高低用当日收盘价填补，无法安全填补时返回 None。"""
+    previous_close = None
+    result = []
+    for trade_date, open_price, close_price, low_price, high_price, volume in zip(
+        dates, opens, closes, lows, highs, volumes
+    ):
+        if _is_missing_number(volume):
+            volume = 0.0
+        else:
+            volume = float(volume)
+
+        if _is_missing_number(close_price):
+            if previous_close is None:
+                continue
+            close_price = previous_close
+            if (
+                not _is_missing_ohl_price(high_price) and close_price > float(high_price)
+            ) or (
+                not _is_missing_ohl_price(low_price) and close_price < float(low_price)
+            ):
+                return None
+        else:
+            close_price = float(close_price)
+
+        result.append([
+            trade_date,
+            close_price if _is_missing_ohl_price(open_price) else float(open_price),
+            close_price,
+            close_price if _is_missing_ohl_price(low_price) else float(low_price),
+            close_price if _is_missing_ohl_price(high_price) else float(high_price),
+            volume,
+        ])
+        previous_close = close_price
+    return result
+
+
 def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
                               data_start_date, original_start_date, output_path, precision, asset_class="stock"):
     """校验并转换单个标的K线，然后写入目标pickle文件。"""
@@ -118,28 +172,33 @@ def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
         field_array[symbol_idx, start_idx:end_idx]
         for field_array in field_arrays
     ])
-    validation_values = values[:-1]
-    invalid_mask = np.isnan(validation_values).any(axis=0) | (validation_values == 0).any(axis=0)
-    if invalid_mask.any():
-        first_invalid = start_idx + int(np.flatnonzero(invalid_mask)[0])
-        print(f"{symbol} {date_slice[first_invalid - start_idx]}存在空值或0，不处理")
-        return False
-
-    rounded_values = np.round(values, decimals=precision)
-    final_list = [
-        [date, *values_on_date]
-        for date, values_on_date in zip(date_slice, rounded_values.T.tolist())
-    ]
-    save_pv_list(
-        output_path,
-        load_old_pv_list(
-            symbol,
-            asset_class,
-            original_start_date.strftime("%Y-%m-%d") if hasattr(original_start_date, "strftime") else original_start_date,
-        ),
-        final_list,
-        symbol,
+    final_list = fill_missing_pv_rows(
+        date_slice,
+        values[0],
+        values[1],
+        values[2],
+        values[3],
+        values[4],
     )
+    if final_list is None:
+        print(f"{symbol} 缺失值无法安全填补，不处理")
+        return False
+    if precision is not None:
+        final_list = [
+            [row[0], *[round(number, precision) for number in row[1:]]]
+            for row in final_list
+        ]
+    old_list = load_old_pv_list(
+        symbol,
+        asset_class,
+        original_start_date.strftime("%Y-%m-%d") if hasattr(original_start_date, "strftime") else original_start_date,
+    )
+    if not final_list and not old_list:
+        if output_path.is_file():
+            output_path.unlink()
+        print(f"{symbol} 处理后无有效数据，不保存")
+        return False
+    save_pv_list(output_path, old_list, final_list, symbol)
     return True
 
 
@@ -189,7 +248,7 @@ def query_index_data(start_date, end_date):
 
 
 def write_index_data(code, index_data, start_date, dsc_path):
-    """严格校验指数OHLCV缺失值、裁剪时间范围并保存标准K线。"""
+    """按上市日裁剪指数行情，填补缺失值后保存。"""
     effective_start_date = max(START_DATE, start_date) if START_DATE else start_date
     concat_data = index_data.copy()
     concat_data = concat_data[concat_data.index >= effective_start_date]
@@ -198,19 +257,26 @@ def write_index_data(code, index_data, start_date, dsc_path):
 
     if concat_data.empty:
         raise ValueError(f"{code} 指数无有效数据，跳过")
-    if not np.isfinite(concat_data.to_numpy(dtype=float)).all():
-        raise ValueError(f"{code} 指数OHLCV存在空值，跳过")
 
-    concat_data.index = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
-    final_list = concat_data.reset_index().values.tolist()
-    if not final_list:
-        raise ValueError(f"{code} 指数清洗后无有效数据，跳过")
-    save_pv_list(
-        dsc_path / f"{code.replace('.', '')}.pkl",
-        load_old_pv_list(code, "index", start_date),
-        final_list,
-        code,
+    trade_dates = pd.DatetimeIndex(concat_data.index).strftime("%Y-%m-%d")
+    numbers = concat_data.loc[:, FIELDS].to_numpy(dtype=float)
+    final_list = fill_missing_pv_rows(
+        trade_dates,
+        numbers[:, 0],
+        numbers[:, 1],
+        numbers[:, 2],
+        numbers[:, 3],
+        numbers[:, 4],
     )
+    if final_list is None:
+        raise ValueError(f"{code} 缺失值无法安全填补，已跳过整个标的")
+    output_path = dsc_path / f"{code.replace('.', '')}.pkl"
+    old_list = load_old_pv_list(code, "index", start_date)
+    if not final_list and not old_list:
+        if output_path.is_file():
+            output_path.unlink()
+        raise ValueError(f"{code} 指数处理后无有效数据，不保存")
+    save_pv_list(output_path, old_list, final_list, code)
 
 
 def clean_stale_files(dsc_path, generated_files):
@@ -221,12 +287,14 @@ def clean_stale_files(dsc_path, generated_files):
 
 
 def change_data_type_and_save(columns, dates, field_arrays, info_dict,
-                              dsc_path, precision=None, asset_class="stock"):
+                              dsc_path, precision=None, asset_class="stock",
+                              skip_missing_old_file=False):
     """并行转换有效标的K线，返回本轮成功生成的文件名集合。"""
     file_names = set()
     dsc_path = Path(dsc_path)
     dsc_path.mkdir(parents=True, exist_ok=True)
     futures = {}
+    skipped_missing_old = 0
 
     with ThreadPoolExecutor(max_workers=max(1, min(MAX_WORKERS, len(columns)))) as executor:
         for idx, column_name in enumerate(columns):
@@ -255,9 +323,21 @@ def change_data_type_and_save(columns, dates, field_arrays, info_dict,
             futures[future] = file_name
 
         for future in as_completed(futures):
-            if future.result():
+            try:
+                saved = future.result()
+            except FileNotFoundError as error:
+                if not skip_missing_old_file:
+                    raise
+                skipped_missing_old += 1
+                label = "基金" if asset_class == "etf" else "股票"
+                print(f"{label} {futures[future].removesuffix('.pkl')} 跳过: {error}")
+                continue
+            if saved:
                 file_names.add(futures[future])
 
+    if skip_missing_old_file:
+        label = "fund" if asset_class == "etf" else "stock"
+        print(f"{label}: 已保存 {len(file_names)}，缺少旧数据跳过 {skipped_missing_old}")
     return file_names
 
 
@@ -279,7 +359,8 @@ if __name__ == "__main__":
     del d
 
     generated_files.update(change_data_type_and_save(columns, dates, stock_field_arrays, stock_info_dict,
-                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR)))
+                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR),
+                                                     skip_missing_old_file=True))
     del stock_field_arrays
 
     #########################################
@@ -340,7 +421,8 @@ if __name__ == "__main__":
     del d
 
     generated_files.update(change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
-                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["etf"]), asset_class="etf"))
+                                                     dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["etf"]),
+                                                     asset_class="etf", skip_missing_old_file=True))
     del etf_field_arrays
 
     clean_stale_files(Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), generated_files)

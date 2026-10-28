@@ -123,24 +123,26 @@ def calculate_macd_indicator(
         "markers": markers,
     }
 
-def calculate_ma(close: pd.Series, day_count: int) -> pd.Series:
+def calculate_ma(close: pd.Series, day_count: int, precision: int = 2) -> pd.Series:
     """
     计算移动平均线 (MA)
 
     Args:
         close: 收盘价序列
         day_count: 移动平均的天数
+        precision: 保留的小数位数，需与标的价格精度一致
 
     Returns:
         移动平均值序列
     """
-    return close.rolling(window=day_count).mean().round(2)
+    return close.rolling(window=day_count).mean().round(precision)
 
 
 def calculate_ma_list(
     close: pd.Series,
     periods: List[int],
     min_periods: Optional[int] = None,
+    precision: int = 2,
 ) -> List[Dict[str, Union[str, int, List[Dict[str, Union[str, float]]]]]]:
     """
     一次性计算多条简单移动平均线(MA), 返回前端可直接渲染的结构.
@@ -150,6 +152,7 @@ def calculate_ma_list(
         periods: MA 窗口期列表, 例如 [5, 10, 20, 30]
         min_periods: 窗口内至少需要多少个非 NaN 点才输出值;
                      None 时使用 pandas 默认(等于 window, 即满窗才输出)
+        precision: 保留的小数位数，需与标的价格精度一致
 
     Returns:
         [{"period": 5, "values": [{"time": "2024-01-07", "value": 10.32}, ...]}, ...]
@@ -161,7 +164,7 @@ def calculate_ma_list(
         rolling_kwargs = {"window": period}
         if min_periods is not None:
             rolling_kwargs["min_periods"] = min_periods
-        values_array = close.rolling(**rolling_kwargs).mean().round(2).to_numpy()
+        values_array = close.rolling(**rolling_kwargs).mean().round(precision).to_numpy()
         valid_indices = np.flatnonzero(~np.isnan(values_array))
         values = [
             {"time": time_values[index], "value": float(values_array[index])}

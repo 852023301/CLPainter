@@ -337,7 +337,7 @@ class _DataCache:
                 "color": ma_colors[index],
                 "values": item["values"],
             }
-            for index, item in enumerate(calculate_ma_list(close_series, ma_periods))
+            for index, item in enumerate(calculate_ma_list(close_series, ma_periods, precision=precision))
         ]
         boll_colors = ["#26A69A", "#AB47BC", "#00796B"]
         boll_data = [
