@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from CLPainter.web.backend.app.db.base import Base
@@ -88,3 +88,59 @@ class WatchlistItem(Base):
         nullable=False,
         server_default=func.current_timestamp(),
     )
+
+
+class ClStateSnapshot(Base):
+    """缠论状态快照宽表。"""
+
+    __tablename__ = "cl_state_snapshot"
+    __table_args__ = (
+        UniqueConstraint("instrument_id", "frequency", "scope", name="uq_cl_state_snapshot_identity"),
+        Index("ix_cl_state_snapshot_filter", "frequency", "scope", "relative_pivot_position"),
+        CheckConstraint("relative_pivot_position IN (0, 1, 2, 3)", name="ck_cl_state_snapshot_position"),
+        {"comment": "缠论笔/线段状态快照宽表，每个标的、周期、构件一行"},
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        autoincrement=True,
+        comment="快照行主键",
+    )
+    instrument_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("instrument.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="关联 instrument.id；标的删除时级联删除",
+    )
+    frequency: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        comment="K 线周期，如 1day、60min",
+    )
+    scope: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        comment="状态构件类型：bi=笔，xianduan=线段",
+    )
+    relative_pivot_position: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="相对中枢位置：0=无中枢，1=中枢内，2=中枢下，3=中枢上；NULL=未计算",
+    )
+    calculated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.current_timestamp(),
+        comment="快照写入时间",
+    )
+    instrument: Mapped[Instrument] = relationship(foreign_keys=[instrument_id])
+
+    @property
+    def relative_pivot_position_name(self) -> str | None:
+        return {
+            0: "none",
+            1: "inside",
+            2: "below",
+            3: "above",
+        }.get(self.relative_pivot_position)
