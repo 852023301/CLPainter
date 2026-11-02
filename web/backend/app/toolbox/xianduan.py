@@ -716,7 +716,9 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         prefix = _split_bi_range(0, first_start_bi_idx - 1, bi_list[0].is_up())
         if not prefix or prefix[-1].is_up() == segments[0].is_up():
             return segments
-        return prefix + segments
+        # The first confirmed feature sequence can start later than the first
+        # pen. Local extrema alone cannot prove an extra leading segment.
+        return segments
 
     def _range_breaks_start(start_bi_idx: int, end_bi_idx: int, is_up: bool) -> bool:
         """反向笔终点突破线段起点时，这条线段不能成立。"""
@@ -1834,6 +1836,21 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
     xianduan_list = list(xianduan_finish_deque)
     if not xianduan_list:
         xianduan_list = find_confirmed_xianduan_pair()
+    if len(xianduan_list) >= 3:
+        first = xianduan_list[0]
+        second = xianduan_list[1]
+        third = xianduan_list[2]
+        # The state machine may start with an unconfirmed leading candidate.
+        # If its high/low is immediately superseded by the following reverse
+        # segment and then the third segment renews the original direction,
+        # the confirmed segmentation begins from the second candidate.
+        if (
+            first.is_up() != second.is_up()
+            and third.is_up() == first.is_up()
+            and second.end_price < first.end_price
+            and third.end_price > first.end_price
+        ):
+            xianduan_list = xianduan_list[1:]
     xianduan_list = merge_same_direction_xianduan(xianduan_list)
     xianduan_list = repair_xianduan_endpoints_and_wraparound(xianduan_list)
 
