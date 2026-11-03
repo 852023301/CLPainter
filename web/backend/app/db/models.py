@@ -98,6 +98,10 @@ class ClStateSnapshot(Base):
         UniqueConstraint("instrument_id", "frequency", "scope", name="uq_cl_state_snapshot_identity"),
         Index("ix_cl_state_snapshot_filter", "frequency", "scope", "relative_pivot_position"),
         CheckConstraint("relative_pivot_position IN (0, 1, 2, 3)", name="ck_cl_state_snapshot_position"),
+        CheckConstraint(
+            "relative_previous_pivot_position IN (0, 1, 2, 3)",
+            name="ck_cl_state_snapshot_previous_position",
+        ),
         {"comment": "缠论笔/线段状态快照宽表，每个标的、周期、构件一行"},
     )
 
@@ -126,7 +130,12 @@ class ClStateSnapshot(Base):
     relative_pivot_position: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
-        comment="相对中枢位置：0=无中枢，1=中枢内，2=中枢下，3=中枢上；NULL=未计算",
+        comment="相对当前趋势最后一个中枢的位置：0=无中枢，1=中枢内，2=中枢下，3=中枢上；NULL=未计算",
+    )
+    relative_previous_pivot_position: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="相对前一趋势最后一个扩展中枢的位置：0=无扩展中枢，1=中枢内，2=中枢下，3=中枢上；NULL=未计算",
     )
     calculated_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -144,3 +153,12 @@ class ClStateSnapshot(Base):
             2: "below",
             3: "above",
         }.get(self.relative_pivot_position)
+
+    @property
+    def relative_previous_pivot_position_name(self) -> str | None:
+        return {
+            0: "none",
+            1: "inside",
+            2: "below",
+            3: "above",
+        }.get(self.relative_previous_pivot_position)
