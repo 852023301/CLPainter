@@ -195,7 +195,8 @@ class _DataCache:
         self._fenxing_list = None
         self._trade_dates = None
         self._bi_list = None
-        self._bi_zhongshu_list = None
+        self._bi_zhongshu_raw_list = None
+        self._bi_zhongshu_display_list = None
         self._te_zheng_xu_lie = None
         self._xianduan_list = None
         self._xianduan_zhongshu_list = None
@@ -235,11 +236,9 @@ class _DataCache:
         # 基于分型列表划分笔
         self._bi_list = generate_bi(self._fenxing_list, merged_klines)
 
-        # 笔中枢（含扩张中枢）
+        # 笔中枢（含扩张中枢），分析使用未去重版本
         if len(self._bi_list) > 5:
-            self._bi_zhongshu_list = generate_zhongshu_from_bi(self._bi_list)
-
-        # self._bi_zhongshu_list = []
+            self._bi_zhongshu_raw_list = generate_zhongshu_from_bi(self._bi_list)
 
         # 特征序列
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
@@ -254,8 +253,8 @@ class _DataCache:
             self._bi_zhongshu_in_xianduan_list = generate_zhongshu_in_xianduan_from_bi(
                 self._bi_list, [(j.start_bi_idx + 1, j.end_bi_idx) for j in self._xianduan_list])
 
-            self._bi_zhongshu_list = remove_bi_zhongshu_duplicates(
-                self._bi_zhongshu_list,
+            self._bi_zhongshu_display_list = remove_bi_zhongshu_duplicates(
+                self._bi_zhongshu_raw_list,
                 self._bi_zhongshu_in_xianduan_list,
             )
 
@@ -387,7 +386,7 @@ class _DataCache:
             "change_data": serialized(change_data),
             "bi_data": serialized(bi_data),
             "xd_data": serialized(xd_data),
-            "zhongshu_data": serialized(zhongshu_data(self._bi_zhongshu_list or [])),
+            "zhongshu_data": serialized(zhongshu_data(self._bi_zhongshu_display_list or [])),
             "zhongshu_in_xianduan_data": serialized(zhongshu_data(self._bi_zhongshu_in_xianduan_list or [])),
             "xianduan_zhongshu_data": serialized(zhongshu_data(self._xianduan_zhongshu_list or [])),
             "xianduan_zhongshu_another_data": serialized(zhongshu_data(self._xianduan_zhongshu_another_list or [])),
@@ -455,10 +454,16 @@ class _DataCache:
         return self._bi_list
 
     @property
-    def bi_zhongshu_list(self) -> List[ZhongShuBase]:
-        """获取笔中枢列表。"""
+    def bi_zhongshu_raw_list(self) -> List[ZhongShuBase]:
+        """获取分析用的笔中枢列表，保留未去重版本。"""
         self.ensure_loaded()
-        return self._bi_zhongshu_list
+        return self._bi_zhongshu_raw_list or []
+
+    @property
+    def bi_zhongshu_display_list(self) -> List[ZhongShuBase]:
+        """获取显示用的笔中枢列表，已去除与线段内中枢重复的部分。"""
+        self.ensure_loaded()
+        return self._bi_zhongshu_display_list or []
 
     @property
     def bi_zhongshu_in_xianduan_list(self) -> List[ZhongShuBase]:
@@ -514,7 +519,8 @@ class _DataCache:
             cls._instance._fenxing_list = None
             cls._instance._trade_dates = None
             cls._instance._bi_list = None
-            cls._instance._bi_zhongshu_list = None
+            cls._instance._bi_zhongshu_raw_list = None
+            cls._instance._bi_zhongshu_display_list = None
             cls._instance._te_zheng_xu_lie = None
             cls._instance._xianduan_list = None
             cls._instance._xianduan_zhongshu_list = None
