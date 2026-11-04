@@ -1,9 +1,10 @@
 """缠论线段端点的代表性数据回归。"""
 from pathlib import Path
 
+from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.toolbox.datacube import _DataCache
 
-DATA_ROOT = Path("/DataDepartmentTest/wjl/data_set/pv_data")
+DATA_ROOT = Path(settings.DATA_DIR)
 
 
 def _load_segments(symbol: str):

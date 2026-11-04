@@ -23,6 +23,7 @@ services:
     volumes:
       - /DataDepartment:/DataDepartment:ro
       - /DataDepartmentTest:/DataDepartmentTest
+      - /mnt/DataDepartmentTest:/mnt/DataDepartmentTest
     restart: always
     privileged: true
     #    command: ["sh", "-c", "tail -f /dev/null"]
