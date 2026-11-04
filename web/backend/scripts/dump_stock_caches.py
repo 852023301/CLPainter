@@ -2,6 +2,7 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -18,7 +19,17 @@ from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     dump_data_cache_to_pickle,
 )
 
-WORKER_BNUM = 40
+def _default_worker_count() -> int:
+    """按当前可用 CPU 数的一半设置进程数。"""
+    try:
+        cpu_count = len(os.sched_getaffinity(0))
+    except AttributeError:
+        cpu_count = os.cpu_count() or 1
+    return max(1, cpu_count // 2)
+
+
+WORKER_BNUM = _default_worker_count()
+print(f"本次使用{WORKER_BNUM}个CPU")
 DEFAULT_SOURCE_DIR = Path(settings.DATA_DIR)
 logger = logging.getLogger(__name__)
 
@@ -73,13 +84,13 @@ def source_metadata(source_file: Path) -> tuple[str, str, str]:
 
 
 def dump_worker(source_file: Path, dump_dir: Path) -> None:
-    """按源文件层级识别周期并导出图表缓存。"""
+    """按源文件层级识别周期，导出图表缓存和完整 _DataCache。"""
     frequency, market_dir, asset_class_dir = source_metadata(source_file)
     dump_data_cache_to_pickle(
         source_file,
         dump_dir,
         frequency=frequency,
-        dump_cache=frequency == "freq=1day",
+        dump_cache=True,
         market_dir=market_dir,
         asset_class_dir=asset_class_dir,
     )
