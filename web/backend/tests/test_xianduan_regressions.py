@@ -21,3 +21,15 @@ def test_600015sh_daily_first_two_segments_use_confirmed_boundaries():
         ("2004-02-06", "2005-07-12"),
         ("2005-07-12", "2007-10-16"),
     ]
+
+
+def test_603683sh_daily_tail_splits_at_2025_09_25_and_fakes_to_2026_10_19():
+    segments = _load_segments("603683SH")
+    actual = [
+        (str(segment.start_time.date()), str(segment.end_time.date()), type(segment).__name__)
+        for segment in segments[-2:]
+    ]
+    assert actual == [
+        ("2024-02-08", "2025-09-25", "XianDuan"),
+        ("2025-09-25", "2026-10-19", "FakeXianDuanLast"),
+    ]

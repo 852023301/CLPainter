@@ -1319,6 +1319,55 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
 
         last_xd: Union[XianDuan, FakeXianDuanLast, FakeXianDuanFirst] = xianduan_finish_deque.pop()
 
+        if isinstance(last_xd, XianDuan):
+            # The tail may still be unconfirmed, but an interior same-direction
+            # extreme still bounds this segment. Split there and fake the reverse
+            # tail through the current directional low instead of extending
+            # through the interior extreme.
+            better_endpoint: Optional[TeZhengXuLie] = None
+            for tzxl in tzxl_list:
+                if last_xd.start_idx >= tzxl.start_idx or tzxl.start_idx >= last_xd.end_idx:
+                    continue
+                if tzxl.type != last_xd.right_tzxl.type:
+                    continue
+                if better_endpoint is None or _price_is_more_extreme(
+                    float(tzxl.start_price),
+                    float(better_endpoint.start_price),
+                    last_xd.is_up(),
+                ):
+                    better_endpoint = tzxl
+
+            if (
+                better_endpoint is not None
+                and _price_is_more_extreme(
+                    float(better_endpoint.start_price),
+                    float(last_xd.end_price),
+                    last_xd.is_up(),
+                )
+            ):
+                split_segment = XianDuan.from_tzxl(last_xd.left_tzxl, better_endpoint, bi_list)
+                if not split_segment.is_finished:
+                    xianduan_finish_deque.append(last_xd)
+                    return
+
+                reverse_start_bi_idx = split_segment.end_bi_idx + 1
+                reverse_end_bi_idx = _extreme_end_bi_idx(
+                    reverse_start_bi_idx,
+                    len(bi_list) - 1,
+                    not split_segment.is_up(),
+                )
+                if reverse_end_bi_idx is None:
+                    xianduan_finish_deque.append(last_xd)
+                    return
+
+                reverse_tail = _make_bi_range_segment(
+                    reverse_start_bi_idx,
+                    reverse_end_bi_idx,
+                    not split_segment.is_up(),
+                )
+                xianduan_finish_deque.extend([split_segment, reverse_tail])
+                return
+
         if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
             origin_end_cursor_bi_index = last_xd.right_tzxl.mid_bi_idx
         else:
