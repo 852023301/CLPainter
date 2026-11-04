@@ -102,6 +102,10 @@ class ClStateSnapshot(Base):
             "relative_previous_pivot_position IN (0, 1, 2, 3)",
             name="ck_cl_state_snapshot_previous_position",
         ),
+        CheckConstraint(
+            "last_structure_right_type IN (0, 1, 2)",
+            name="ck_cl_state_snapshot_right_structure",
+        ),
         {"comment": "缠论笔/线段状态快照宽表，每个标的、周期、构件一行"},
     )
 
@@ -136,6 +140,11 @@ class ClStateSnapshot(Base):
         Integer,
         nullable=True,
         comment="相对前一趋势最后一个扩展中枢的位置：0=无扩展中枢，1=中枢内，2=中枢下，3=中枢上；NULL=未计算",
+    )
+    last_structure_right_type: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="当前 scope 最后一个构件的右侧类型：NULL=无法判断，0=无分型（fake），1=底分型，2=顶分型",
     )
     calculated_at: Mapped[datetime] = mapped_column(
         DateTime,
