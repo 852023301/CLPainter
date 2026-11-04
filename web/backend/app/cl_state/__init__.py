@@ -2,6 +2,7 @@
 
 from .fenxing import last_structure_right_type
 from .positions import calculate_positions, relative_pivot_position
+from .second_point import second_point_type
 from .snapshot import build_snapshot_record, persist_snapshots
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "last_structure_right_type",
     "persist_snapshots",
     "relative_pivot_position",
+    "second_point_type",
 ]

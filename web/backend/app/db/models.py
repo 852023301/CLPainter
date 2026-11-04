@@ -106,6 +106,10 @@ class ClStateSnapshot(Base):
             "last_structure_right_type IN (0, 1, 2)",
             name="ck_cl_state_snapshot_right_structure",
         ),
+        CheckConstraint(
+            "second_point_type IN (0, 1, 2)",
+            name="ck_cl_state_snapshot_second_point",
+        ),
         {"comment": "缠论笔/线段状态快照宽表，每个标的、周期、构件一行"},
     )
 
@@ -145,6 +149,11 @@ class ClStateSnapshot(Base):
         Integer,
         nullable=True,
         comment="当前 scope 最后一个构件的右侧类型：NULL=无法判断，0=无分型（fake），1=底分型，2=顶分型",
+    )
+    second_point_type: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="最后一笔的二买/二卖类型：NULL=无法判断，0=都不是，1=二买，2=二卖",
     )
     calculated_at: Mapped[datetime] = mapped_column(
         DateTime,

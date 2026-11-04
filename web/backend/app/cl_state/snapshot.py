@@ -12,6 +12,7 @@ def build_snapshot_record(
 ) -> dict:
     """从已加载的缓存构造一条状态快照记录。"""
     from .fenxing import last_structure_right_type
+    from .second_point import second_point_type
     from .positions import calculate_positions
 
     current_position, previous_position = calculate_positions(cache)
@@ -24,6 +25,7 @@ def build_snapshot_record(
         "relative_pivot_position": current_position,
         "relative_previous_pivot_position": previous_position,
         "last_structure_right_type": last_structure_right_type(cache),
+        "second_point_type": second_point_type(cache),
     }
 
 
@@ -62,6 +64,7 @@ def persist_snapshots(records: list[dict]) -> int:
                 "relative_pivot_position": record["relative_pivot_position"],
                 "relative_previous_pivot_position": record["relative_previous_pivot_position"],
                 "last_structure_right_type": record["last_structure_right_type"],
+                "second_point_type": record["second_point_type"],
             })
 
         for start in range(0, len(values), 500):
@@ -72,6 +75,7 @@ def persist_snapshots(records: list[dict]) -> int:
                     "relative_pivot_position": statement.excluded.relative_pivot_position,
                     "relative_previous_pivot_position": statement.excluded.relative_previous_pivot_position,
                     "last_structure_right_type": statement.excluded.last_structure_right_type,
+                    "second_point_type": statement.excluded.second_point_type,
                     "calculated_at": func.current_timestamp(),
                 },
             )
