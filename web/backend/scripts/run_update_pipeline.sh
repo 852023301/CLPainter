@@ -53,3 +53,4 @@ if ! run_parallel_scripts \
 fi
 
 run_script "dump_stock_caches.py"
+run_script "update_cl_state.py"

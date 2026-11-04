@@ -5,3 +5,4 @@
 4. from_1day_to_1quarter.py
 5. from_1day_to_1year.py
 6. dump_stock_caches.py
+7. update_cl_state.py
