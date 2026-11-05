@@ -1093,6 +1093,64 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         xd = XianDuan.from_tzxl(l_tzxl, r_tzxl, bi_list)
         if xd.is_finished:
             xianduan_list.append(xd)
+        # 两端都只有少量特征序列时，用真实方向极值补首尾假线段，
+        # 避免因状态机缺少后续确认而只画中间一段。
+        if xianduan_list:
+            confirmed = xianduan_list[0]
+            # When the directional tail contains a more extreme endpoint than the
+            # sole confirmed candidate, that candidate is only an interior split;
+            # keep the direction-level tail and drop it from displayed segments.
+            tail_probe_start = confirmed.start_bi_idx
+            tail_probe_end = _extreme_end_bi_idx(
+                tail_probe_start,
+                len(bi_list) - 1,
+                confirmed.is_up(),
+            )
+            replaced_confirmed = False
+            if (
+                tail_probe_end is not None
+                and _price_is_more_extreme(
+                    float(bi_list[tail_probe_end].end_price),
+                    float(confirmed.end_price),
+                    confirmed.is_up(),
+                )
+            ):
+                xianduan_list.clear()
+                confirmed = _make_bi_range_segment(
+                    tail_probe_start,
+                    tail_probe_end,
+                    confirmed.is_up(),
+                )
+                replaced_confirmed = True
+            prefix_direction_up = not confirmed.is_up()
+            prefix_start_idx = 0
+            if not prefix_direction_up:
+                prefix_start_idx = 1
+            prefix_end_idx = confirmed.start_bi_idx - 1
+            if prefix_end_idx >= prefix_start_idx + 2:
+                prefix = _make_bi_range_segment(
+                    prefix_start_idx,
+                    prefix_end_idx,
+                    prefix_direction_up,
+                )
+                if prefix.has_enough_bi():
+                    xianduan_list.insert(0, prefix)
+
+            suffix_start_idx = confirmed.start_bi_idx
+            suffix_end_idx = _extreme_end_bi_idx(
+                suffix_start_idx,
+                len(bi_list) - 1,
+                confirmed.is_up(),
+            )
+            if suffix_end_idx is not None:
+                suffix = _make_bi_range_segment(
+                    suffix_start_idx,
+                    suffix_end_idx,
+                    confirmed.is_up(),
+                )
+                if suffix.has_enough_bi() and replaced_confirmed:
+                    xianduan_list.append(suffix)
+
         return xianduan_list
 
     # 在此 tzxl_deque至少有两个元素
