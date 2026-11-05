@@ -60,6 +60,9 @@ CLPainter/
 ├── requirements_pip.txt
 └── requirements_conda.txt
 ```
+## 数据获取
+无论从任何渠道获取，都是选择不复权的数据
+
 
 ## 运行
 
