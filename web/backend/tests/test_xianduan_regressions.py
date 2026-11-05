@@ -9,7 +9,6 @@ DATA_ROOT = Path(settings.DATA_DIR)
 
 def _load_segments(symbol: str):
     source = DATA_ROOT / "freq=1day/market=cn/asset_class=stock" / f"{symbol}.pkl"
-    _DataCache.reset_instance()
     cache = _DataCache(source)
     cache.ensure_loaded()
     return cache.xian_duan_list

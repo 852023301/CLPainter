@@ -37,11 +37,6 @@ from CLPainter.web.backend.app.toolbox.calculate import (
 )
 
 
-def _create_detached_data_cache(cls):
-    """创建不调用__init__的空_DataCache实例，供pickle重建使用。"""
-    return object.__new__(cls)
-
-
 DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
 INDICATOR_PARAMS = {
     "ma": {"periods": DEFAULT_MA_PERIODS},
@@ -171,23 +166,13 @@ def load_raw_data(data_file=None) -> List[List]:
 
 # 懒加载数据缓存
 class _DataCache:
-    """数据缓存类，实现懒加载"""
-    _instance = None
-    special_path: Path | None = None
+    """按数据源独立的懒加载缓存。"""
 
-    def __new__(cls, special_path=None):
-        """保证进程内只保留一个可切换数据源的数据缓存实例。"""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-            cls._instance.special_path = special_path
-        return cls._instance
+    special_path: Path | None
 
-    def __init__(self, special_path=None):
+    def __init__(self, special_path: Path | None = None):
         """初始化懒加载字段，避免创建时立即读取和计算数据。"""
-        if self._initialized:
-            return
-
+        self.special_path = special_path
         self._raw_data = None
         self._origin_kline_data = None
         self._gaps_list = None
@@ -205,10 +190,6 @@ class _DataCache:
         self._bi_zhongshu_in_xianduan_list = None
         self._chart_payload = None
         self._initialized = True
-
-    def __reduce__(self):
-        """定义pickle重建方式，避免反序列化时触发单例构造逻辑。"""
-        return _create_detached_data_cache, (self.__class__,), self.__dict__
 
     def ensure_loaded(self):
         """确保数据已加载"""
@@ -507,30 +488,6 @@ class _DataCache:
         self.ensure_loaded()
         return self._fenxing_list
 
-    @classmethod
-    def reset_instance(cls):
-        """重置单例实例，用于切换不同的数据源"""
-        if cls._instance is not None:
-            # 清理资源（如果需要）
-            cls._instance._raw_data = None
-            cls._instance._origin_kline_data = None
-            cls._instance._gaps_list = None
-            cls._instance._merged_klines = None
-            cls._instance._fenxing_list = None
-            cls._instance._trade_dates = None
-            cls._instance._bi_list = None
-            cls._instance._bi_zhongshu_raw_list = None
-            cls._instance._bi_zhongshu_display_list = None
-            cls._instance._te_zheng_xu_lie = None
-            cls._instance._xianduan_list = None
-            cls._instance._xianduan_zhongshu_list = None
-            cls._instance._xianduan_tezhengxulie_list = None
-            cls._instance._xianduan_zhongshu_another_list = None
-            cls._instance._bi_zhongshu_in_xianduan_list = None
-            cls._instance._chart_payload = None
-            cls._instance._initialized = False
-            cls._instance.special_path = None
-            cls._instance = None
 
 
 CACHE_DUMP_DIR = Path(settings.CACHE_DUMP_DIR)
@@ -624,7 +581,6 @@ def dump_data_cache_to_pickle(
         market_dir,
         asset_class_dir,
     )
-    _DataCache.reset_instance()
     cache = _DataCache(source_file)
     cache.ensure_loaded()
     chart_precision = precision if precision is not None else _instrument_precision(
@@ -644,7 +600,6 @@ def dump_data_cache_to_pickle(
     )
 
     if not dump_cache:
-        _DataCache.reset_instance()
         return get_chart_payload_path(
             source_file.stem,
             frequency,
@@ -659,10 +614,7 @@ def dump_data_cache_to_pickle(
         asset_class_dir,
         dump_dir,
     )
-    try:
-        _atomic_pickle_dump(cache, destination)
-    finally:
-        _DataCache.reset_instance()
+    _atomic_pickle_dump(cache, destination)
 
     return destination
 
@@ -674,7 +626,7 @@ def load_data_cache_pickle(
     asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
     dump_dir: Path = CACHE_DUMP_DIR,
 ) -> _DataCache:
-    """读取_DataCache缓存，并兼容旧版endpoints模块生成的pickle。"""
+    """读取独立_DataCache缓存。"""
     cache_path = get_cache_dump_path(symbol, frequency, market_dir, asset_class_dir, dump_dir)
     if not cache_path.exists():
         raise FileNotFoundError(f"缓存文件不存在: {cache_path}")
@@ -682,14 +634,8 @@ def load_data_cache_pickle(
     with cache_path.open("rb") as file:
         cache = pickle.load(file)
 
-    cache_type = type(cache)
-    is_legacy_cache = (
-        cache_type.__name__ == _DataCache.__name__
-        and cache_type.__module__.endswith(".endpoints")
-        and callable(getattr(cache, "ensure_loaded", None))
-    )
-    if not isinstance(cache, _DataCache) and not is_legacy_cache:
-        raise TypeError(f"缓存文件类型错误: {cache_type.__module__}.{cache_type.__name__}")
+    if not isinstance(cache, _DataCache):
+        raise TypeError(f"缓存文件类型错误: {type(cache).__module__}.{type(cache).__name__}")
 
     return cache
 
