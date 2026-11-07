@@ -118,6 +118,10 @@ class ClStateSnapshot(Base):
             "quasi_third_point_type IN (0, 1, 2)",
             name="ck_cl_state_snapshot_quasi_third_point",
         ),
+        CheckConstraint(
+            "second_third_combined_type IN (0, 1, 2)",
+            name="ck_cl_state_snapshot_second_third_combined",
+        ),
         {"comment": "缠论笔/线段状态快照宽表，每个标的、周期、构件一行"},
     )
 
@@ -172,6 +176,11 @@ class ClStateSnapshot(Base):
         Integer,
         nullable=True,
         comment="最后一笔的类三买/类三卖类型：NULL=无法判断，0=都不是，1=类三买，2=类三卖",
+    )
+    second_third_combined_type: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="最后一笔的二三合买/二三合卖类型：NULL=无法判断，0=都不是，1=二三合买，2=二三合卖",
     )
     calculated_at: Mapped[datetime] = mapped_column(
         DateTime,

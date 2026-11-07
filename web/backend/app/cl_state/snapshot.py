@@ -14,6 +14,7 @@ def build_snapshot_record(
     from .fenxing import last_structure_right_type
     from .quasi_third_point import quasi_third_point_type
     from .second_point import second_point_type
+    from .second_third_combined import second_third_combined_type
     from .third_point import third_point_type
     from .positions import calculate_positions
 
@@ -30,6 +31,7 @@ def build_snapshot_record(
         "second_point_type": second_point_type(cache),
         "third_point_type": third_point_type(cache),
         "quasi_third_point_type": quasi_third_point_type(cache),
+        "second_third_combined_type": second_third_combined_type(cache),
     }
 
 
@@ -71,6 +73,7 @@ def persist_snapshots(records: list[dict]) -> int:
                 "second_point_type": record["second_point_type"],
                 "third_point_type": record["third_point_type"],
                 "quasi_third_point_type": record["quasi_third_point_type"],
+                "second_third_combined_type": record["second_third_combined_type"],
             })
 
         for start in range(0, len(values), 500):
@@ -84,6 +87,7 @@ def persist_snapshots(records: list[dict]) -> int:
                     "second_point_type": statement.excluded.second_point_type,
                     "third_point_type": statement.excluded.third_point_type,
                     "quasi_third_point_type": statement.excluded.quasi_third_point_type,
+                    "second_third_combined_type": statement.excluded.second_third_combined_type,
                     "calculated_at": func.current_timestamp(),
                 },
             )
