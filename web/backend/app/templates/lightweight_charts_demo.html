@@ -1059,7 +1059,18 @@
             background: #fff2f2;
         }
 
+        .screener-result-index {
+            flex: 0 0 auto;
+            min-width: 2.2em;
+            color: #999;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+
         .screener-result-name {
+            flex: 1;
+            min-width: 0;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -1976,6 +1987,9 @@
     const screenerResizer = document.getElementById('screenerResizer');
     let screenerResize = null;
     const SCREENER_STATE_KEY = 'screener:state';
+    // 点击结果跳转前记录滚动位置，目标页渲染选股结果后一次性恢复
+    const SCREENER_SCROLL_KEY = 'screener:results-scroll';
+    let pendingScreenerScroll = null;
     const SCREENER_DEFAULTS = {
         market: 'cn',
         asset_class: 'stock',
@@ -1995,6 +2009,21 @@
             screenerState = {...screenerState, ...updates};
             lsSetString(SCREENER_STATE_KEY, JSON.stringify(screenerState));
         } catch (_) {}
+    };
+    const scheduleScreenerScrollRestore = () => {
+        if (pendingScreenerScroll == null || appShell.classList.contains('screener-collapsed')) return;
+        const target = pendingScreenerScroll;
+        pendingScreenerScroll = null;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            screenerResults.scrollTop = target;
+        }));
+    };
+    const queueScreenerScrollRestore = () => {
+        const saved = Number(lsGetString(SCREENER_SCROLL_KEY, ''));
+        localStorage.removeItem(SCREENER_SCROLL_KEY);
+        if (!Number.isFinite(saved) || saved <= 0) return;
+        pendingScreenerScroll = saved;
+        scheduleScreenerScrollRestore();
     };
     appShell.classList.toggle('screener-collapsed', lsGetBool('screener:collapsed', false));
     const savedScreenerWidth = Number(lsGetString('screener:width', ''));
@@ -2061,7 +2090,7 @@
         if (screenerState?.options) {
             renderScreenerFilters(screenerState.options);
             if (screenerState.results) {
-                renderScreenerResults(screenerState.results);
+                renderScreenerResults(screenerState.results, {restoreScroll: true});
                 resultsRendered = true;
             }
         }
@@ -2073,7 +2102,7 @@
                 renderScreenerFilters(payload);
             }
             if (!resultsRendered && screenerState?.results) {
-                renderScreenerResults(screenerState.results);
+                renderScreenerResults(screenerState.results, {restoreScroll: true});
             }
         } catch (error) {
             screenerFilters.textContent = '';
@@ -2084,7 +2113,7 @@
         }
     };
 
-    const renderScreenerResults = payload => {
+    const renderScreenerResults = (payload, {restoreScroll = false} = {}) => {
         screenerResults.textContent = '';
         const results = payload.results || [];
         if (!results.length) {
@@ -2098,20 +2127,27 @@
         count.className = 'screener-empty';
         count.textContent = `共 ${payload.count || results.length} 个标的`;
         screenerResults.appendChild(count);
-        results.forEach(item => {
+        results.forEach((item, index) => {
             const row = document.createElement('div');
             row.className = 'screener-result';
             row.title = `${item.code} · ${item.asset_class} · ${item.frequencies.join(', ')}`;
+            const sequence = document.createElement('span');
+            sequence.className = 'screener-result-index';
+            sequence.textContent = String(index + 1);
             const name = document.createElement('span');
             name.className = 'screener-result-name';
             name.textContent = item.display_name;
             const meta = document.createElement('span');
             meta.className = 'screener-result-meta';
             meta.textContent = item.code;
-            row.append(name, meta);
-            row.addEventListener('click', () => window.location.assign(item.url));
+            row.append(sequence, name, meta);
+            row.addEventListener('click', () => {
+                lsSetString(SCREENER_SCROLL_KEY, String(screenerResults.scrollTop));
+                window.location.assign(item.url);
+            });
             screenerResults.appendChild(row);
         });
+        if (restoreScroll) queueScreenerScrollRestore();
     };
 
     const runScreener = async () => {
@@ -2129,6 +2165,8 @@
                 method: 'POST',
                 body: JSON.stringify(filters),
             });
+            pendingScreenerScroll = null;
+            localStorage.removeItem(SCREENER_SCROLL_KEY);
             renderScreenerResults(payload);
             saveScreenerState({filters, results: payload});
         } catch (error) {
@@ -2159,6 +2197,7 @@
         appShell.classList.remove('screener-collapsed');
         lsSetBool('screener:collapsed', false);
         syncChartWidth();
+        scheduleScreenerScrollRestore();
     });
     screenerRun.addEventListener('click', runScreener);
     screenerResizer.addEventListener('pointerdown', event => {
