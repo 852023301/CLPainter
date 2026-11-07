@@ -1861,7 +1861,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         fake_xianduan.start_price = candidate_bi.start_price
         fake_xianduan.end_price = left_xianduan.end_price
         fake_xianduan.xianduan_type = left_xianduan.xianduan_type
-        fake_xianduan.right_tzxl = left_xianduan.right_tzxl
+        if isinstance(left_xianduan, (XianDuan, FakeXianDuanFirst)):
+            fake_xianduan.right_tzxl = left_xianduan.right_tzxl
         return fake_xianduan if fake_xianduan.has_enough_bi() else left_xianduan
 
     def _extend_confirmed_segment_past_penetrated_tail(segment: XianDuan) -> XianDuan:
@@ -1911,6 +1912,52 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             current = replacement
         return current
 
+    def _make_fake_first_reverse_segment(left_xianduan: XianDuanBase) -> Optional[FakeXianDuanLast]:
+        """在已确认段左侧按反向极值构造 fake 前置段。"""
+        if left_xianduan.start_bi_idx <= 0:
+            return None
+        reverse_up = not left_xianduan.is_up()
+        end_bi_idx = left_xianduan.start_bi_idx - 1
+        start_bi_idx = 0
+        extreme_end_bi_idx = _extreme_end_bi_idx(start_bi_idx, end_bi_idx, reverse_up)
+        if extreme_end_bi_idx is None or extreme_end_bi_idx < start_bi_idx + 2:
+            return None
+        # 前缀内部已有特征序列边界时，不能用粗粒度极值直接补前置段。
+        if any(tzxl.mid_bi_idx <= end_bi_idx for tzxl in tzxl_list):
+            return None
+        return _make_bi_range_segment(
+            start_bi_idx,
+            extreme_end_bi_idx,
+            reverse_up,
+        )
+
+    def _merge_penetrated_fake_tail(left_xianduan: XianDuan, right_xianduan: XianDuanBase) -> XianDuan:
+        """右侧反向 fake 段中间笔穿透左段终点时，两段应并回同向延伸段。"""
+        if right_xianduan.is_up() == left_xianduan.is_up():
+            return left_xianduan
+        for bi_idx in range(right_xianduan.start_bi_idx, len(bi_list)):
+            bi = bi_list[bi_idx]
+            if bi.is_up() != left_xianduan.is_up():
+                continue
+            if _price_is_more_extreme(
+                float(bi.end_price),
+                float(left_xianduan.end_price),
+                left_xianduan.is_up(),
+            ):
+                end_bi_idx = _extreme_end_bi_idx(
+                    left_xianduan.start_bi_idx,
+                    len(bi_list) - 1,
+                    left_xianduan.is_up(),
+                )
+                if end_bi_idx is None:
+                    return left_xianduan
+                return _make_bi_range_segment(
+                    left_xianduan.start_bi_idx,
+                    end_bi_idx,
+                    left_xianduan.is_up(),
+                )
+        return left_xianduan
+
     def find_confirmed_xianduan_pair() -> List[XianDuanBase]:
         """主流程无结果时，寻找最早的已确认线段并补齐末尾假线段。"""
         for left_idx in range(len(tzxl_list)):
@@ -1935,8 +1982,15 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             best_left_xianduan = _extend_confirmed_segment_past_penetrated_tail(best_left_xianduan)
             fake_last_xianduan = make_fake_last_after_xianduan(best_left_xianduan)
             if fake_last_xianduan is not None:
-                fake_first_xianduan = make_fake_first_before_xianduan(best_left_xianduan)
-                return [fake_first_xianduan, fake_last_xianduan]
+                merged_left_xianduan = _merge_penetrated_fake_tail(
+                    best_left_xianduan,
+                    fake_last_xianduan,
+                )
+                reverse_first_xianduan = _make_fake_first_reverse_segment(merged_left_xianduan)
+                if reverse_first_xianduan is not None and reverse_first_xianduan.has_enough_bi():
+                    return [reverse_first_xianduan, merged_left_xianduan]
+                fake_first_xianduan = make_fake_first_before_xianduan(merged_left_xianduan)
+                return [fake_first_xianduan, merged_left_xianduan]
 
         return []
 

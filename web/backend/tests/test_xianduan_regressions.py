@@ -50,3 +50,45 @@ def test_159870sz_weekly_has_down_and_up_fake_segments():
         ("2021-09-17", "2024-02-08", "FakeXianDuanLast", False),
         ("2024-02-08", "2026-03-06", "FakeXianDuanLast", True),
     ]
+
+
+def _assert_segments(symbol, frequency, asset_class, expected):
+    segments = _load_segments(symbol, frequency, asset_class)
+    actual = [
+        (str(segment.start_time.date()), str(segment.end_time.date()), type(segment).__name__, segment.is_up())
+        for segment in segments
+    ]
+    assert actual == expected
+
+
+def test_688549sh_weekly_prefix_and_extended_tail():
+    _assert_segments(
+        "688549SH",
+        "freq=1week",
+        "asset_class=stock",
+        [
+            ("2023-09-08", "2024-09-20", "FakeXianDuanLast", False),
+            ("2024-09-20", "2026-07-03", "FakeXianDuanLast", True),
+        ],
+    )
+
+
+def test_fallback_tail_penetrated_by_later_same_direction_bi_does_not_split():
+    _assert_segments(
+        "560100SH",
+        "freq=1week",
+        "asset_class=fund",
+        [("2024-02-08", "2026-07-03", "FakeXianDuanLast", True)],
+    )
+    _assert_segments(
+        "300139SZ",
+        "freq=1month",
+        "asset_class=stock",
+        [("2018-02-28", "2026-03-31", "FakeXianDuanLast", True)],
+    )
+    _assert_segments(
+        "002080SZ",
+        "freq=1month",
+        "asset_class=stock",
+        [("2012-12-31", "2026-06-30", "FakeXianDuanLast", True)],
+    )
