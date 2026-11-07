@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
 from ....db.base import engine
-from ....db.models import Instrument, WatchlistBoard, WatchlistItem
+from ....db.models import ClStateSnapshot, Instrument, WatchlistBoard, WatchlistItem
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -39,6 +39,35 @@ _LAZY_MODULES = {
     "macd": "macd_data",
 }
 _WATCHLIST_NAME_PATTERN = re.compile(r"^\S.{0,62}\S$|^\S$")
+_SCREENER_MARKET_LABELS = {"cn": "中国"}
+_SCREENER_ASSET_CLASS_LABELS = {"stock": "股票", "fund": "基金", "index": "指数"}
+_SCREENER_SCOPE_LABELS = {"bi": "笔", "xianduan": "线段"}
+_SCREENER_STATE_FIELDS = (
+    ("relative_pivot_position", "相对当前中枢位置", ((0, "无中枢"), (1, "中枢内"), (2, "中枢下"), (3, "中枢上"))),
+    (
+        "relative_previous_pivot_position",
+        "相对扩展中枢位置",
+        ((0, "无中枢"), (1, "中枢内"), (2, "中枢下"), (3, "中枢上")),
+    ),
+    ("last_structure_right_type", "右侧类型", ((0, "无分型"), (1, "底分型"), (2, "顶分型"))),
+    ("second_point_type", "二买/二卖", ((0, "都不是"), (1, "二买"), (2, "二卖"))),
+    ("third_point_type", "三买/三卖", ((0, "都不是"), (1, "三买"), (2, "三卖"))),
+    ("quasi_third_point_type", "类三买/类三卖", ((0, "都不是"), (1, "类三买"), (2, "类三卖"))),
+    (
+        "second_third_combined_type",
+        "二三合买/二三合卖",
+        ((0, "都不是"), (1, "二三合买"), (2, "二三合卖")),
+    ),
+)
+_SCREENER_STATE_LIMITS = {
+    "relative_pivot_position": (0, 1, 2, 3),
+    "relative_previous_pivot_position": (0, 1, 2, 3),
+    "last_structure_right_type": (0, 1, 2),
+    "second_point_type": (0, 1, 2),
+    "third_point_type": (0, 1, 2),
+    "quasi_third_point_type": (0, 1, 2),
+    "second_third_combined_type": (0, 1, 2),
+}
 
 
 def _normalize_frequency(value: str) -> str:
@@ -70,6 +99,20 @@ class WatchlistItemCreate(BaseModel):
 
 class WatchlistItemOrder(BaseModel):
     instrument_ids: list[int] = Field(min_length=1)
+
+
+class StockScreenerQuery(BaseModel):
+    market: str | None = None
+    asset_class: str | None = None
+    frequency: str | None = None
+    scope: str | None = None
+    relative_pivot_position: int | None = None
+    relative_previous_pivot_position: int | None = None
+    last_structure_right_type: int | None = None
+    second_point_type: int | None = None
+    third_point_type: int | None = None
+    quasi_third_point_type: int | None = None
+    second_third_combined_type: int | None = None
 
 template_dir = f"{settings.APP_DIR}/templates"
 templates = Jinja2Templates(directory=template_dir)
@@ -335,6 +378,143 @@ async def remove_watchlist_item(board_id: int, instrument_id: int):
         if not deleted_count:
             raise HTTPException(status_code=404, detail="标的不在板块中")
         session.commit()
+
+
+@router.get("/stock_screener/options")
+async def stock_screener_options():
+    """返回选股面板可用的市场、资产类别、周期、构件和状态选项。"""
+    with Session(engine) as session:
+        markets = session.scalars(
+            select(Instrument.market).join(
+                ClStateSnapshot, Instrument.id == ClStateSnapshot.instrument_id
+            ).distinct().order_by(Instrument.market)
+        ).all()
+        asset_classes = session.scalars(
+            select(Instrument.asset_class).join(
+                ClStateSnapshot, Instrument.id == ClStateSnapshot.instrument_id
+            ).distinct().order_by(Instrument.asset_class)
+        ).all()
+        frequencies = session.scalars(
+            select(ClStateSnapshot.frequency).distinct().order_by(ClStateSnapshot.frequency)
+        ).all()
+        scopes = session.scalars(
+            select(ClStateSnapshot.scope).distinct().order_by(ClStateSnapshot.scope)
+        ).all()
+
+    dimensions = [
+        {
+            "field": "market",
+            "label": "市场",
+            "options": [
+                {"value": value, "label": _SCREENER_MARKET_LABELS.get(value, value)}
+                for value in markets
+            ],
+        },
+        {
+            "field": "asset_class",
+            "label": "种类",
+            "options": [
+                {"value": value, "label": _SCREENER_ASSET_CLASS_LABELS.get(value, value)}
+                for value in asset_classes
+            ],
+        },
+        {
+            "field": "frequency",
+            "label": "周期",
+            "options": [
+                {
+                    "value": value,
+                    "label": SUPPORTED_CHART_FREQUENCIES.get(f"freq={value}", value),
+                }
+                for value in frequencies
+            ],
+        },
+        {
+            "field": "scope",
+            "label": "构件",
+            "options": [
+                {"value": value, "label": _SCREENER_SCOPE_LABELS.get(value, value)}
+                for value in scopes
+            ],
+        },
+    ]
+    states = [
+        {
+            "field": field,
+            "label": label,
+            "options": [{"value": value, "label": option_label} for value, option_label in options],
+        }
+        for field, label, options in _SCREENER_STATE_FIELDS
+    ]
+    return {"dimensions": dimensions, "states": states}
+
+
+@router.post("/stock_screener/query")
+async def stock_screener_query(payload: StockScreenerQuery):
+    """按状态组合查询标的。"""
+    conditions = []
+    if payload.market:
+        conditions.append(Instrument.market == payload.market)
+    if payload.asset_class:
+        conditions.append(Instrument.asset_class == payload.asset_class)
+    if payload.frequency:
+        conditions.append(ClStateSnapshot.frequency == payload.frequency)
+    if payload.scope:
+        conditions.append(ClStateSnapshot.scope == payload.scope)
+
+    for field, allowed_values in _SCREENER_STATE_LIMITS.items():
+        value = getattr(payload, field)
+        if value is None:
+            continue
+        if value not in allowed_values:
+            raise HTTPException(status_code=400, detail=f"{field} 的取值无效: {value}")
+        conditions.append(getattr(ClStateSnapshot, field) == value)
+
+    statement = (
+        select(Instrument, ClStateSnapshot.frequency)
+        .join(ClStateSnapshot, Instrument.id == ClStateSnapshot.instrument_id)
+        .where(*conditions)
+        .order_by(Instrument.code, ClStateSnapshot.frequency)
+    )
+    with Session(engine) as session:
+        rows = session.execute(statement).all()
+
+    grouped = {}
+    for instrument, frequency in rows:
+        item = grouped.setdefault(
+            instrument.id,
+            {
+                "instrument_id": instrument.id,
+                "code": instrument.code,
+                "name": instrument.name,
+                "display_name": instrument.display_name or instrument.name,
+                "market": instrument.market,
+                "asset_class": instrument.asset_class,
+                "frequencies": set(),
+            },
+        )
+        item["frequencies"].add(frequency)
+
+    results = []
+    for item in grouped.values():
+        frequencies = sorted(item["frequencies"])
+        selected_frequency = payload.frequency or frequencies[0]
+        query = urlencode(
+            {
+                "symbol": item["code"],
+                "frequency": selected_frequency,
+                "market": item["market"],
+                "asset_class": item["asset_class"],
+            }
+        )
+        results.append({
+            **item,
+            "frequencies": frequencies,
+            "frequency": selected_frequency,
+            "url": f"/api/v1/test_api/lightweight_charts_demo?{query}",
+        })
+    results.sort(key=lambda item: (item["code"], item["asset_class"]))
+    return {"count": len(results), "results": results}
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)

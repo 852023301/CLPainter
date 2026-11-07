@@ -895,6 +895,206 @@
             cursor: not-allowed;
         }
 
+        .screener-panel {
+            position: relative;
+            display: flex;
+            flex: 0 0 var(--screener-width, 300px);
+            flex-direction: column;
+            width: var(--screener-width, 300px);
+            min-height: 0;
+            background: #f7f8fa;
+            border-left: 1px solid #e4e4e4;
+        }
+
+        .screener-resizer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 6;
+            width: 6px;
+            height: 100%;
+            cursor: col-resize;
+            touch-action: none;
+        }
+
+        .screener-resizer::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 2px;
+            background: transparent;
+        }
+
+        .screener-resizer:hover::after,
+        .app-shell.screener-resizing .screener-resizer::after {
+            background: #e64545;
+        }
+
+        .app-shell.screener-resizing,
+        .app-shell.screener-resizing * {
+            cursor: col-resize !important;
+            user-select: none;
+        }
+
+        .screener-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 40px;
+            padding: 0 8px 0 12px;
+            border-bottom: 1px solid #e6e6e6;
+            background: #fff;
+        }
+
+        .screener-title {
+            color: #222;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .screener-icon-button,
+        .screener-rail {
+            border: 0;
+            background: transparent;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .screener-icon-button {
+            width: 28px;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .screener-rail {
+            display: none;
+            flex: 1;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 0;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            writing-mode: vertical-rl;
+        }
+
+        .screener-body {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            min-height: 0;
+            padding: 10px;
+            gap: 10px;
+            overflow: hidden;
+        }
+
+        .screener-filters {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .screener-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .screener-field label {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .screener-field select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 8px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #fff;
+            color: #333;
+            font-size: 13px;
+        }
+
+        .screener-run {
+            padding: 7px 10px;
+            border: 1px solid #e64545;
+            border-radius: 4px;
+            background: #e64545;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .screener-run:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .screener-results {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            border-top: 1px solid #e6e6e6;
+            padding-top: 8px;
+        }
+
+        .screener-result {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 7px 6px;
+            border-radius: 4px;
+            color: #333;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .screener-result:hover {
+            background: #fff2f2;
+        }
+
+        .screener-result-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .screener-result-meta {
+            color: #888;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .screener-empty {
+            padding: 12px 6px;
+            color: #888;
+            font-size: 13px;
+        }
+
+        .app-shell.screener-collapsed .screener-panel {
+            flex-basis: 36px;
+            width: 36px;
+        }
+
+        .app-shell.screener-collapsed .screener-header,
+        .app-shell.screener-collapsed .screener-body {
+            display: none;
+        }
+
+        .app-shell.screener-collapsed .screener-rail {
+            display: flex;
+        }
+
+        .app-shell.screener-collapsed .screener-resizer {
+            display: none;
+        }
+
         @media (max-width: 860px) {
             body {
                 overflow: auto;
@@ -923,6 +1123,26 @@
             .app-shell.watchlist-collapsed .watchlist-rail,
             .watchlist-icon-button,
             .watchlist-resizer {
+                display: none;
+            }
+
+            .screener-panel,
+            .app-shell.screener-collapsed .screener-panel {
+                flex-basis: auto;
+                width: 100%;
+                height: 320px;
+                border-left: 0;
+                border-top: 1px solid #e4e4e4;
+            }
+
+            .app-shell.screener-collapsed .screener-header,
+            .app-shell.screener-collapsed .screener-body {
+                display: flex;
+            }
+
+            .app-shell.screener-collapsed .screener-rail,
+            .screener-icon-button,
+            .screener-resizer {
                 display: none;
             }
 
@@ -1064,6 +1284,21 @@
     </div>
     </div>
     </main>
+    <aside class="screener-panel" id="screenerPanel" aria-label="选股">
+        <div class="screener-header">
+            <div class="screener-title">选股</div>
+            <button type="button" id="screenerCollapse" class="screener-icon-button" title="收起选股" aria-label="收起选股">»</button>
+        </div>
+        <div class="screener-body">
+            <div id="screenerFilters" class="screener-filters"></div>
+            <button type="button" id="screenerRun" class="screener-run">确认</button>
+            <div id="screenerResults" class="screener-results">
+                <div class="screener-empty">选择条件后点击确认</div>
+            </div>
+        </div>
+        <button type="button" id="screenerExpand" class="screener-rail" title="展开选股" aria-label="展开选股">选股</button>
+        <div id="screenerResizer" class="screener-resizer" role="separator" aria-orientation="vertical" aria-label="调整选股栏宽度" title="拖动调整宽度"></div>
+    </aside>
 </div>
 
 <script>
@@ -1731,6 +1966,230 @@
         if (event.key === 'Enter') watchlistCreateButton.click();
     });
     loadWatchlists();
+
+    const screenerPanel = document.getElementById('screenerPanel');
+    const screenerFilters = document.getElementById('screenerFilters');
+    const screenerRun = document.getElementById('screenerRun');
+    const screenerResults = document.getElementById('screenerResults');
+    const screenerCollapse = document.getElementById('screenerCollapse');
+    const screenerExpand = document.getElementById('screenerExpand');
+    const screenerResizer = document.getElementById('screenerResizer');
+    let screenerResize = null;
+    const SCREENER_STATE_KEY = 'screener:state';
+    const SCREENER_DEFAULTS = {
+        market: 'cn',
+        asset_class: 'stock',
+        frequency: '1day',
+        scope: 'bi',
+    };
+    const readScreenerState = () => {
+        try {
+            return JSON.parse(lsGetString(SCREENER_STATE_KEY, '')) || null;
+        } catch (_) {
+            return null;
+        }
+    };
+    let screenerState = readScreenerState();
+    const saveScreenerState = updates => {
+        try {
+            screenerState = {...screenerState, ...updates};
+            lsSetString(SCREENER_STATE_KEY, JSON.stringify(screenerState));
+        } catch (_) {}
+    };
+    appShell.classList.toggle('screener-collapsed', lsGetBool('screener:collapsed', false));
+    const savedScreenerWidth = Number(lsGetString('screener:width', ''));
+    if (savedScreenerWidth >= 220) {
+        appShell.style.setProperty('--screener-width', Math.round(savedScreenerWidth) + 'px');
+    }
+
+    const requestScreener = async (url, options = {}) => {
+        const response = await fetch(url, {
+            headers: {'Content-Type': 'application/json'},
+            ...options,
+        });
+        if (!response.ok) {
+            let detail = `请求失败: ${response.status}`;
+            try {
+                detail = (await response.json()).detail || detail;
+            } catch (_) {}
+            throw new Error(detail);
+        }
+        return response.status === 204 ? null : response.json();
+    };
+
+    const renderScreenerField = (item, kind) => {
+        const field = document.createElement('div');
+        field.className = 'screener-field';
+        const label = document.createElement('label');
+        label.textContent = item.label;
+        const select = document.createElement('select');
+        select.dataset.field = item.field;
+        select.dataset.kind = kind;
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '不限';
+        select.appendChild(empty);
+        (item.options || []).forEach(option => {
+            const node = document.createElement('option');
+            node.value = String(option.value);
+            node.textContent = option.label;
+            select.appendChild(node);
+        });
+        field.append(label, select);
+        return field;
+    };
+
+    const renderScreenerFilters = payload => {
+        screenerFilters.textContent = '';
+        [...(payload.dimensions || []), ...(payload.states || [])].forEach(item => {
+            const kind = (payload.dimensions || []).includes(item) ? 'dimension' : 'state';
+            screenerFilters.appendChild(renderScreenerField(item, kind));
+        });
+        const desired = {...SCREENER_DEFAULTS, ...(screenerState?.filters || {})};
+        screenerFilters.querySelectorAll('select').forEach(select => {
+            const value = desired[select.dataset.field];
+            if (value == null) return;
+            const stringValue = String(value);
+            if ([...select.options].some(option => option.value === stringValue)) {
+                select.value = stringValue;
+            }
+        });
+    };
+
+    const loadScreenerOptions = async () => {
+        let resultsRendered = false;
+        if (screenerState?.options) {
+            renderScreenerFilters(screenerState.options);
+            if (screenerState.results) {
+                renderScreenerResults(screenerState.results);
+                resultsRendered = true;
+            }
+        }
+        try {
+            const payload = await requestScreener('/api/v1/test_api/stock_screener/options');
+            const optionsChanged = JSON.stringify(payload) !== JSON.stringify(screenerState?.options);
+            saveScreenerState({options: payload});
+            if (optionsChanged) {
+                renderScreenerFilters(payload);
+            }
+            if (!resultsRendered && screenerState?.results) {
+                renderScreenerResults(screenerState.results);
+            }
+        } catch (error) {
+            screenerFilters.textContent = '';
+            const message = document.createElement('div');
+            message.className = 'screener-empty';
+            message.textContent = `选股选项加载失败: ${error.message}`;
+            screenerFilters.appendChild(message);
+        }
+    };
+
+    const renderScreenerResults = payload => {
+        screenerResults.textContent = '';
+        const results = payload.results || [];
+        if (!results.length) {
+            const empty = document.createElement('div');
+            empty.className = 'screener-empty';
+            empty.textContent = '没有匹配的标的';
+            screenerResults.appendChild(empty);
+            return;
+        }
+        const count = document.createElement('div');
+        count.className = 'screener-empty';
+        count.textContent = `共 ${payload.count || results.length} 个标的`;
+        screenerResults.appendChild(count);
+        results.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'screener-result';
+            row.title = `${item.code} · ${item.asset_class} · ${item.frequencies.join(', ')}`;
+            const name = document.createElement('span');
+            name.className = 'screener-result-name';
+            name.textContent = item.display_name;
+            const meta = document.createElement('span');
+            meta.className = 'screener-result-meta';
+            meta.textContent = item.code;
+            row.append(name, meta);
+            row.addEventListener('click', () => window.location.assign(item.url));
+            screenerResults.appendChild(row);
+        });
+    };
+
+    const runScreener = async () => {
+        const filters = {};
+        screenerFilters.querySelectorAll('select').forEach(select => {
+            if (!select.value) return;
+            filters[select.dataset.field] = select.dataset.kind === 'state'
+                ? Number(select.value)
+                : select.value;
+        });
+        screenerRun.disabled = true;
+        screenerRun.textContent = '查询中...';
+        try {
+            const payload = await requestScreener('/api/v1/test_api/stock_screener/query', {
+                method: 'POST',
+                body: JSON.stringify(filters),
+            });
+            renderScreenerResults(payload);
+            saveScreenerState({filters, results: payload});
+        } catch (error) {
+            screenerResults.textContent = '';
+            const message = document.createElement('div');
+            message.className = 'screener-empty';
+            message.textContent = `查询失败: ${error.message}`;
+            screenerResults.appendChild(message);
+        } finally {
+            screenerRun.disabled = false;
+            screenerRun.textContent = '确认';
+        }
+    };
+
+    const applyScreenerWidth = width => {
+        const maxWidth = Math.max(220, Math.min(640, window.innerWidth - 420));
+        const next = Math.round(Math.max(220, Math.min(maxWidth, width)));
+        appShell.style.setProperty('--screener-width', next + 'px');
+        return next;
+    };
+
+    screenerCollapse.addEventListener('click', () => {
+        appShell.classList.add('screener-collapsed');
+        lsSetBool('screener:collapsed', true);
+        syncChartWidth();
+    });
+    screenerExpand.addEventListener('click', () => {
+        appShell.classList.remove('screener-collapsed');
+        lsSetBool('screener:collapsed', false);
+        syncChartWidth();
+    });
+    screenerRun.addEventListener('click', runScreener);
+    screenerResizer.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || appShell.classList.contains('screener-collapsed')) return;
+        event.preventDefault();
+        screenerResize = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startWidth: screenerPanel.getBoundingClientRect().width,
+        };
+        appShell.classList.add('screener-resizing');
+        screenerResizer.setPointerCapture(event.pointerId);
+    });
+    screenerResizer.addEventListener('pointermove', event => {
+        if (!screenerResize || event.pointerId !== screenerResize.pointerId) return;
+        applyScreenerWidth(screenerResize.startWidth - (event.clientX - screenerResize.startX));
+        syncChartWidth();
+    });
+    const finishScreenerResize = event => {
+        if (!screenerResize || (event && event.pointerId !== screenerResize.pointerId)) return;
+        const width = applyScreenerWidth(
+            screenerResize.startWidth - (event.clientX - screenerResize.startX)
+        );
+        screenerResize = null;
+        appShell.classList.remove('screener-resizing');
+        lsSetString('screener:width', String(width));
+        syncChartWidth();
+    };
+    screenerResizer.addEventListener('pointerup', finishScreenerResize);
+    screenerResizer.addEventListener('pointercancel', finishScreenerResize);
+    loadScreenerOptions();
 
     document.querySelectorAll('#frequencyTabs .frequency-tab').forEach(button => {
         button.addEventListener('click', () => {
