@@ -1020,6 +1020,16 @@
             font-size: 13px;
         }
 
+        .screener-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .screener-actions .screener-run,
+        .screener-actions .screener-reset {
+            flex: 1;
+        }
+
         .screener-run {
             padding: 7px 10px;
             border: 1px solid #e64545;
@@ -1032,6 +1042,27 @@
         }
 
         .screener-run:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .screener-reset {
+            padding: 7px 10px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #fff;
+            color: #555;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .screener-reset:hover {
+            border-color: #e64545;
+            color: #e64545;
+        }
+
+        .screener-reset:disabled {
             opacity: 0.6;
             cursor: wait;
         }
@@ -1302,7 +1333,10 @@
         </div>
         <div class="screener-body">
             <div id="screenerFilters" class="screener-filters"></div>
-            <button type="button" id="screenerRun" class="screener-run">确认</button>
+            <div class="screener-actions">
+                <button type="button" id="screenerRun" class="screener-run">确认</button>
+                <button type="button" id="screenerReset" class="screener-reset">重置</button>
+            </div>
             <div id="screenerResults" class="screener-results">
                 <div class="screener-empty">选择条件后点击确认</div>
             </div>
@@ -1981,6 +2015,7 @@
     const screenerPanel = document.getElementById('screenerPanel');
     const screenerFilters = document.getElementById('screenerFilters');
     const screenerRun = document.getElementById('screenerRun');
+    const screenerReset = document.getElementById('screenerReset');
     const screenerResults = document.getElementById('screenerResults');
     const screenerCollapse = document.getElementById('screenerCollapse');
     const screenerExpand = document.getElementById('screenerExpand');
@@ -2113,6 +2148,15 @@
         }
     };
 
+    const renderScreenerPlaceholder = () => {
+        screenerResults.textContent = '';
+        const empty = document.createElement('div');
+        empty.className = 'screener-empty';
+        empty.textContent = '选择条件后点击确认';
+        screenerResults.appendChild(empty);
+        screenerResults.scrollTop = 0;
+    };
+
     const renderScreenerResults = (payload, {restoreScroll = false} = {}) => {
         screenerResults.textContent = '';
         const results = payload.results || [];
@@ -2159,6 +2203,7 @@
                 : select.value;
         });
         screenerRun.disabled = true;
+        screenerReset.disabled = true;
         screenerRun.textContent = '查询中...';
         try {
             const payload = await requestScreener('/api/v1/test_api/stock_screener/query', {
@@ -2177,8 +2222,23 @@
             screenerResults.appendChild(message);
         } finally {
             screenerRun.disabled = false;
+            screenerReset.disabled = false;
             screenerRun.textContent = '确认';
         }
+    };
+
+    const resetScreener = () => {
+        pendingScreenerScroll = null;
+        localStorage.removeItem(SCREENER_SCROLL_KEY);
+        saveScreenerState({filters: {}, results: null});
+        screenerFilters.querySelectorAll('select').forEach(select => {
+            const value = SCREENER_DEFAULTS[select.dataset.field];
+            const stringValue = value == null ? '' : String(value);
+            select.value = [...select.options].some(option => option.value === stringValue)
+                ? stringValue
+                : '';
+        });
+        renderScreenerPlaceholder();
     };
 
     const applyScreenerWidth = width => {
@@ -2200,6 +2260,7 @@
         scheduleScreenerScrollRestore();
     });
     screenerRun.addEventListener('click', runScreener);
+    screenerReset.addEventListener('click', resetScreener);
     screenerResizer.addEventListener('pointerdown', event => {
         if (event.button !== 0 || appShell.classList.contains('screener-collapsed')) return;
         event.preventDefault();
