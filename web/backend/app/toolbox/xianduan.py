@@ -1913,23 +1913,48 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         return current
 
     def _make_fake_first_reverse_segment(left_xianduan: XianDuanBase) -> Optional[FakeXianDuanLast]:
-        """在已确认段左侧按反向极值构造 fake 前置段。"""
-        if left_xianduan.start_bi_idx <= 0:
+        """在已确认段左侧按真实反向边界构造 fake 前置段。"""
+        if left_xianduan.start_bi_idx <= 1:
             return None
         reverse_up = not left_xianduan.is_up()
         end_bi_idx = left_xianduan.start_bi_idx - 1
-        start_bi_idx = 0
+
+        reverse_boundary_idx: Optional[int] = None
+        reverse_boundary_price = float("inf") if reverse_up else float("-inf")
+        boundary_is_start = False
+        for bi_idx in range(0, end_bi_idx + 1):
+            bi = bi_list[bi_idx]
+            start_price = float(bi.start_price)
+            end_price = float(bi.end_price)
+            start_is_more_extreme = (
+                start_price > reverse_boundary_price
+                if not reverse_up
+                else start_price < reverse_boundary_price
+            )
+            if start_is_more_extreme:
+                reverse_boundary_price = start_price
+                reverse_boundary_idx = bi_idx
+                boundary_is_start = True
+            end_is_more_extreme = (
+                end_price > reverse_boundary_price
+                if not reverse_up
+                else end_price < reverse_boundary_price
+            )
+            if end_is_more_extreme:
+                reverse_boundary_price = end_price
+                reverse_boundary_idx = bi_idx
+                boundary_is_start = False
+        if reverse_boundary_idx is None:
+            return None
+
+        start_bi_idx = reverse_boundary_idx if boundary_is_start else reverse_boundary_idx + 1
         extreme_end_bi_idx = _extreme_end_bi_idx(start_bi_idx, end_bi_idx, reverse_up)
         if extreme_end_bi_idx is None or extreme_end_bi_idx < start_bi_idx + 2:
             return None
-        # 前缀内部已有特征序列边界时，不能用粗粒度极值直接补前置段。
-        if any(tzxl.mid_bi_idx <= end_bi_idx for tzxl in tzxl_list):
+        candidate = _make_bi_range_segment(start_bi_idx, extreme_end_bi_idx, reverse_up)
+        if _range_breaks_start(candidate.start_bi_idx, candidate.end_bi_idx, candidate.is_up()):
             return None
-        return _make_bi_range_segment(
-            start_bi_idx,
-            extreme_end_bi_idx,
-            reverse_up,
-        )
+        return candidate
 
     def _merge_penetrated_fake_tail(left_xianduan: XianDuan, right_xianduan: XianDuanBase) -> XianDuan:
         """右侧反向 fake 段中间笔穿透左段终点时，两段应并回同向延伸段。"""
@@ -1956,6 +1981,36 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                     end_bi_idx,
                     left_xianduan.is_up(),
                 )
+        return left_xianduan
+
+    def _merge_penetrated_opposite_segments(left_xianduan: XianDuanBase, right_xianduan: XianDuanBase) -> XianDuanBase:
+        """反向 fake 尾被下一笔同向极值穿透时，按穿透方向重切。"""
+        if right_xianduan.is_up() == left_xianduan.is_up():
+            return left_xianduan
+        check_stop = min(right_xianduan.end_bi_idx + 1, len(bi_list) - 1)
+        for bi_idx in range(right_xianduan.end_bi_idx + 1, check_stop + 1):
+            bi = bi_list[bi_idx]
+            is_left_direction = bi.is_up() == left_xianduan.is_up()
+            boundary_price = float(left_xianduan.end_price)
+            if is_left_direction:
+                penetrated = _price_is_more_extreme(
+                    float(bi.end_price), boundary_price, left_xianduan.is_up()
+                )
+                start_bi_idx = left_xianduan.start_bi_idx
+                direction_up = left_xianduan.is_up()
+            else:
+                penetrated = _price_is_more_extreme(
+                    float(bi.end_price), boundary_price, right_xianduan.is_up()
+                )
+                start_bi_idx = right_xianduan.start_bi_idx
+                direction_up = right_xianduan.is_up()
+            if not penetrated:
+                continue
+
+            end_bi_idx = _extreme_end_bi_idx(start_bi_idx, len(bi_list) - 1, direction_up)
+            if end_bi_idx is None:
+                return left_xianduan
+            return _make_bi_range_segment(start_bi_idx, end_bi_idx, direction_up)
         return left_xianduan
 
     def find_confirmed_xianduan_pair() -> List[XianDuanBase]:
@@ -1995,8 +2050,41 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         return []
 
     xianduan_list = list(xianduan_finish_deque)
+    if xianduan_list:
+        repaired_index = 0
+        while repaired_index + 1 < len(xianduan_list):
+            left_xianduan = xianduan_list[repaired_index]
+            right_xianduan = xianduan_list[repaired_index + 1]
+            if (
+                isinstance(right_xianduan, FakeXianDuanLast)
+                and right_xianduan.is_up() != left_xianduan.is_up()
+            ):
+                merged_xianduan = _merge_penetrated_opposite_segments(
+                    left_xianduan,
+                    right_xianduan,
+                )
+                if merged_xianduan is not left_xianduan:
+                    replace_stop = repaired_index + 2
+                    while (
+                        replace_stop < len(xianduan_list)
+                        and xianduan_list[replace_stop].start_idx < merged_xianduan.end_idx
+                    ):
+                        replace_stop += 1
+                    del xianduan_list[repaired_index:replace_stop]
+                    xianduan_list.insert(repaired_index, merged_xianduan)
+                    continue
+            repaired_index += 1
     if not xianduan_list:
         xianduan_list = find_confirmed_xianduan_pair()
+
+    if (
+        xianduan_list
+        and isinstance(xianduan_list[0], FakeXianDuanLast)
+        and xianduan_list[0].start_bi_idx > 0
+    ):
+        reverse_prefix = _make_fake_first_reverse_segment(xianduan_list[0])
+        if reverse_prefix is not None and reverse_prefix.has_enough_bi():
+            xianduan_list.insert(0, reverse_prefix)
     if len(xianduan_list) >= 3:
         first = xianduan_list[0]
         second = xianduan_list[1]

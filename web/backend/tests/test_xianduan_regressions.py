@@ -61,6 +61,18 @@ def _assert_segments(symbol, frequency, asset_class, expected):
     assert actual == expected
 
 
+def test_000977sz_monthly_has_reverse_fake_prefix():
+    _assert_segments(
+        "000977SZ",
+        "freq=1month",
+        "asset_class=stock",
+        [
+            ("2000-06-30", "2008-11-28", "FakeXianDuanLast", False),
+            ("2008-11-28", "2026-07-31", "FakeXianDuanLast", True),
+        ],
+    )
+
+
 def test_688549sh_weekly_prefix_and_extended_tail():
     _assert_segments(
         "688549SH",
@@ -73,22 +85,80 @@ def test_688549sh_weekly_prefix_and_extended_tail():
     )
 
 
-def test_fallback_tail_penetrated_by_later_same_direction_bi_does_not_split():
+def _assert_segments(symbol, frequency, asset_class, expected):
+    segments = _load_segments(symbol, frequency, asset_class)
+    actual = [
+        (
+            str(segment.start_time.date()),
+            str(segment.end_time.date()),
+            type(segment).__name__,
+            segment.is_up(),
+        )
+        for segment in segments
+    ]
+    assert actual == expected
+
+
+def test_688549sh_weekly_prefix_and_extended_tail():
+    _assert_segments(
+        "688549SH",
+        "freq=1week",
+        "asset_class=stock",
+        [
+            ("2023-09-08", "2024-09-20", "FakeXianDuanLast", False),
+            ("2024-09-20", "2026-07-03", "FakeXianDuanLast", True),
+        ],
+    )
+
+
+def test_fallback_reverse_prefix_and_penetrated_tail():
     _assert_segments(
         "560100SH",
         "freq=1week",
         "asset_class=fund",
-        [("2024-02-08", "2026-07-03", "FakeXianDuanLast", True)],
+        [
+            ("2022-03-04", "2024-02-08", "FakeXianDuanLast", False),
+            ("2024-02-08", "2026-07-03", "FakeXianDuanLast", True),
+        ],
     )
     _assert_segments(
         "300139SZ",
         "freq=1month",
         "asset_class=stock",
-        [("2018-02-28", "2026-03-31", "FakeXianDuanLast", True)],
+        [
+            ("2010-11-30", "2018-02-28", "FakeXianDuanLast", False),
+            ("2018-02-28", "2026-03-31", "FakeXianDuanLast", True),
+        ],
     )
     _assert_segments(
         "002080SZ",
         "freq=1month",
         "asset_class=stock",
         [("2012-12-31", "2026-06-30", "FakeXianDuanLast", True)],
+    )
+
+
+def test_600127sh_opposite_tail_penetrated_by_later_extreme():
+    _assert_segments(
+        "600127SH",
+        "freq=1week",
+        "asset_class=stock",
+        [
+            ("2001-06-08", "2005-07-22", "XianDuan", False),
+            ("2005-07-22", "2008-05-16", "XianDuan", True),
+            ("2008-05-16", "2018-10-19", "XianDuan", False),
+            ("2018-10-19", "2026-09-24", "FakeXianDuanLast", True),
+        ],
+    )
+
+
+def test_600113sh_monthly_has_reverse_prefix():
+    _assert_segments(
+        "600113SH",
+        "freq=1month",
+        "asset_class=stock",
+        [
+            ("2001-06-29", "2008-11-28", "FakeXianDuanLast", False),
+            ("2008-11-28", "2025-12-31", "FakeXianDuanLast", True),
+        ],
     )

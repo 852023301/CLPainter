@@ -140,6 +140,26 @@ class FrontendTemplateTest(unittest.TestCase):
         ):
             self.assertIn(marker, self.html)
 
+    def test_screener_results_are_numbered_and_keep_scroll(self):
+        self.assertIn(".screener-result-index", self.html)
+        self.assertIn("sequence.textContent = String(index + 1)", self.scripts)
+        self.assertIn("const SCREENER_SCROLL_KEY = 'screener:results-scroll';", self.scripts)
+        self.assertIn(
+            "lsSetString(SCREENER_SCROLL_KEY, String(screenerResults.scrollTop))",
+            self.scripts,
+        )
+        self.assertIn("screenerResults.scrollTop = target", self.scripts)
+        self.assertIn("renderScreenerResults(screenerState.results, {restoreScroll: true})", self.scripts)
+
+    def test_screener_reset_restores_defaults_and_clears_results(self):
+        self.assertIn('id="screenerReset"', self.html)
+        self.assertIn("const screenerReset = document.getElementById('screenerReset');", self.scripts)
+        self.assertIn("screenerReset.addEventListener('click', resetScreener);", self.scripts)
+        self.assertIn("saveScreenerState({filters: {}, results: null})", self.scripts)
+        self.assertIn("const value = SCREENER_DEFAULTS[select.dataset.field];", self.scripts)
+        self.assertIn("empty.textContent = '选择条件后点击确认';", self.scripts)
+        self.assertIn("screenerReset.disabled = true;", self.scripts)
+
     def test_single_time_axis_and_range_stats(self):
         subchart = self.scripts[self.scripts.find("function createSubChart"):self.scripts.find("function buildSubSeries")]
         self.assertIn("visible: false, timeVisible: true", subchart)
