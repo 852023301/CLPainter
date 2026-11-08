@@ -17,7 +17,6 @@ def third_point_type(cache: Any) -> Optional[int]:
     if not segment_pivots:
         return 0
 
-    last_segment_pivot = max(segment_pivots, key=lambda pivot: (pivot.start_time, pivot.end_time))
     pivot_candidates = [
         pivot
         for pivot in (cache.bi_zhongshu_raw_list or [])
@@ -26,10 +25,17 @@ def third_point_type(cache: Any) -> Optional[int]:
     if not pivot_candidates:
         return 0
 
-    last_pivot = max(pivot_candidates, key=lambda pivot: (pivot.start_time, pivot.end_time))
-    if last_pivot.start_time < last_segment_pivot.start_time:
-        return 0
-
+    current_pivot = max(pivot_candidates, key=lambda pivot: (pivot.start_time, pivot.end_time))
+    tied_pivots = [
+        pivot
+        for pivot in pivot_candidates + segment_pivots
+        if pivot.end_time == current_pivot.end_time
+    ]
+    preferred_pivots = [pivot for pivot in tied_pivots if pivot in segment_pivots]
+    last_pivot = max(
+        preferred_pivots or tied_pivots,
+        key=lambda pivot: (pivot.start_time, pivot.end_time),
+    )
     last_bi = bi_list[-1]
     if len(bi_list) < 2:
         return 0
