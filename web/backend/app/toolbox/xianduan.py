@@ -1424,6 +1424,27 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                     not split_segment.is_up(),
                 )
                 xianduan_finish_deque.extend([split_segment, reverse_tail])
+
+                # The first reverse fake tail may itself need a same-direction
+                # extreme tail. Keep processing the new tail instead of stopping
+                # after one split.
+                next_reverse_start_bi_idx = reverse_tail.end_bi_idx + 1
+                next_reverse_end_bi_idx = _extreme_end_bi_idx(
+                    next_reverse_start_bi_idx,
+                    len(bi_list) - 1,
+                    not reverse_tail.is_up(),
+                )
+                if (
+                    next_reverse_end_bi_idx is not None
+                    and next_reverse_end_bi_idx >= next_reverse_start_bi_idx + 2
+                ):
+                    next_reverse_tail = _make_bi_range_segment(
+                        next_reverse_start_bi_idx,
+                        next_reverse_end_bi_idx,
+                        not reverse_tail.is_up(),
+                    )
+                    if next_reverse_tail.has_enough_bi():
+                        xianduan_finish_deque.append(next_reverse_tail)
                 return
 
         if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):

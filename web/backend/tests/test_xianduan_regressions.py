@@ -1,164 +1,95 @@
-"""缠论线段端点的代表性数据回归。"""
+"""缠论线段端点回归。
+
+用例清单在 ``regression_cases.py``，本文件只负责执行 segment 级案例。
+数据来源是 ``dump/curated`` 缓存，和前端实际读取的结果保持一致。
+"""
+
 from pathlib import Path
 
-from CLPainter.web.backend.app._config.settings import settings
-from CLPainter.web.backend.app.toolbox.datacube import _DataCache
+import pytest
 
-DATA_ROOT = Path(settings.DATA_DIR)
+from CLPainter.web.backend.app.toolbox.datacube import (
+    CACHE_DUMP_DIR,
+    load_data_cache_pickle,
+)
+from CLPainter.web.backend.tests.regression_cases import SEGMENT_CASES
 
-
-def _load_segments(symbol: str, frequency: str = "freq=1day", asset_class: str = "asset_class=stock"):
-    source = DATA_ROOT / frequency / "market=cn" / asset_class / f"{symbol}.pkl"
-    cache = _DataCache(source)
-    cache.ensure_loaded()
-    return cache.xian_duan_list
-
-
-def test_600015sh_daily_first_two_segments_use_confirmed_boundaries():
-    segments = _load_segments("600015SH")
-    actual = [(str(segment.start_time.date()), str(segment.end_time.date())) for segment in segments[:2]]
-    assert actual == [
-        ("2004-02-06", "2005-07-12"),
-        ("2005-07-12", "2007-10-16"),
-    ]
+CACHE_ROOT = Path(CACHE_DUMP_DIR)
+pytestmark = pytest.mark.skipif(
+    not CACHE_ROOT.exists(),
+    reason=f"curated 缓存目录不存在: {CACHE_ROOT}",
+)
 
 
-def test_603683sh_daily_tail_splits_at_2025_09_25_and_fakes_to_2026_10_19():
-    segments = _load_segments("603683SH")
-    actual = [
-        (str(segment.start_time.date()), str(segment.end_time.date()), type(segment).__name__)
-        for segment in segments[-2:]
-    ]
-    assert actual == [
-        ("2024-02-08", "2025-09-25", "XianDuan"),
-        ("2025-09-25", "2026-10-19", "FakeXianDuanLast"),
-    ]
-
-
-def test_159870sz_weekly_has_down_and_up_fake_segments():
-    segments = _load_segments("159870SZ", "freq=1week", "asset_class=fund")
-    actual = [
+def _load_segments(case) -> list[tuple]:
+    cache = load_data_cache_pickle(
+        case.symbol,
+        case.frequency,
+        "market=cn",
+        case.asset_class,
+        CACHE_ROOT,
+    )
+    return [
         (
             str(segment.start_time.date()),
             str(segment.end_time.date()),
             type(segment).__name__,
             segment.is_up(),
         )
-        for segment in segments
-    ]
-    assert actual == [
-        ("2021-09-17", "2024-02-08", "FakeXianDuanLast", False),
-        ("2024-02-08", "2026-03-06", "FakeXianDuanLast", True),
+        for segment in (cache.xian_duan_list or [])
     ]
 
 
-def _assert_segments(symbol, frequency, asset_class, expected):
-    segments = _load_segments(symbol, frequency, asset_class)
-    actual = [
-        (str(segment.start_time.date()), str(segment.end_time.date()), type(segment).__name__, segment.is_up())
-        for segment in segments
-    ]
-    assert actual == expected
+def _assert_match(actual: list[tuple], case) -> None:
+    expected = case.expected
+    if case.match == "contains":
+        assert expected in actual, f"{case.case_id}: 未找到期望线段 {expected}"
+        return
+    if case.match == "endpoint":
+        assert any(
+            start == expected or end == expected
+            for start, end, _type_name, _is_up in actual
+        ), f"{case.case_id}: 端点 {expected} 不在任何线段上"
+        return
+
+    expected = tuple(expected)
+    if case.match == "full":
+        assert actual == list(expected), f"{case.case_id}: 线段列表不匹配"
+    elif case.match == "prefix":
+        assert actual[: len(expected)] == list(expected), f"{case.case_id}: 前 {len(expected)} 条线段不匹配"
+    elif case.match == "suffix":
+        assert actual[-len(expected) :] == list(expected), f"{case.case_id}: 后 {len(expected)} 条线段不匹配"
+    else:
+        raise AssertionError(f"{case.case_id}: 未知 match 模式 {case.match}")
 
 
-def test_000977sz_monthly_has_reverse_fake_prefix():
-    _assert_segments(
-        "000977SZ",
-        "freq=1month",
-        "asset_class=stock",
-        [
-            ("2000-06-30", "2008-11-28", "FakeXianDuanLast", False),
-            ("2008-11-28", "2026-07-31", "FakeXianDuanLast", True),
-        ],
-    )
+@pytest.mark.parametrize("case", SEGMENT_CASES, ids=lambda case: case.case_id)
+def test_segment_regression(case):
+    _assert_match(_load_segments(case), case)
 
 
-def test_688549sh_weekly_prefix_and_extended_tail():
-    _assert_segments(
-        "688549SH",
-        "freq=1week",
-        "asset_class=stock",
-        [
-            ("2023-09-08", "2024-09-20", "FakeXianDuanLast", False),
-            ("2024-09-20", "2026-07-03", "FakeXianDuanLast", True),
-        ],
-    )
+def test_segment_cases_have_unique_ids():
+    ids = [case.case_id for case in SEGMENT_CASES]
+    assert len(ids) == len(set(ids))
 
 
-def _assert_segments(symbol, frequency, asset_class, expected):
-    segments = _load_segments(symbol, frequency, asset_class)
-    actual = [
-        (
-            str(segment.start_time.date()),
-            str(segment.end_time.date()),
-            type(segment).__name__,
-            segment.is_up(),
-        )
-        for segment in segments
-    ]
-    assert actual == expected
-
-
-def test_688549sh_weekly_prefix_and_extended_tail():
-    _assert_segments(
-        "688549SH",
-        "freq=1week",
-        "asset_class=stock",
-        [
-            ("2023-09-08", "2024-09-20", "FakeXianDuanLast", False),
-            ("2024-09-20", "2026-07-03", "FakeXianDuanLast", True),
-        ],
-    )
-
-
-def test_fallback_reverse_prefix_and_penetrated_tail():
-    _assert_segments(
-        "560100SH",
-        "freq=1week",
-        "asset_class=fund",
-        [
-            ("2022-03-04", "2024-02-08", "FakeXianDuanLast", False),
-            ("2024-02-08", "2026-07-03", "FakeXianDuanLast", True),
-        ],
-    )
-    _assert_segments(
-        "300139SZ",
-        "freq=1month",
-        "asset_class=stock",
-        [
-            ("2010-11-30", "2018-02-28", "FakeXianDuanLast", False),
-            ("2018-02-28", "2026-03-31", "FakeXianDuanLast", True),
-        ],
-    )
-    _assert_segments(
-        "002080SZ",
-        "freq=1month",
-        "asset_class=stock",
-        [("2012-12-31", "2026-06-30", "FakeXianDuanLast", True)],
-    )
-
-
-def test_600127sh_opposite_tail_penetrated_by_later_extreme():
-    _assert_segments(
-        "600127SH",
-        "freq=1week",
-        "asset_class=stock",
-        [
-            ("2001-06-08", "2005-07-22", "XianDuan", False),
-            ("2005-07-22", "2008-05-16", "XianDuan", True),
-            ("2008-05-16", "2018-10-19", "XianDuan", False),
-            ("2018-10-19", "2026-09-24", "FakeXianDuanLast", True),
-        ],
-    )
-
-
-def test_600113sh_monthly_has_reverse_prefix():
-    _assert_segments(
-        "600113SH",
-        "freq=1month",
-        "asset_class=stock",
-        [
-            ("2001-06-29", "2008-11-28", "FakeXianDuanLast", False),
-            ("2008-11-28", "2025-12-31", "FakeXianDuanLast", True),
-        ],
-    )
+def test_segment_cases_cover_expected_document_ids():
+    ids = {case.case_id.split("-", 1)[0] for case in SEGMENT_CASES}
+    assert {
+        "S1",
+        "S3",
+        "S4",
+        "S5",
+        "S6",
+        "S7",
+        "S8",
+        "S9",
+        "S10",
+        "S11",
+        "S13",
+        "S24",
+        "S25",
+        "S26",
+        "S27",
+        "S28",
+    }.issubset(ids)
