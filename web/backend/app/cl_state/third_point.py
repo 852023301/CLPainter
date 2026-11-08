@@ -19,19 +19,25 @@ def third_point_type(cache: Any) -> Optional[int]:
 
     last_pivot = max(segment_pivots, key=lambda pivot: (pivot.start_time, pivot.end_time))
     last_bi = bi_list[-1]
-    if len(bi_list) < 2 or last_bi.idx <= last_pivot.end_bi_idx:
+    if len(bi_list) < 2:
         return 0
 
-    previous_bi = bi_list[-2]
-    previous_still_overlaps = (
-        previous_bi.high_price >= last_pivot.low_price
-        and previous_bi.low_price <= last_pivot.high_price
-    )
-    if not previous_still_overlaps:
+    exit_bi = bi_list[-2]
+    if exit_bi.idx != last_pivot.end_bi_idx:
         return 0
 
-    if last_bi.is_down() and previous_bi.is_up() and last_bi.low_price > last_pivot.high_price:
+    if (
+        segment.is_up()
+        and last_bi.is_down()
+        and exit_bi.is_up()
+        and last_bi.low_price > last_pivot.high_price
+    ):
         return 1
-    if last_bi.is_up() and previous_bi.is_down() and last_bi.high_price < last_pivot.low_price:
+    if (
+        segment.is_down()
+        and last_bi.is_up()
+        and exit_bi.is_down()
+        and last_bi.high_price < last_pivot.low_price
+    ):
         return 2
     return 0
