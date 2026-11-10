@@ -160,6 +160,44 @@ def _is_more_extreme(
     return new_item.low_price < old_item.low_price
 
 
+def _filter_extreme_sequences(
+        sequences: List[XianduanTeZhengXuLie],
+) -> List[XianduanTeZhengXuLie]:
+    """连续同向特征序列只保留更极值的一个。"""
+    filtered: List[XianduanTeZhengXuLie] = []
+    for item in sequences:
+        if filtered and filtered[-1].is_top() == item.is_top():
+            if _is_more_extreme(filtered[-1], item):
+                filtered[-1] = item
+        else:
+            filtered.append(item)
+    return filtered
+
+
+def _make_sequence(
+        left_xian_duan: "XianDuanBase",
+        mid_xian_duan: "XianDuanBase",
+        right_xian_duan: "XianDuanBase",
+        mid_idx: int,
+        is_bottom: bool,
+) -> XianduanTeZhengXuLie:
+    is_second_category = (
+        mid_xian_duan.end_price < left_xian_duan.start_price
+        if is_bottom
+        else mid_xian_duan.end_price > left_xian_duan.start_price
+    )
+    return XianduanTeZhengXuLie(
+        type=TeZhengXuLieType.DI if is_bottom else TeZhengXuLieType.DING,
+        category=(
+            TeZhengXuLieCategory.Second
+            if is_second_category
+            else TeZhengXuLieCategory.First
+        ),
+        xian_duan_list=[left_xian_duan, mid_xian_duan, right_xian_duan],
+        xian_duan_idx_list=[mid_idx - 2, mid_idx, mid_idx + 2],
+    )
+
+
 def generate_xianduan_tezheng_xu_lie(
         xian_duan_list: List["XianDuanBase"],
 ) -> List[XianduanTeZhengXuLie]:
@@ -185,41 +223,17 @@ def generate_xianduan_tezheng_xu_lie(
         if right_idx is None:
             continue
 
-        if is_bottom:
-            is_second_category = (
-                    mid_xian_duan.end_price < left_xian_duan.start_price
-            )
-            sequence_type = TeZhengXuLieType.DI
-        else:
-            is_second_category = (
-                    mid_xian_duan.end_price > left_xian_duan.start_price
-            )
-            sequence_type = TeZhengXuLieType.DING
-
         result.append(
-            XianduanTeZhengXuLie(
-                type=sequence_type,
-                category=(
-                    TeZhengXuLieCategory.Second
-                    if is_second_category
-                    else TeZhengXuLieCategory.First
-                ),
-                xian_duan_list=[
-                    left_xian_duan,
-                    mid_xian_duan,
-                    xian_duan_list[right_idx],
-                ],
-                xian_duan_idx_list=[mid_idx - 2, mid_idx, right_idx],
+            _make_sequence(
+                left_xian_duan,
+                mid_xian_duan,
+                xian_duan_list[right_idx],
+                mid_idx,
+                is_bottom,
             )
         )
 
-    filtered_result: List[XianduanTeZhengXuLie] = []
-    for item in result:
-        if filtered_result and filtered_result[-1].is_top() == item.is_top():
-            if _is_more_extreme(filtered_result[-1], item):
-                filtered_result[-1] = item
-        else:
-            filtered_result.append(item)
+    filtered_result = _filter_extreme_sequences(result)
     for sequence_idx, item in enumerate(filtered_result):
         item.idx = sequence_idx
     return filtered_result

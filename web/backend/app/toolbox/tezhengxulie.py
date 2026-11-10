@@ -92,113 +92,121 @@ class TeZhengXuLie:
         return min(self.mid_bi.start_price, self.mid_bi.end_price)
 
 
+def _find_confirmation(bi_list: List[BiBase], idx: int, is_bottom: bool) -> Optional[int]:
+    """从 idx 开始向后寻找特征序列的确认笔。"""
+    mid_bi = bi_list[idx]
+    right_idx = idx + 2
+    if is_bottom:
+        merged_low = mid_bi.start_price
+        merged_high = mid_bi.end_price
+        while right_idx < len(bi_list):
+            right_bi = bi_list[right_idx]
+            if right_bi.start_price < merged_low:
+                return None
+            if right_bi.start_price > merged_low and right_bi.end_price > merged_high:
+                return right_idx
+            if (right_bi.start_price >= merged_low and right_bi.end_price <= merged_high) or (
+                right_bi.start_price <= merged_low and right_bi.end_price >= merged_high
+            ):
+                merged_high = min(merged_high, right_bi.end_price)
+                merged_low = min(merged_low, right_bi.start_price)
+            else:
+                raise ValueError("意外的笔")
+            right_idx += 2
+        return None
+
+    merged_high = mid_bi.start_price
+    merged_low = mid_bi.end_price
+    while right_idx < len(bi_list):
+        right_bi = bi_list[right_idx]
+        if right_bi.start_price > merged_high:
+            return None
+        if right_bi.start_price < merged_high and right_bi.end_price < merged_low:
+            return right_idx
+        if (right_bi.start_price >= merged_low and right_bi.end_price <= merged_high) or (
+            right_bi.start_price <= merged_low and right_bi.end_price >= merged_high
+        ):
+            merged_high = max(merged_high, right_bi.start_price)
+            merged_low = max(merged_low, right_bi.end_price)
+        else:
+            raise ValueError("意外的笔")
+        right_idx += 2
+    return None
+
+
+def _filter_extreme_sequences(sequences: List[TeZhengXuLie]) -> List[TeZhengXuLie]:
+    """连续同向特征序列只保留更极值的一个。"""
+    filtered: List[TeZhengXuLie] = []
+    is_top = True
+    temp: List[TeZhengXuLie] = []
+    for tzxl in sequences:
+        if tzxl.is_top() == is_top:
+            temp.append(tzxl)
+            continue
+        if temp:
+            filtered.append(
+                max(temp, key=lambda item: item.high_price)
+                if is_top
+                else min(temp, key=lambda item: item.low_price)
+            )
+        is_top = not is_top
+        temp = [tzxl]
+    if temp:
+        filtered.append(
+            max(temp, key=lambda item: item.high_price)
+            if is_top
+            else min(temp, key=lambda item: item.low_price)
+        )
+    return filtered
+
+
 def generate_te_zheng_xu_lie(bi_list: List[BiBase]) -> List[TeZhengXuLie]:
-    """生成特征序列"""
-    te_zheng_xu_lie_list: List[TeZhengXuLie] = []
-    bi_idx_length = len(bi_list)
-    _end_idx = bi_idx_length - 2
-    for idx in range(2, _end_idx):
-        # 相邻bi是相反方向，
+    """生成笔特征序列。"""
+    sequences: List[TeZhengXuLie] = []
+    for idx in range(2, len(bi_list) - 2):
         left_bi = bi_list[idx - 2]
         mid_bi = bi_list[idx]
-
-        # 底部特征序列
         if mid_bi.is_up():
-            if mid_bi.start_price < left_bi.start_price:
-                find = False
-                right_idx = idx + 2
-                merged_low = mid_bi.start_price
-                merged_high = mid_bi.end_price
-                while right_idx < bi_idx_length:
-                    right_bi = bi_list[right_idx]
-
-                    if right_bi.start_price < merged_low:
-                        break
-                    elif right_bi.start_price > merged_low and right_bi.end_price > merged_high:
-                        find = True
-                        break
-                    elif (right_bi.start_price >= merged_low and right_bi.end_price <= merged_high) or (
-                        right_bi.start_price <= merged_low and right_bi.end_price >= merged_high):
-                        # 向下合并
-                        merged_high = min(merged_high, right_bi.end_price)
-                        merged_low = min(merged_low, right_bi.start_price)
-                    else:
-                        print(f"{merged_low=}")
-                        print(f"{merged_high=}")
-                        print(f"{mid_bi=}")
-                        print(f"{right_bi=}")
-                        raise ValueError(f"意外的笔")
-                    right_idx += 2
-
-                if find:
-                    bi_idx_list = [idx - 2, idx, right_idx]
-
-                    category = TeZhengXuLieCategory.Second if mid_bi.end_price < left_bi.start_price else TeZhengXuLieCategory.First
-                    te_zheng_xu_lie_list.append(
-                        TeZhengXuLie(type=TeZhengXuLieType.DI, category=category,
-                                     bi_list=[left_bi, mid_bi, bi_list[right_idx]],
-                                     bi_idx_list=bi_idx_list))
-        # 顶部特征序列
+            if mid_bi.start_price >= left_bi.start_price:
+                continue
+            right_idx = _find_confirmation(bi_list, idx, True)
+            if right_idx is None:
+                continue
+            category = (
+                TeZhengXuLieCategory.Second
+                if mid_bi.end_price < left_bi.start_price
+                else TeZhengXuLieCategory.First
+            )
+            sequences.append(
+                TeZhengXuLie(
+                    type=TeZhengXuLieType.DI,
+                    category=category,
+                    bi_list=[left_bi, mid_bi, bi_list[right_idx]],
+                    bi_idx_list=[idx - 2, idx, right_idx],
+                )
+            )
         else:
-            if mid_bi.start_price > left_bi.start_price:
-                find = False
-                right_idx = idx + 2
-                merged_high = mid_bi.start_price
-                merged_low = mid_bi.end_price
-                while right_idx < bi_idx_length:
-                    right_bi = bi_list[right_idx]
+            if mid_bi.start_price <= left_bi.start_price:
+                continue
+            right_idx = _find_confirmation(bi_list, idx, False)
+            if right_idx is None:
+                continue
+            category = (
+                TeZhengXuLieCategory.Second
+                if mid_bi.end_price > left_bi.start_price
+                else TeZhengXuLieCategory.First
+            )
+            sequences.append(
+                TeZhengXuLie(
+                    type=TeZhengXuLieType.DING,
+                    category=category,
+                    bi_list=[left_bi, mid_bi, bi_list[right_idx]],
+                    bi_idx_list=[idx - 2, idx, right_idx],
+                )
+            )
 
-                    if right_bi.start_price > merged_high:
-                        break
-                    elif right_bi.start_price < merged_high and right_bi.end_price < merged_low:
-                        find = True
-                        break
-                    elif (right_bi.start_price >= merged_low and right_bi.end_price <= merged_high) or (
-                        right_bi.start_price <= merged_low and right_bi.end_price >= merged_high):
-                        # 向上合并
-                        merged_high = max(merged_high, right_bi.start_price)
-                        merged_low = max(merged_low, right_bi.end_price)
-                    else:
-                        print(f"{merged_low=}")
-                        print(f"{merged_high=}")
-                        print(f"{mid_bi=}")
-                        print(f"{right_bi=}")
-                        raise ValueError(f"意外的笔")
-                    right_idx += 2
-
-                if find:
-                    bi_idx_list = [idx - 2, idx, right_idx]
-                    category = TeZhengXuLieCategory.Second if mid_bi.end_price > left_bi.start_price else TeZhengXuLieCategory.First
-                    te_zheng_xu_lie_list.append(
-                        TeZhengXuLie(type=TeZhengXuLieType.DING, category=category,
-                                     bi_list=[left_bi, mid_bi, bi_list[right_idx]],
-                                     bi_idx_list=bi_idx_list))
-
-    # 取连续极值
-    tzxl_list_new = []
-    is_top = True
-    _temp = []
-    for tzxl in te_zheng_xu_lie_list:
-        if tzxl.is_top() == is_top:
-            _temp.append(tzxl)
-        else:
-            if _temp:
-                if is_top == True:
-                    tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
-                else:
-                    tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
-            is_top = not is_top
-            _temp.clear()
-            _temp.append(tzxl)
-    if _temp:
-        if is_top == True:
-            tzxl_list_new.append(max(_temp, key=lambda x: x.high_price))
-        else:
-            tzxl_list_new.append(min(_temp, key=lambda x: x.low_price))
-
-    # 检查特征序列顶底交替
-    assert np.all(np.diff([tzxl.is_top() for tzxl in tzxl_list_new]) != 0), "不满足特征序列顶底交替的要求"
-    # 分配序号
-    for i in range(len(tzxl_list_new)):
-        tzxl_list_new[i].idx = i
-    return tzxl_list_new
+    filtered = _filter_extreme_sequences(sequences)
+    assert np.all(np.diff([tzxl.is_top() for tzxl in filtered]) != 0), "不满足特征序列顶底交替的要求"
+    for i, tzxl in enumerate(filtered):
+        tzxl.idx = i
+    return filtered
