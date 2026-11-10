@@ -1090,6 +1090,32 @@
             background: #fff2f2;
         }
 
+        .screener-result-latest {
+            background: #fff2f2;
+            box-shadow: inset 3px 0 0 #e64545;
+        }
+
+        .screener-result-latest:hover {
+            background: #ffe3e3;
+        }
+
+        .screener-result-latest .screener-result-name {
+            color: #c62828;
+            font-weight: 600;
+        }
+
+        .screener-result-latest-tag {
+            flex: 0 0 auto;
+            align-self: center;
+            padding: 1px 5px;
+            border-radius: 8px;
+            background: #e64545;
+            color: #fff;
+            font-size: 11px;
+            line-height: 16px;
+            white-space: nowrap;
+        }
+
         .screener-result-index {
             flex: 0 0 auto;
             min-width: 2.2em;
@@ -2024,6 +2050,8 @@
     const SCREENER_STATE_KEY = 'screener:state';
     // 点击结果跳转前记录滚动位置，目标页渲染选股结果后一次性恢复
     const SCREENER_SCROLL_KEY = 'screener:results-scroll';
+    // 记录最后点击的标的，跳转后继续在选股结果中标记
+    const SCREENER_LAST_CLICKED_KEY = 'screener:last-clicked';
     let pendingScreenerScroll = null;
     const SCREENER_DEFAULTS = {
         market: 'cn',
@@ -2171,10 +2199,16 @@
         count.className = 'screener-empty';
         count.textContent = `共 ${payload.count || results.length} 个标的`;
         screenerResults.appendChild(count);
+        const lastClickedCode = lsGetString(SCREENER_LAST_CLICKED_KEY, '');
         results.forEach((item, index) => {
             const row = document.createElement('div');
             row.className = 'screener-result';
             row.title = `${item.code} · ${item.asset_class} · ${item.frequencies.join(', ')}`;
+            const isLatest = Boolean(lastClickedCode) && item.code === lastClickedCode;
+            if (isLatest) {
+                row.classList.add('screener-result-latest');
+                row.setAttribute('aria-current', 'true');
+            }
             const sequence = document.createElement('span');
             sequence.className = 'screener-result-index';
             sequence.textContent = String(index + 1);
@@ -2184,9 +2218,18 @@
             const meta = document.createElement('span');
             meta.className = 'screener-result-meta';
             meta.textContent = item.code;
-            row.append(sequence, name, meta);
+            row.append(sequence, name);
+            if (isLatest) {
+                const latestTag = document.createElement('span');
+                latestTag.className = 'screener-result-latest-tag';
+                latestTag.textContent = '最近';
+                row.appendChild(latestTag);
+            }
+            row.appendChild(meta);
             row.addEventListener('click', () => {
                 lsSetString(SCREENER_SCROLL_KEY, String(screenerResults.scrollTop));
+                lsSetString(SCREENER_LAST_CLICKED_KEY, item.code);
+                row.classList.add('screener-result-latest');
                 window.location.assign(item.url);
             });
             screenerResults.appendChild(row);
@@ -2230,6 +2273,7 @@
     const resetScreener = () => {
         pendingScreenerScroll = null;
         localStorage.removeItem(SCREENER_SCROLL_KEY);
+        localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);
         saveScreenerState({filters: {}, results: null});
         screenerFilters.querySelectorAll('select').forEach(select => {
             const value = SCREENER_DEFAULTS[select.dataset.field];

@@ -160,6 +160,14 @@ class FrontendTemplateTest(unittest.TestCase):
         self.assertIn("empty.textContent = '选择条件后点击确认';", self.scripts)
         self.assertIn("screenerReset.disabled = true;", self.scripts)
 
+    def test_screener_marks_last_clicked_result(self):
+        self.assertIn(".screener-result-latest", self.html)
+        self.assertIn("const SCREENER_LAST_CLICKED_KEY = 'screener:last-clicked';", self.scripts)
+        self.assertIn("const isLatest = Boolean(lastClickedCode) && item.code === lastClickedCode;", self.scripts)
+        self.assertIn("lsSetString(SCREENER_LAST_CLICKED_KEY, item.code);", self.scripts)
+        self.assertIn("latestTag.textContent = '最近';", self.scripts)
+        self.assertIn("localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);", self.scripts)
+
     def test_single_time_axis_and_range_stats(self):
         subchart = self.scripts[self.scripts.find("function createSubChart"):self.scripts.find("function buildSubSeries")]
         self.assertIn("visible: false, timeVisible: true", subchart)
