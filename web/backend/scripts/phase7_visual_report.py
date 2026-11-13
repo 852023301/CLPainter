@@ -62,6 +62,14 @@ def _xd_rows(cache) -> list[dict]:
     for segment in cache.xian_duan_list or []:
         rows.append(
             {
+                "key": (
+                    str(segment.start_time),
+                    str(segment.end_time),
+                    "up" if segment.is_up() else "down",
+                    type(segment).__name__,
+                    int(segment.start_bi_idx),
+                    int(segment.end_bi_idx),
+                ),
                 "start": str(segment.start_time.date()),
                 "end": str(segment.end_time.date()),
                 "direction": "up" if segment.is_up() else "down",
@@ -127,7 +135,21 @@ def _json_for_script(value) -> str:
     return json.dumps(value, ensure_ascii=False).replace("</", "<\\/")
 
 
+def _earliest_change_time(old_rows: list[dict], new_rows: list[dict]) -> str:
+    old_keys = {row["key"] for row in old_rows}
+    new_keys = {row["key"] for row in new_rows}
+    changed_times = [
+        row["start"] for row in old_rows if row["key"] not in new_keys
+    ] + [
+        row["start"] for row in new_rows if row["key"] not in old_keys
+    ]
+    if changed_times:
+        return min(changed_times)
+    return new_rows[0]["start"] if new_rows else ""
+
+
 def _segment_table(old_rows: list[dict], new_rows: list[dict]) -> str:
+    old_keys = {row["key"] for row in old_rows}
     max_len = max(len(old_rows), len(new_rows))
     lines = [
         "<table class='segments'>",
@@ -148,7 +170,7 @@ def _segment_table(old_rows: list[dict], new_rows: list[dict]) -> str:
             if new
             else "-"
         )
-        changed = old != new
+        changed = new is not None and new["key"] not in old_keys
         cls = " class='changed'" if changed else ""
         lines.append(
             f"<tr{cls}><td>{index}</td><td>{old_text}</td><td>{new_text}</td>"
@@ -211,6 +233,7 @@ const oldChangedBi = __OLD_CHANGED_BI__;
 const newChangedBi = __NEW_CHANGED_BI__;
 const oldChangedXd = __OLD_CHANGED_XD__;
 const newChangedXd = __NEW_CHANGED_XD__;
+const focusTime = __FOCUS_TIME__;
 function addChangedSegments(chart, segments, color) {
   (segments || []).forEach(seg => {
     const series = chart.addLineSeries({
@@ -246,7 +269,18 @@ function drawChart(id, payload, xdColor, changedBi, changedXd) {
   xd.setData((payload.xd_data || []).slice().sort((a,b) => new Date(a.time) - new Date(b.time)));
   addChangedSegments(chart, changedBi, '#9c27b0');
   addChangedSegments(chart, changedXd, '#ff9800');
-  chart.timeScale().fitContent();
+  const candleData = payload.candle_data || [];
+  const focusIndex = focusTime
+    ? candleData.findIndex(item => String(item.time) === String(focusTime))
+    : -1;
+  if (focusIndex >= 0) {
+    chart.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, focusIndex - 20),
+      to: focusIndex + 80,
+    });
+  } else {
+    chart.timeScale().fitContent();
+  }
   return chart;
 }
 drawChart('old', oldPayload, 'rgba(255,0,0,0.75)', oldChangedBi, oldChangedXd);
@@ -272,6 +306,7 @@ def build_case_html(case: dict, old_cache, new_cache, old_audit, new_audit) -> s
     }
     old_rows = _xd_rows(old_cache)
     new_rows = _xd_rows(new_cache)
+    focus_time = _earliest_change_time(old_rows, new_rows)
     old_bi_segments = _bi_segments(old_cache)
     new_bi_segments = _bi_segments(new_cache)
     old_xd_segments = _xd_segments(old_cache)
@@ -298,6 +333,7 @@ def build_case_html(case: dict, old_cache, new_cache, old_audit, new_audit) -> s
     html = html.replace("__NEW_CHANGED_BI__", _json_for_script(new_changed_bi))
     html = html.replace("__OLD_CHANGED_XD__", _json_for_script(old_changed_xd))
     html = html.replace("__NEW_CHANGED_XD__", _json_for_script(new_changed_xd))
+    html = html.replace("__FOCUS_TIME__", _json_for_script(focus_time))
     return html
 
 

@@ -876,8 +876,8 @@ http://172.17.1.5:15003/phase7_visual_report_v2_fake_first/
 
 ```text
 xd_changed: 3603
-first_only: 3234
-body_changed: 369
+first_only: 3267
+body_changed: 336
 ```
 
 所有变化只在首段，首段之后完全一致。
@@ -920,7 +920,7 @@ http://172.17.1.5:15003/phase7_visual_report_v3_first_segment/
 1000 样本审计新增 5 个违规；全量审计 `right_tzxl_later_exceeds_left: 201`，没有跨线段误报。
 
 
-全量 3234 个仅首段变化报告：
+全量 3267 个仅首段变化报告：
 
 ```text
 http://172.17.1.5:15003/phase7_visual_report_v3_first_only/
@@ -949,3 +949,26 @@ Real up   2024-09-09 ~ 2025-02-21
 ```text
 http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds/
 ```
+
+### `right_tzxl_later_exceeds_left` 有变化案例
+
+199 个唯一缓存：
+
+```text
+unchanged_both: 144
+changed_both: 55
+```
+
+有变化报告：
+
+```text
+http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
+```
+
+## 全局 FakeXianDuanFirst 收敛（2026-11-14）
+
+全序列最多一条 FakeXianDuanFirst：从右往左处理，能转真实就转；不能转真实则保留该条并删除左侧所有线段。
+
+全量扫描：`multi_fake_cases: 0`。
+
+可视化报告同步改进：表格只标黄新增线段；图表聚焦最早差异时间点。

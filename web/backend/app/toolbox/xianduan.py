@@ -1871,35 +1871,32 @@ def promote_secondary_fakes(
     tzxl_list: List[TeZhengXuLie],
     bi_list: List[BiBase],
 ) -> List[XianDuanBase]:
-    """把首段连续 fake 收敛为最多一条。
+    """保证全序列最多只有一条 FakeXianDuanFirst。
 
-    从后往前尝试把 fake 转为真实线段；如果某条 fake 不能转真实，
-    则保留这一条，删除它前面的所有 fake。这样首段最多只有一条 fake。
+    从右往左处理所有 fake：
+    - 能转真实就转；
+    - 不能转真实，就保留这一条，删除它左边的所有线段；
+    - 如果全部都能转真实，则最终没有 fake。
     """
     if not segments:
         return segments
-    fake_end = 0
-    while fake_end < len(segments) and isinstance(
-        segments[fake_end], FakeXianDuanFirst
-    ):
-        fake_end += 1
-    if fake_end <= 1:
+    fake_indices = [
+        index
+        for index, segment in enumerate(segments)
+        if isinstance(segment, FakeXianDuanFirst)
+    ]
+    if not fake_indices:
         return segments
 
-    fakes = list(segments[:fake_end])
-    promoted: List[XianDuanBase] = list(fakes)
-    keep_index = 0
-    for index in range(len(fakes) - 1, 0, -1):
-        real = _try_promote_fake(fakes[index], tzxl_list, bi_list)
-        if real is None:
-            keep_index = index
-            break
-        promoted[index] = real
-
-    result = promoted[keep_index:] + list(segments[fake_end:])
-    for index in range(1, len(result)):
-        if result[index - 1].end_time != result[index].start_time:
-            return segments
+    result = list(segments)
+    for index in reversed(fake_indices):
+        fake = result[index]
+        real = _try_promote_fake(fake, tzxl_list, bi_list)
+        if real is not None:
+            result[index] = real
+            continue
+        result = result[index:]
+        return result
     return result
 
 

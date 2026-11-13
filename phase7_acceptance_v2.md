@@ -85,8 +85,8 @@ spot check failures: 0
 - 保守模式已全量跑通；
 - 测试环境已切换到新缓存，并完成 API 冒烟；
 - 生产默认开关仍关闭，生产 curated 未覆盖；
-- 3234 个首段变化已按你的规则推广；
-- 369 个 body_changed 案例需要单独复核：
+- 3267 个首段变化已按你的规则推广；
+- 336 个 body_changed 案例需要单独复核：
   `http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/`
 - 确认后再按 `phase7_production_deploy.md` 协调生产更新。
 
@@ -228,11 +228,11 @@ http://172.17.1.5:15003/phase7_visual_report_v2_fake_first/
 
 ```text
 xd_changed: 3603
-first_only: 3234
-body_changed: 369
+first_only: 3267
+body_changed: 336
 ```
 
-3234 个变化只发生在首段；369 个案例在首段之后还有线段变化，包含之前人工看过的同数量边界调整。需要单独复核：
+3267 个变化只发生在首段；336 个案例在首段之后还有线段变化，包含之前人工看过的同数量边界调整。需要单独复核：
 
 ```text
 http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/
@@ -314,7 +314,7 @@ API 冒烟：
 ```
 
 
-全量 3234 个仅首段变化报告：
+全量 3267 个仅首段变化报告：
 
 ```text
 http://172.17.1.5:15003/phase7_visual_report_v3_first_only/
@@ -354,4 +354,55 @@ Real up   2024-09-09 ~ 2025-02-21
 
 ```text
 http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds/
+```
+
+### `right_tzxl_later_exceeds_left` 真正有变化的案例
+
+199 个唯一缓存中：
+
+```text
+unchanged_both: 144
+changed_both: 55
+```
+
+真正有变化的只有 55 个，报告：
+
+```text
+http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
+```
+
+清单：
+
+```text
+/home/wjl/TechFinWorkSpace_v2/CLPainter/phase7_later_exceeds_changed_cases.jsonl
+/home/wjl/TechFinWorkSpace_v2/CLPainter/phase7_later_exceeds_changed_cases_summary.json
+```
+
+## 全局 FakeXianDuanFirst 收敛
+
+已从“只处理首段连续 fake”改为“全序列最多一条 FakeXianDuanFirst”：
+
+- 从右往左处理所有 fake；
+- 能转真实就转；
+- 不能转真实，就保留这一条，删除它左边的所有线段；
+- 最终全序列最多一条 fake。
+
+全量扫描：
+
+```text
+multi_fake_cases: 0
+```
+
+`511660SH`、`513350SH`、`516860SH`、`000992SH` 等案例已收敛为单条 fake。
+
+## 可视化报告改进
+
+- 线段表格只标黄“新增线段”，不再把整体后移的旧线段标黄；
+- 图表默认聚焦到最早出现差异的时间点，而不是居中或偏右。
+
+报告：
+
+```text
+http://172.17.1.5:15003/phase7_visual_report_v3_first_only/
+http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/
 ```
