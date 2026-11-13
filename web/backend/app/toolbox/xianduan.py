@@ -1,4 +1,5 @@
-from collections import deque
+import copy
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Literal, Optional, Tuple, TypedDict, Union
@@ -540,6 +541,542 @@ class XianDuanRepairOps:
         self.endpoint_ops.move_start(next_segment, new_start_bi_idx)
         return True
 
+    def segment_tzxl_consistent(self, segment: XianDuanBase) -> bool:
+        if not isinstance(segment, XianDuan):
+            return True
+        left = getattr(segment, "left_tzxl", None)
+        right = getattr(segment, "right_tzxl", None)
+        if left is None or right is None:
+            return False
+        if left.mid_bi_idx != segment.start_bi_idx:
+            return False
+        if right.mid_bi_idx - 1 != segment.end_bi_idx:
+            return False
+        start_bi = self.ctx.bi_list[segment.start_bi_idx]
+        end_bi = self.ctx.bi_list[segment.end_bi_idx]
+        if left.start_time != start_bi.start_time:
+            return False
+        if abs(float(left.start_price) - float(start_bi.start_price)) > 1e-6:
+            return False
+        if right.start_time != end_bi.end_time:
+            return False
+        if abs(float(right.start_price) - float(end_bi.end_price)) > 1e-6:
+            return False
+        return True
+
+    def right_tzxl_rule_ok(self, segment: XianDuanBase) -> bool:
+        if not isinstance(segment, XianDuan):
+            return True
+        left = getattr(segment, "left_tzxl", None)
+        right = getattr(segment, "right_tzxl", None)
+        if left is None or right is None:
+            return True
+        right_bis = right.bi_list[1:]
+        if not right_bis:
+            return True
+        if segment.is_down():
+            return max(float(bi.high_price) for bi in right_bis) <= float(left.high_price) + 1e-8
+        return min(float(bi.low_price) for bi in right_bis) >= float(left.low_price) - 1e-8
+
+    def _snapshot_segment(self, segment: XianDuanBase):
+        return (
+            segment.start_bi_idx,
+            segment.end_bi_idx,
+            segment.start_idx,
+            segment.end_idx,
+            segment.start_time,
+            segment.end_time,
+            segment.start_price,
+            segment.end_price,
+            getattr(segment, "left_tzxl", None),
+            getattr(segment, "right_tzxl", None),
+        )
+
+    def _restore_segment(self, segment: XianDuanBase, snapshot) -> None:
+        (
+            segment.start_bi_idx,
+            segment.end_bi_idx,
+            segment.start_idx,
+            segment.end_idx,
+            segment.start_time,
+            segment.end_time,
+            segment.start_price,
+            segment.end_price,
+            left_tzxl,
+            right_tzxl,
+        ) = snapshot
+        if hasattr(segment, "left_tzxl"):
+            segment.left_tzxl = left_tzxl
+        if hasattr(segment, "right_tzxl"):
+            segment.right_tzxl = right_tzxl
+        segment.invalidate_cache()
+
+    def start_extremum_error(
+        self,
+        start_bi_idx: int,
+        end_bi_idx: int,
+        is_up: bool,
+        start_price: float,
+    ) -> float:
+        covered = self.ctx.bi_list[start_bi_idx:end_bi_idx + 1]
+        if not covered:
+            return 0.0
+        true_high = max(float(bi.high_price) for bi in covered)
+        true_low = min(float(bi.low_price) for bi in covered)
+        true_range = true_high - true_low
+        if true_range <= 0:
+            return 0.0
+        deviation = start_price - true_low if is_up else true_high - start_price
+        return max(0.0, deviation / true_range)
+
+    def move_shared_boundary(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+        boundary: ExtremeBoundary,
+        side: BoundarySide,
+    ) -> bool:
+        """移动相邻线段共享的边界，保持首尾连续。
+
+        返回 False 表示移动后某条线段不足三笔，调用方应放弃这次修复。
+        """
+        segment = segments[index]
+        if side == "start":
+            # 第一段没有前一段可以接管头部区间；向前移动起点会留下未覆盖的头部。
+            if index == 0:
+                return False
+            new_start_bi_idx = boundary["next_start_bi_idx"]
+            if segment.end_bi_idx - new_start_bi_idx + 1 < 3:
+                return False
+            previous = segments[index - 1] if index > 0 else None
+            previous_snapshot = self._snapshot_segment(previous) if previous is not None else None
+            segment_snapshot = self._snapshot_segment(segment)
+            if previous is not None:
+                new_prev_end_bi_idx = boundary["prev_end_bi_idx"]
+                if new_prev_end_bi_idx - previous.start_bi_idx + 1 < 3:
+                    return False
+                if self.start_extremum_error(
+                    previous.start_bi_idx,
+                    new_prev_end_bi_idx,
+                    previous.is_up(),
+                    previous.start_price,
+                ) > EXTREMUM_REPAIR_THRESHOLD:
+                    return False
+                self.endpoint_ops.set_boundary(previous, boundary, "end")
+            self.endpoint_ops.set_boundary(segment, boundary, "start")
+            if (previous is not None and not self.right_tzxl_rule_ok(previous)) or not self.right_tzxl_rule_ok(segment):
+                if previous is not None:
+                    self._restore_segment(previous, previous_snapshot)
+                self._restore_segment(segment, segment_snapshot)
+                return False
+            if (previous is not None and not self.segment_tzxl_consistent(previous)) or not self.segment_tzxl_consistent(segment):
+                if previous is not None:
+                    self._restore_segment(previous, previous_snapshot)
+                self._restore_segment(segment, segment_snapshot)
+                return False
+            return True
+
+        new_end_bi_idx = boundary["prev_end_bi_idx"]
+        if new_end_bi_idx - segment.start_bi_idx + 1 < 3:
+            return False
+        # 最后一段没有下一段可以接管尾部区间；向前移动终点会留下未覆盖的尾部。
+        if index + 1 >= len(segments):
+            return False
+        next_segment = segments[index + 1] if index + 1 < len(segments) else None
+        segment_snapshot = self._snapshot_segment(segment)
+        next_snapshot = self._snapshot_segment(next_segment) if next_segment is not None else None
+        if next_segment is not None:
+            new_next_start_bi_idx = boundary["next_start_bi_idx"]
+            if next_segment.end_bi_idx - new_next_start_bi_idx + 1 < 3:
+                return False
+            new_next_start_price = self.ctx.bi_list[new_next_start_bi_idx].start_price
+            if self.start_extremum_error(
+                new_next_start_bi_idx,
+                next_segment.end_bi_idx,
+                next_segment.is_up(),
+                new_next_start_price,
+            ) > EXTREMUM_REPAIR_THRESHOLD:
+                return False
+            self.endpoint_ops.set_boundary(next_segment, boundary, "start")
+        self.endpoint_ops.set_boundary(segment, boundary, "end")
+        if not self.right_tzxl_rule_ok(segment) or (
+            next_segment is not None and not self.right_tzxl_rule_ok(next_segment)
+        ):
+            self._restore_segment(segment, segment_snapshot)
+            if next_segment is not None:
+                self._restore_segment(next_segment, next_snapshot)
+            return False
+        if not self.segment_tzxl_consistent(segment) or (
+            next_segment is not None and not self.segment_tzxl_consistent(next_segment)
+        ):
+            self._restore_segment(segment, segment_snapshot)
+            if next_segment is not None:
+                self._restore_segment(next_segment, next_snapshot)
+            return False
+        return True
+
+    def merge_invalid_segment_with_next(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+    ) -> bool:
+        """删除无效段，并把下一段的起点前移到无效段起点。
+
+        适用于 ``end_not_extreme_bi`` 且同向极值落在段首的情况：
+        当前段方向本身不可信，保留它只会制造穿透；把它的区间并入下一段，
+        再检查下一段是否仍是合法线段。
+        """
+        if index + 1 >= len(segments):
+            return False
+        segment = segments[index]
+        next_segment = segments[index + 1]
+        if segment.is_up() == next_segment.is_up():
+            return False
+
+        new_start_bi_idx = segment.start_bi_idx
+        if next_segment.end_bi_idx - new_start_bi_idx + 1 < 3:
+            return False
+
+        old_start_bi_idx = next_segment.start_bi_idx
+        new_start_price = self.ctx.bi_list[new_start_bi_idx].start_price
+        if self.start_extremum_error(
+            new_start_bi_idx,
+            next_segment.end_bi_idx,
+            next_segment.is_up(),
+            new_start_price,
+        ) > EXTREMUM_REPAIR_THRESHOLD:
+            return False
+        self.endpoint_ops.move_start(next_segment, new_start_bi_idx)
+        left_tzxl = getattr(next_segment, "left_tzxl", None)
+        start_bi = self.ctx.bi_list[new_start_bi_idx]
+        left_tzxl_ok = (
+            left_tzxl is not None
+            and left_tzxl.start_time == start_bi.start_time
+            and abs(float(left_tzxl.start_price) - float(start_bi.start_price)) <= 1e-6
+        )
+        endpoint_ok = (
+            self.endpoint_ops.extreme_end_bi_idx(
+                new_start_bi_idx,
+                next_segment.end_bi_idx,
+                next_segment.is_up(),
+            )
+            == next_segment.end_bi_idx
+        )
+        penetration_ok = not self.range_breaks_start(
+            new_start_bi_idx,
+            next_segment.end_bi_idx,
+            next_segment.is_up(),
+        )
+        if not (left_tzxl_ok and endpoint_ok and penetration_ok):
+            self.endpoint_ops.move_start(next_segment, old_start_bi_idx)
+            return False
+
+        del segments[index]
+        return True
+
+    def _candidate_score(
+        self,
+        original: List[XianDuanBase],
+        candidate: List[XianDuanBase],
+        start_index: int,
+        old_window_count: int,
+        new_window_count: int,
+    ):
+        invariants = XianDuanInvariants(self.ctx)
+        before = invariants.check(original)
+        after = invariants.check(candidate)
+
+        before_window = [
+            item for item in before
+            if start_index <= item.index < start_index + old_window_count
+        ]
+        after_window = [
+            item for item in after
+            if start_index <= item.index < start_index + new_window_count
+        ]
+        if len(after_window) >= len(before_window):
+            return None
+
+        before_outside = [
+            item for item in before
+            if item.index < start_index or item.index >= start_index + old_window_count
+        ]
+        after_outside = [
+            item for item in after
+            if item.index < start_index or item.index >= start_index + new_window_count
+        ]
+        before_outside_codes = Counter(item.code for item in before_outside)
+        after_outside_codes = Counter(item.code for item in after_outside)
+        if any(
+            after_outside_codes[code] > before_outside_codes[code]
+            for code in after_outside_codes
+        ):
+            return None
+
+        return (
+            len(after_outside),
+            len(after_window),
+            new_window_count,
+            len(after),
+        )
+
+    def resegment_local_window(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+        window_radius: int = 1,
+        max_candidates: int = 200,
+    ) -> bool:
+        """在局部窗口内用 tzxl 重新组合线段，选择评分最优的候选。"""
+        start_index = max(0, index - window_radius)
+        end_index = min(len(segments) - 1, index + window_radius)
+        if start_index >= end_index:
+            return False
+
+        start_seg = segments[start_index]
+        end_seg = segments[end_index]
+        start_tzxl = getattr(start_seg, "left_tzxl", None)
+        end_tzxl = getattr(end_seg, "right_tzxl", None)
+        if start_tzxl is None or end_tzxl is None:
+            return False
+        if start_tzxl.idx is None or end_tzxl.idx is None:
+            return False
+        if start_tzxl.idx >= end_tzxl.idx:
+            return False
+
+        tzxl_list = self.ctx.tzxl_list
+        old_window_count = end_index - start_index + 1
+        original = list(segments)
+        best = None
+        best_score = None
+        tried = 0
+
+        def consider(candidates: List[XianDuanBase]) -> None:
+            nonlocal best, best_score, tried
+            tried += 1
+            if tried > max_candidates:
+                return
+            if not candidates:
+                return
+            if candidates[0].start_bi_idx != original[start_index].start_bi_idx:
+                return
+            if candidates[-1].end_bi_idx != original[end_index].end_bi_idx:
+                return
+            for left, right in zip(candidates, candidates[1:]):
+                if left.end_bi_idx + 1 != right.start_bi_idx:
+                    return
+            candidate = (
+                original[:start_index]
+                + candidates
+                + original[end_index + 1:]
+            )
+            score = self._candidate_score(
+                original,
+                candidate,
+                start_index,
+                old_window_count,
+                len(candidates),
+            )
+            if score is None:
+                return
+            if best_score is None or score < best_score:
+                best_score = score
+                best = candidate
+
+        # 两段替换
+        for mid_idx in range(start_tzxl.idx + 1, end_tzxl.idx):
+            if tried > max_candidates:
+                break
+            mid_tzxl = tzxl_list[mid_idx]
+            try:
+                first = XianDuan.from_tzxl(start_tzxl, mid_tzxl, self.ctx.bi_list)
+                second = XianDuan.from_tzxl(mid_tzxl, end_tzxl, self.ctx.bi_list)
+            except ValueError:
+                continue
+            if not first.is_finished or not second.is_finished:
+                continue
+            if not first.has_enough_bi() or not second.has_enough_bi():
+                continue
+            consider([first, second])
+
+        # 三段替换
+        for mid1_idx in range(start_tzxl.idx + 1, end_tzxl.idx - 1):
+            if tried > max_candidates:
+                break
+            mid1_tzxl = tzxl_list[mid1_idx]
+            for mid2_idx in range(mid1_idx + 1, end_tzxl.idx):
+                if tried > max_candidates:
+                    break
+                mid2_tzxl = tzxl_list[mid2_idx]
+                try:
+                    first = XianDuan.from_tzxl(start_tzxl, mid1_tzxl, self.ctx.bi_list)
+                    second = XianDuan.from_tzxl(mid1_tzxl, mid2_tzxl, self.ctx.bi_list)
+                    third = XianDuan.from_tzxl(mid2_tzxl, end_tzxl, self.ctx.bi_list)
+                except ValueError:
+                    continue
+                if not (first.is_finished and second.is_finished and third.is_finished):
+                    continue
+                if not (first.has_enough_bi() and second.has_enough_bi() and third.has_enough_bi()):
+                    continue
+                consider([first, second, third])
+
+        if best is None:
+            return False
+        segments[:] = best
+        return True
+
+    def resegment_invalid_segment(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+        max_candidates: int = 100,
+    ) -> bool:
+        for radius in (1, 2, 3):
+            if self.resegment_local_window(
+                segments,
+                index,
+                window_radius=radius,
+                max_candidates=max_candidates,
+            ):
+                return True
+        return False
+
+    def merge_invalid_segment_with_previous(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+    ) -> bool:
+        """删除无效段，并把上一段的终点后移到无效段终点。"""
+        if index <= 0:
+            return False
+        segment = segments[index]
+        previous = segments[index - 1]
+        if segment.is_up() == previous.is_up():
+            return False
+
+        new_end_bi_idx = segment.end_bi_idx
+        if new_end_bi_idx - previous.start_bi_idx + 1 < 3:
+            return False
+
+        old_end_bi_idx = previous.end_bi_idx
+        self.endpoint_ops.move_end(previous, new_end_bi_idx)
+        right_tzxl = getattr(previous, "right_tzxl", None)
+        end_bi = self.ctx.bi_list[new_end_bi_idx]
+        right_tzxl_ok = (
+            right_tzxl is not None
+            and right_tzxl.start_time == end_bi.end_time
+            and abs(float(right_tzxl.start_price) - float(end_bi.end_price)) <= 1e-6
+        )
+        endpoint_ok = (
+            self.endpoint_ops.extreme_end_bi_idx(
+                previous.start_bi_idx,
+                new_end_bi_idx,
+                previous.is_up(),
+            )
+            == new_end_bi_idx
+        )
+        penetration_ok = not self.range_breaks_start(
+            previous.start_bi_idx,
+            new_end_bi_idx,
+            previous.is_up(),
+        )
+        if not (right_tzxl_ok and endpoint_ok and penetration_ok):
+            self.endpoint_ops.move_end(previous, old_end_bi_idx)
+            return False
+
+        del segments[index]
+        return True
+
+    def repair_penetrates_start(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+    ) -> bool:
+        """把穿透起点的反向笔并入上一段，局部重切共享边界。"""
+        if index <= 0:
+            return False
+        segment = segments[index]
+        for bi_idx in range(segment.start_bi_idx, segment.end_bi_idx + 1):
+            bi = self.ctx.bi_list[bi_idx]
+            if bi.is_up() == segment.is_up():
+                continue
+            price = float(bi.end_price)
+            penetrated = (
+                segment.is_up() and price < float(segment.start_price) - 1e-8
+            ) or (
+                not segment.is_up() and price > float(segment.start_price) + 1e-8
+            )
+            if not penetrated:
+                continue
+            new_start_bi_idx = bi_idx + 1
+            if new_start_bi_idx > segment.end_bi_idx:
+                continue
+            new_start_price = self.ctx.bi_list[new_start_bi_idx].start_price
+            if self.start_extremum_error(
+                new_start_bi_idx,
+                segment.end_bi_idx,
+                segment.is_up(),
+                new_start_price,
+            ) > EXTREMUM_REPAIR_THRESHOLD:
+                continue
+            boundary = {
+                "price": price,
+                "time": bi.end_time,
+                "kline_idx": bi.end_idx,
+                "prev_end_bi_idx": bi_idx,
+                "next_start_bi_idx": new_start_bi_idx,
+            }
+            if self.move_shared_boundary(segments, index, boundary, "start"):
+                return True
+            continue
+        return False
+
+    def move_end_and_next_start(
+        self,
+        segments: List[XianDuanBase],
+        index: int,
+        new_end_bi_idx: int,
+    ) -> bool:
+        """把当前段终点和下一段起点一起移动到 new_end_bi_idx。"""
+        segment = segments[index]
+        if new_end_bi_idx - segment.start_bi_idx + 1 < 3:
+            return False
+        # 最后一段不能单独前移终点，否则尾部区间没有线段覆盖。
+        if index + 1 >= len(segments):
+            return False
+        segment_snapshot = self._snapshot_segment(segment)
+        next_segment = segments[index + 1] if index + 1 < len(segments) else None
+        next_snapshot = self._snapshot_segment(next_segment) if next_segment is not None else None
+        if next_segment is not None:
+            new_next_start_bi_idx = new_end_bi_idx + 1
+            if next_segment.end_bi_idx - new_next_start_bi_idx + 1 < 3:
+                return False
+            new_next_start_price = self.ctx.bi_list[new_next_start_bi_idx].start_price
+            if self.start_extremum_error(
+                new_next_start_bi_idx,
+                next_segment.end_bi_idx,
+                next_segment.is_up(),
+                new_next_start_price,
+            ) > EXTREMUM_REPAIR_THRESHOLD:
+                return False
+            self.endpoint_ops.move_start(next_segment, new_next_start_bi_idx)
+        self.endpoint_ops.move_end(segment, new_end_bi_idx)
+        if not self.right_tzxl_rule_ok(segment) or (
+            next_segment is not None and not self.right_tzxl_rule_ok(next_segment)
+        ):
+            self._restore_segment(segment, segment_snapshot)
+            if next_segment is not None:
+                self._restore_segment(next_segment, next_snapshot)
+            return False
+        if not self.segment_tzxl_consistent(segment) or (
+            next_segment is not None and not self.segment_tzxl_consistent(next_segment)
+        ):
+            self._restore_segment(segment, segment_snapshot)
+            if next_segment is not None:
+                self._restore_segment(next_segment, next_snapshot)
+            return False
+        return True
+
     def merge_same_direction(self, segments: List[XianDuanBase]) -> List[XianDuanBase]:
         """合并状态机遗留的同向相邻线段。"""
         bi_list = self.ctx.bi_list
@@ -593,6 +1130,28 @@ class XianDuanInvariantViolation:
     detail: str = ""
 
 
+def _right_tzxl_extra_bis(
+    segment: XianDuan,
+    bi_list: List[BiBase],
+) -> List[BiBase]:
+    """返回右侧特征序列区间内、未进入 3 组件的同向笔。"""
+    right = segment.right_tzxl
+    if right is None or not right.bi_list:
+        return []
+    first_bi = right.bi_list[0]
+    if hasattr(first_bi, "is_up"):
+        direction_is_up = first_bi.is_up()
+    else:
+        direction_is_up = not getattr(right, "is_top", lambda: False)()
+    stored = set(right.bi_idx_list)
+    extras: List[BiBase] = []
+    for index in range(right.left_bi_idx, right.right_bi_idx + 1):
+        bi = bi_list[index]
+        if bi.is_up() == direction_is_up and index not in stored:
+            extras.append(bi)
+    return extras
+
+
 class XianDuanInvariants:
     """线段结构不变量检查，只服务 xianduan.py。"""
 
@@ -624,44 +1183,118 @@ class XianDuanInvariants:
             covered = bi_list[segment.start_bi_idx:segment.end_bi_idx + 1]
             true_high = max(float(bi.high_price) for bi in covered)
             true_low = min(float(bi.low_price) for bi in covered)
-            if segment.is_up():
-                if abs(float(segment.start_price) - true_low) > 1e-8:
-                    violations.append(
-                        XianDuanInvariantViolation("start_not_low", index, "上升段起点不是最低点")
-                    )
-                if abs(float(segment.end_price) - true_high) > 1e-8:
-                    violations.append(
-                        XianDuanInvariantViolation("end_not_high", index, "上升段终点不是最高点")
-                    )
-                if any(
-                    float(bi.end_price) < float(segment.start_price) - 1e-8
-                    for bi in covered
-                    if bi.is_down()
-                ):
+            true_range = true_high - true_low
+            if true_range > 0:
+                if segment.is_up():
+                    deviation = float(segment.start_price) - true_low
+                else:
+                    deviation = true_high - float(segment.start_price)
+                start_error = max(0.0, deviation / true_range)
+                if start_error > EXTREMUM_REPAIR_THRESHOLD:
                     violations.append(
                         XianDuanInvariantViolation(
-                            "down_penetrates_start", index, "下降笔穿透上升段起点"
+                            "start_extreme_deviation",
+                            index,
+                            f"起点偏离真实极值 {start_error:.2%}",
                         )
                     )
-            else:
-                if abs(float(segment.start_price) - true_high) > 1e-8:
-                    violations.append(
-                        XianDuanInvariantViolation("start_not_high", index, "下降段起点不是最高点")
-                    )
-                if abs(float(segment.end_price) - true_low) > 1e-8:
-                    violations.append(
-                        XianDuanInvariantViolation("end_not_low", index, "下降段终点不是最低点")
-                    )
-                if any(
-                    float(bi.end_price) > float(segment.start_price) + 1e-8
-                    for bi in covered
-                    if bi.is_up()
+
+            best_idx = None
+            best_price = None
+            for bi_idx in range(segment.start_bi_idx, segment.end_bi_idx + 1):
+                bi = bi_list[bi_idx]
+                if bi.is_up() != segment.is_up():
+                    continue
+                price = float(bi.end_price)
+                if (
+                    best_idx is None
+                    or price_is_more_extreme(price, best_price, segment.is_up())
+                    or (price_is_same(price, best_price) and bi_idx > best_idx)
                 ):
+                    best_idx = bi_idx
+                    best_price = price
+            if best_idx is not None and best_idx != segment.end_bi_idx:
+                violations.append(
+                    XianDuanInvariantViolation(
+                        "end_not_extreme_bi",
+                        index,
+                        "终点不是同向笔极值",
+                    )
+                )
+
+            start_price = float(bi_list[segment.start_bi_idx].start_price)
+            for bi_idx in range(segment.start_bi_idx, segment.end_bi_idx + 1):
+                bi = bi_list[bi_idx]
+                if bi.is_up() == segment.is_up():
+                    continue
+                price = float(bi.end_price)
+                if segment.is_up() and price < start_price - 1e-8:
                     violations.append(
                         XianDuanInvariantViolation(
-                            "up_penetrates_start", index, "上升笔穿透下降段起点"
+                            "penetrates_start", index, "反向笔穿透起点"
                         )
                     )
+                    break
+                if not segment.is_up() and price > start_price + 1e-8:
+                    violations.append(
+                        XianDuanInvariantViolation(
+                            "penetrates_start", index, "反向笔穿透起点"
+                        )
+                    )
+                    break
+
+            if segment.left_tzxl is not None and segment.right_tzxl is not None:
+                # 当前 TeZhengXuLie 只保留合并后的 3 个组件；第 4 笔及以后
+                # 不在该结构内。跨线段扫描会把后续趋势误判为违规，因此这里
+                # 只严格检查右侧特征序列的第 2、3 笔。
+                right_bis = segment.right_tzxl.bi_list[1:]
+                if right_bis:
+                    if segment.is_down():
+                        right_high = max(float(bi.high_price) for bi in right_bis)
+                        if right_high > float(segment.left_tzxl.high_price) + 1e-8:
+                            violations.append(
+                                XianDuanInvariantViolation(
+                                    "right_tzxl_exceeds_left",
+                                    index,
+                                    "右侧特征序列第二/三笔最高点超过左侧特征序列最高点",
+                                )
+                            )
+                    else:
+                        right_low = min(float(bi.low_price) for bi in right_bis)
+                        if right_low < float(segment.left_tzxl.low_price) - 1e-8:
+                            violations.append(
+                                XianDuanInvariantViolation(
+                                    "right_tzxl_below_left",
+                                    index,
+                                    "右侧特征序列第二/三笔最低点低于左侧特征序列最低点",
+                                )
+                            )
+
+                extras = _right_tzxl_extra_bis(segment, bi_list)
+                if extras:
+                    left_high = float(segment.left_tzxl.high_price)
+                    left_low = float(segment.left_tzxl.low_price)
+                    left_range = abs(left_high - left_low)
+                    if left_range <= 1e-8:
+                        left_range = abs(
+                            float(segment.start_price) - float(segment.end_price)
+                        )
+                    tolerance = left_range * EXTREMUM_REPAIR_THRESHOLD
+                    if segment.is_down():
+                        worst = max(float(bi.high_price) for bi in extras)
+                        excess = worst - left_high
+                    else:
+                        worst = min(float(bi.low_price) for bi in extras)
+                        excess = left_low - worst
+                    if excess > tolerance + 1e-8:
+                        violations.append(
+                            XianDuanInvariantViolation(
+                                "right_tzxl_later_exceeds_left",
+                                index,
+                                f"右侧特征序列后续笔超出左侧极值 {excess:.4f}，"
+                                f"超过阈值 {tolerance:.4f}",
+                            )
+                        )
 
         for index in range(1, len(segments)):
             previous = segments[index - 1]
@@ -722,11 +1355,11 @@ class XianDuanRepairLoop:
                 repairs.append(XianDuanRepair("fill_gap", violation.index))
             elif violation.code == "min_bi_count":
                 repairs.append(XianDuanRepair("merge_neighbor", violation.index))
-            elif violation.code in ("start_not_low", "start_not_high"):
+            elif violation.code == "start_extreme_deviation":
                 repairs.append(XianDuanRepair("move_start_to_extreme", violation.index))
-            elif violation.code in ("end_not_high", "end_not_low"):
+            elif violation.code == "end_not_extreme_bi":
                 repairs.append(XianDuanRepair("move_end_to_extreme", violation.index))
-            elif violation.code in ("down_penetrates_start", "up_penetrates_start"):
+            elif violation.code == "penetrates_start":
                 repairs.append(XianDuanRepair("split_or_merge_penetrated", violation.index))
             elif violation.code in ("index_bounds", "index_order"):
                 repairs.append(XianDuanRepair("drop_invalid_segment", violation.index))
@@ -1045,6 +1678,296 @@ class XianDuanStateMachine:
             repaired_queue.append(segment)
 
         self.finish_deque = repaired_queue
+
+
+def _first_real_index(segments: List[XianDuanBase]) -> Optional[int]:
+    for index, segment in enumerate(segments):
+        if isinstance(segment, XianDuan):
+            return index
+    return None
+
+
+def _find_tzxl_at(
+    tzxl_list: List[TeZhengXuLie],
+    time: pd.Timestamp,
+    is_top: bool,
+) -> Optional[TeZhengXuLie]:
+    for tzxl in tzxl_list:
+        if tzxl.start_time == time and tzxl.is_top() == is_top:
+            return tzxl
+    return None
+
+
+def _fake_start_index(
+    bi_list: List[BiBase],
+    end_bi_idx: int,
+    is_up: bool,
+) -> Optional[int]:
+    """在 [0, end_bi_idx] 内选择 fake 线段的极值起点。"""
+    candidates = []
+    for index in range(0, end_bi_idx + 1):
+        bi = bi_list[index]
+        if is_up:
+            if bi.is_up():
+                candidates.append((float(bi.start_price), index))
+            else:
+                candidates.append((float(bi.end_price), index))
+        else:
+            if bi.is_down():
+                candidates.append((float(bi.start_price), index))
+            else:
+                candidates.append((float(bi.end_price), index))
+    if not candidates:
+        return None
+    price, index = min(candidates) if is_up else max(candidates)
+    if is_up and bi_list[index].is_down():
+        index += 1
+    elif not is_up and bi_list[index].is_up():
+        index += 1
+    if index > end_bi_idx - 2:
+        return None
+    return index
+
+
+def _make_fake_first(
+    bi_list: List[BiBase],
+    start_bi_idx: int,
+    end_bi_idx: int,
+    is_up: bool,
+    right_tzxl: Optional[TeZhengXuLie],
+) -> Optional[FakeXianDuanFirst]:
+    if start_bi_idx < 0 or end_bi_idx >= len(bi_list) or end_bi_idx - start_bi_idx + 1 < 3:
+        return None
+    start_bi = bi_list[start_bi_idx]
+    end_bi = bi_list[end_bi_idx]
+    fake = FakeXianDuanFirst()
+    fake.xianduan_type = XianDuanDirectionType.UP if is_up else XianDuanDirectionType.DOWN
+    fake.start_bi_idx = start_bi_idx
+    fake.end_bi_idx = end_bi_idx
+    fake.start_idx = start_bi.start_idx
+    fake.end_idx = end_bi.end_idx
+    fake.start_time = start_bi.start_time
+    fake.end_time = end_bi.end_time
+    fake.start_price = start_bi.start_price
+    fake.end_price = end_bi.end_price
+    fake.right_tzxl = right_tzxl
+    fake.invalidate_cache()
+    return fake if fake.has_enough_bi() else None
+
+
+def _should_prepend_fakes(
+    first: XianDuan,
+    bi_list: List[BiBase],
+) -> bool:
+    """首段起点与更早极值持平/更弱时，允许在前面继续补 fake。"""
+    if first.start_bi_idx <= 2:
+        return False
+    earlier = bi_list[: first.start_bi_idx]
+    if not earlier:
+        return False
+    if first.is_down():
+        return max(float(bi.high_price) for bi in earlier) >= float(first.start_price) - 1e-8
+    return min(float(bi.low_price) for bi in earlier) <= float(first.start_price) + 1e-8
+
+
+def _prepend_recursive_fakes(
+    segments: List[XianDuanBase],
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+) -> List[XianDuanBase]:
+    """在首个真实线段前递归补 fake 线段，直到无法再满足三笔。"""
+    if not segments or not isinstance(segments[0], XianDuan):
+        return segments
+    result = list(segments)
+    while result:
+        first = result[0]
+        end_bi_idx = first.start_bi_idx - 1
+        if end_bi_idx < 2:
+            break
+        fake_is_up = not first.is_up()
+        start_bi_idx = _fake_start_index(bi_list, end_bi_idx, fake_is_up)
+        if start_bi_idx is None:
+            break
+        right_tzxl = (
+            first.left_tzxl
+            if isinstance(first, XianDuan)
+            else getattr(first, "right_tzxl", None)
+        )
+        fake = _make_fake_first(
+            bi_list,
+            start_bi_idx,
+            end_bi_idx,
+            fake_is_up,
+            right_tzxl,
+        )
+        if fake is None:
+            break
+        if result and result[0].start_time != fake.end_time:
+            break
+        result.insert(0, fake)
+    return result
+
+
+def _normalize_first_fake(
+    segments: List[XianDuanBase],
+    bi_list: List[BiBase],
+) -> List[XianDuanBase]:
+    """把首段 fake 的起止点校正到合法的笔边界。"""
+    if not segments or not isinstance(segments[0], FakeXianDuanFirst):
+        return segments
+    fake = segments[0]
+    start_bi_idx = _fake_start_index(bi_list, fake.end_bi_idx, fake.is_up())
+    if start_bi_idx is None or start_bi_idx == fake.start_bi_idx:
+        return segments
+    normalized = _make_fake_first(
+        bi_list,
+        start_bi_idx,
+        fake.end_bi_idx,
+        fake.is_up(),
+        getattr(fake, "right_tzxl", None),
+    )
+    if normalized is None:
+        return segments
+    result = list(segments)
+    result[0] = normalized
+    return result
+
+
+def _try_promote_fake(
+    segment: FakeXianDuanFirst,
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+) -> Optional[XianDuan]:
+    left = _find_tzxl_at(
+        tzxl_list,
+        segment.start_time,
+        is_top=not segment.is_up(),
+    )
+    right = _find_tzxl_at(
+        tzxl_list,
+        segment.end_time,
+        is_top=segment.is_up(),
+    )
+    if left is None or right is None:
+        return None
+    try:
+        real = XianDuan.from_tzxl(left, right, bi_list)
+    except ValueError:
+        return None
+    if not real.is_finished:
+        return None
+    if (
+        real.start_time != segment.start_time
+        or real.end_time != segment.end_time
+        or real.start_bi_idx != segment.start_bi_idx
+        or real.end_bi_idx != segment.end_bi_idx
+    ):
+        return None
+    return real
+
+
+def promote_secondary_fakes(
+    segments: List[XianDuanBase],
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+) -> List[XianDuanBase]:
+    """把首段连续 fake 收敛为最多一条。
+
+    从后往前尝试把 fake 转为真实线段；如果某条 fake 不能转真实，
+    则保留这一条，删除它前面的所有 fake。这样首段最多只有一条 fake。
+    """
+    if not segments:
+        return segments
+    fake_end = 0
+    while fake_end < len(segments) and isinstance(
+        segments[fake_end], FakeXianDuanFirst
+    ):
+        fake_end += 1
+    if fake_end <= 1:
+        return segments
+
+    fakes = list(segments[:fake_end])
+    promoted: List[XianDuanBase] = list(fakes)
+    keep_index = 0
+    for index in range(len(fakes) - 1, 0, -1):
+        real = _try_promote_fake(fakes[index], tzxl_list, bi_list)
+        if real is None:
+            keep_index = index
+            break
+        promoted[index] = real
+
+    result = promoted[keep_index:] + list(segments[fake_end:])
+    for index in range(1, len(result)):
+        if result[index - 1].end_time != result[index].start_time:
+            return segments
+    return result
+
+
+def reconcile_first_segments(
+    segments: List[XianDuanBase],
+    reference_segments: Optional[List[XianDuanBase]],
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+) -> List[XianDuanBase]:
+    """用旧缓存的首段作为迁移锚点，避免状态机改写首段。"""
+    if not segments:
+        return segments
+    if not reference_segments:
+        if not isinstance(segments[0], FakeXianDuanFirst):
+            return segments
+        return _prepend_recursive_fakes(
+            _normalize_first_fake(segments, bi_list),
+            tzxl_list,
+            bi_list,
+        )
+    ref_first_real = _first_real_index(reference_segments)
+    new_first_real = _first_real_index(segments)
+    if ref_first_real is None or new_first_real is None:
+        return segments
+    if not isinstance(segments[0], FakeXianDuanFirst):
+        ref_first = reference_segments[ref_first_real]
+        new_first = segments[new_first_real]
+        if (
+            new_first.start_bi_idx == ref_first.start_bi_idx
+            and new_first.end_bi_idx == ref_first.end_bi_idx
+        ):
+            if _should_prepend_fakes(new_first, bi_list):
+                return _prepend_recursive_fakes(segments, tzxl_list, bi_list)
+            return segments
+    ref_prefix = None
+    tail = None
+    for ref_index in range(ref_first_real, len(reference_segments)):
+        anchor_time = reference_segments[ref_index].end_time
+        start_index = next(
+            (
+                index
+                for index, segment in enumerate(segments)
+                if segment.start_time == anchor_time
+            ),
+            None,
+        )
+        if start_index is not None:
+            ref_prefix = list(reference_segments[: ref_index + 1])
+            tail = list(segments[start_index:])
+            break
+        end_index = next(
+            (
+                index
+                for index, segment in enumerate(segments)
+                if segment.end_time == anchor_time
+            ),
+            None,
+        )
+        if end_index is not None:
+            ref_prefix = list(reference_segments[: ref_index + 1])
+            tail = list(segments[end_index + 1 :])
+            break
+    if ref_prefix is None or tail is None:
+        return segments
+    result = ref_prefix + tail
+    if isinstance(result[0], XianDuan):
+        result = _prepend_recursive_fakes(result, tzxl_list, bi_list)
+    return result
 
 
 def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> List[XianDuanBase]:
@@ -1960,7 +2883,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
                     xianduan_finish_deque.appendleft(fake_earliest_xd)
 
     make_fake_first_xd_extend()
-    repair_xianduan_queue_gaps()
 
     make_fake_last_xd()
 
@@ -2346,13 +3268,218 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
 
         if isinstance(temp_xd_lm, FakeXianDuanLast) or isinstance(temp_xd_mr, FakeXianDuanLast):
             break
-        xianduan_list[i], xianduan_list[i + 1] = _adjust_xian_duan(temp_xd_lm, temp_xd_mr)
+        xianduan_list[i], xianduan_list[i + 1] = machine.adjust_pair(temp_xd_lm, temp_xd_mr)
 
     # 特征序列只提供候选分界；最终结果必须校准真实极值，避免明显头尾不在极值的线段。
+    def repair_first_segment_reverse_extension(
+        segments: List[XianDuanBase],
+    ) -> List[XianDuanBase]:
+        """首段内部出现更极值反向端点时，补出反向 fake 首段。"""
+        if not segments:
+            return segments
+        first = segments[0]
+        if not isinstance(first, XianDuan):
+            return segments
+
+        if first.is_down():
+            high_idx = max(
+                range(first.start_bi_idx, first.end_bi_idx + 1),
+                key=lambda idx: float(bi_list[idx].high_price),
+            )
+            if high_idx <= first.start_bi_idx:
+                return segments
+            if float(bi_list[high_idx].high_price) <= float(first.start_price) + 1e-8:
+                return segments
+            low_idx = min(
+                range(0, high_idx + 1),
+                key=lambda idx: float(bi_list[idx].low_price),
+            )
+            if high_idx - low_idx < 3:
+                return segments
+            high_bi = bi_list[high_idx]
+            high_tzxl = None
+            for tzxl in tzxl_list:
+                if (
+                    tzxl.start_time == high_bi.end_time
+                    and tzxl.is_top()
+                    and abs(float(tzxl.start_price) - float(high_bi.end_price)) <= 1e-6
+                ):
+                    high_tzxl = tzxl
+                    break
+            if high_tzxl is None:
+                return segments
+            try:
+                new_first = XianDuan.from_tzxl(high_tzxl, first.right_tzxl, bi_list)
+            except ValueError:
+                return segments
+            if not new_first.is_finished or not new_first.has_enough_bi():
+                return segments
+            fake = FakeXianDuanFirst()
+            fake.xianduan_type = XianDuanDirectionType.UP
+            fake.start_bi_idx = low_idx + 1
+            fake.end_bi_idx = high_idx
+            fake.start_idx = bi_list[low_idx + 1].start_idx
+            fake.end_idx = bi_list[high_idx].end_idx
+            fake.start_time = bi_list[low_idx + 1].start_time
+            fake.end_time = bi_list[high_idx].end_time
+            fake.start_price = bi_list[low_idx + 1].start_price
+            fake.end_price = bi_list[high_idx].end_price
+            fake.right_tzxl = high_tzxl
+            fake.invalidate_cache()
+            return [fake, new_first, *segments[1:]]
+
+        low_idx = min(
+            range(first.start_bi_idx, first.end_bi_idx + 1),
+            key=lambda idx: float(bi_list[idx].low_price),
+        )
+        if low_idx <= first.start_bi_idx:
+            return segments
+        if float(bi_list[low_idx].low_price) >= float(first.start_price) - 1e-8:
+            return segments
+        high_idx = max(
+            range(0, low_idx + 1),
+            key=lambda idx: float(bi_list[idx].high_price),
+        )
+        if low_idx - high_idx < 3:
+            return segments
+        low_bi = bi_list[low_idx]
+        low_tzxl = None
+        for tzxl in tzxl_list:
+            if (
+                tzxl.start_time == low_bi.end_time
+                and tzxl.is_bottom()
+                and abs(float(tzxl.start_price) - float(low_bi.end_price)) <= 1e-6
+            ):
+                low_tzxl = tzxl
+                break
+        if low_tzxl is None:
+            return segments
+        try:
+            new_first = XianDuan.from_tzxl(low_tzxl, first.right_tzxl, bi_list)
+        except ValueError:
+            return segments
+        if not new_first.is_finished or not new_first.has_enough_bi():
+            return segments
+        fake = FakeXianDuanFirst()
+        fake.xianduan_type = XianDuanDirectionType.DOWN
+        fake.start_bi_idx = high_idx + 1
+        fake.end_bi_idx = low_idx
+        fake.start_idx = bi_list[high_idx + 1].start_idx
+        fake.end_idx = bi_list[low_idx].end_idx
+        fake.start_time = bi_list[high_idx + 1].start_time
+        fake.end_time = bi_list[low_idx].end_time
+        fake.start_price = bi_list[high_idx + 1].start_price
+        fake.end_price = bi_list[low_idx].end_price
+        fake.right_tzxl = low_tzxl
+        fake.invalidate_cache()
+        return [fake, new_first, *segments[1:]]
+
     xianduan_list = repair_xianduan_extremes(xianduan_list)
     xianduan_list = repair_xianduan_endpoint_extremes(xianduan_list)
+    xianduan_list = repair_first_segment_reverse_extension(xianduan_list)
     validate_xianduan_structure()
 
     for i in range(len(xianduan_list)):
         xianduan_list[i].idx = i
     return xianduan_list
+
+
+def generate_xian_duan_with_repair_loop(
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+    max_iterations: int = 10,
+    initial_segments: Optional[List[XianDuanBase]] = None,
+    copy_input: bool = True,
+    use_local_resegment: bool = False,
+    allow_count_changing_repairs: bool = False,
+) -> List[XianDuanBase]:
+    """实验性：先走旧管线，再用不变量修复循环收敛。
+
+    默认管线不调用本函数；它用于 Phase 7 的新旧并行对比。
+    """
+    if initial_segments is None:
+        segments = generate_xian_duan(tzxl_list, bi_list)
+    elif copy_input:
+        segments = copy.deepcopy(list(initial_segments))
+    else:
+        segments = list(initial_segments)
+    ctx = XianDuanContext(
+        bi_list=bi_list,
+        tzxl_list=tzxl_list,
+        bi_high_prices=np.array([bi.high_price for bi in bi_list]),
+        bi_low_prices=np.array([bi.low_price for bi in bi_list]),
+        tzxl_by_time_and_type={
+            (tzxl.start_time, tzxl.is_top()): tzxl for tzxl in tzxl_list
+        },
+    )
+    endpoint_ops = XianDuanEndpointOps(bi_list, tzxl_list)
+    repair_ops = XianDuanRepairOps(ctx, endpoint_ops)
+    invariants = XianDuanInvariants(ctx)
+
+    for _ in range(max_iterations):
+        violations = invariants.check(segments)
+        if not violations:
+            break
+        changed = False
+        for violation in violations:
+            index = violation.index
+            if index >= len(segments):
+                continue
+            segment = segments[index]
+            if violation.code == "start_extreme_deviation":
+                extreme_type = "low" if segment.is_up() else "high"
+                boundary = endpoint_ops.find_extreme_boundary(segment, extreme_type)
+                if (
+                    boundary["next_start_bi_idx"] > segment.start_bi_idx
+                    and repair_ops.move_shared_boundary(segments, index, boundary, "start")
+                ):
+                    changed = True
+                    break
+            elif violation.code == "end_not_extreme_bi":
+                new_end_bi_idx = endpoint_ops.extreme_end_bi_idx(
+                    segment.start_bi_idx,
+                    segment.end_bi_idx,
+                    segment.is_up(),
+                )
+                if new_end_bi_idx is None:
+                    if allow_count_changing_repairs and (
+                        repair_ops.merge_invalid_segment_with_next(segments, index)
+                        or repair_ops.merge_invalid_segment_with_previous(segments, index)
+                        or (use_local_resegment and repair_ops.resegment_invalid_segment(segments, index))
+                    ):
+                        changed = True
+                        break
+                elif (
+                    new_end_bi_idx != segment.end_bi_idx
+                    and repair_ops.move_end_and_next_start(segments, index, new_end_bi_idx)
+                ):
+                    changed = True
+                    break
+                elif allow_count_changing_repairs and (
+                    repair_ops.merge_invalid_segment_with_next(segments, index)
+                    or repair_ops.merge_invalid_segment_with_previous(segments, index)
+                    or (use_local_resegment and repair_ops.resegment_invalid_segment(segments, index))
+                ):
+                    changed = True
+                    break
+            elif violation.code == "penetrates_start":
+                if repair_ops.repair_penetrates_start(segments, index):
+                    changed = True
+                    break
+                if allow_count_changing_repairs and (
+                    repair_ops.merge_invalid_segment_with_next(segments, index)
+                    or repair_ops.merge_invalid_segment_with_previous(segments, index)
+                    or (use_local_resegment and repair_ops.resegment_invalid_segment(segments, index))
+                ):
+                    changed = True
+                    break
+            elif violation.code == "direction_not_alternating":
+                if allow_count_changing_repairs:
+                    segments = repair_ops.merge_same_direction(segments)
+                    changed = True
+                    break
+        if not changed:
+            break
+    for idx, segment in enumerate(segments):
+        segment.idx = idx
+    return segments

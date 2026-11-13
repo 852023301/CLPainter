@@ -55,6 +55,11 @@ def parse_args(source_dir: Path = DEFAULT_SOURCE_DIR):
     parser.add_argument("--market", help="只导出指定市场，例如 cn")
     parser.add_argument("--asset-class", help="只导出指定资产类别，例如 stock")
     parser.add_argument("--symbol", help="只导出单一标的，例如 600713SH")
+    parser.add_argument(
+        "--reference-dir",
+        type=Path,
+        help="旧 curated 参考目录，用于保留首段；默认使用输出目录中的旧缓存",
+    )
     args = parser.parse_args()
     if args.market:
         args.market = args.market.removeprefix("market=")
@@ -83,7 +88,7 @@ def source_metadata(source_file: Path) -> tuple[str, str, str]:
     return frequency, market_dir, asset_class_dir
 
 
-def dump_worker(source_file: Path, dump_dir: Path) -> None:
+def dump_worker(source_file: Path, dump_dir: Path, reference_dir: Path | None = None) -> None:
     """按源文件层级识别周期，导出图表缓存和完整 _DataCache。"""
     frequency, market_dir, asset_class_dir = source_metadata(source_file)
     dump_data_cache_to_pickle(
@@ -93,6 +98,7 @@ def dump_worker(source_file: Path, dump_dir: Path) -> None:
         dump_cache=True,
         market_dir=market_dir,
         asset_class_dir=asset_class_dir,
+        reference_dir=reference_dir,
     )
 
 
@@ -193,6 +199,7 @@ def main() -> int:
                 dump_worker,
                 source_file,
                 CACHE_DUMP_DIR,
+                args.reference_dir,
             ): source_file
             for source_file in source_files
         }

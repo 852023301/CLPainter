@@ -1,3 +1,4 @@
+import copy
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -601,27 +602,30 @@ class BiInvariants:
 
             if not isinstance(bi, Bi):
                 continue
+            if bi.left_fx is None or bi.right_fx is None:
+                continue
 
-            covered_high = float(max(high_prices[bi.start_idx:bi.end_idx + 1]))
-            covered_low = float(min(low_prices[bi.start_idx:bi.end_idx + 1]))
-            if bi.is_up():
-                if abs(float(bi.start_price) - covered_low) > 1e-8:
-                    violations.append(
-                        BiInvariantViolation("start_not_low", index, "上升笔起点不是最低点")
+            high_start = bi.left_fx.high_idx if bi.is_up() else bi.left_fx.low_idx
+            covered_high = float(max(high_prices[high_start:bi.end_idx + 1]))
+            covered_low = float(min(low_prices[high_start:bi.end_idx + 1]))
+            init_high = max(float(bi.left_fx.high_price), float(bi.right_fx.high_price))
+            init_low = min(float(bi.left_fx.low_price), float(bi.right_fx.low_price))
+            if covered_high > init_high + 1e-8:
+                violations.append(
+                    BiInvariantViolation(
+                        "range_high_exceeds_fenxing",
+                        index,
+                        "区间最高价超过两端分型最高价",
                     )
-                if abs(float(bi.end_price) - covered_high) > 1e-8:
-                    violations.append(
-                        BiInvariantViolation("end_not_high", index, "上升笔终点不是最高点")
+                )
+            if covered_low < init_low - 1e-8:
+                violations.append(
+                    BiInvariantViolation(
+                        "range_low_below_fenxing",
+                        index,
+                        "区间最低价低于两端分型最低价",
                     )
-            else:
-                if abs(float(bi.start_price) - covered_high) > 1e-8:
-                    violations.append(
-                        BiInvariantViolation("start_not_high", index, "下降笔起点不是最高点")
-                    )
-                if abs(float(bi.end_price) - covered_low) > 1e-8:
-                    violations.append(
-                        BiInvariantViolation("end_not_low", index, "下降笔终点不是最低点")
-                    )
+                )
 
         for index in range(1, len(bis)):
             previous = bis[index - 1]
@@ -673,9 +677,7 @@ class BiRepairLoop:
                 repairs.append(BiRepair("fill_gap", violation.index))
             elif violation.code == "min_kline_count":
                 repairs.append(BiRepair("merge_neighbor", violation.index))
-            elif violation.code in ("start_not_low", "start_not_high"):
-                repairs.append(BiRepair("move_start_to_extreme", violation.index))
-            elif violation.code in ("end_not_high", "end_not_low"):
+            elif violation.code in ("range_high_exceeds_fenxing", "range_low_below_fenxing"):
                 repairs.append(BiRepair("move_end_to_extreme", violation.index))
             elif violation.code in ("index_bounds", "index_order"):
                 repairs.append(BiRepair("drop_invalid_bi", violation.index))
@@ -2058,3 +2060,82 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     for i in range(len(bi_list)):
         bi_list[i].idx = i
     return bi_list
+
+
+def generate_bi_with_repair_loop(
+    fenxing_list: List[FenXing],
+    all_klines: List[MergedKLine],
+    max_iterations: int = 10,
+    initial_bis: Optional[List[BiBase]] = None,
+    copy_input: bool = True,
+) -> List[Union[Bi, FakeBiLast]]:
+    """实验性：先走旧管线，再用不变量修复循环收敛。
+
+    默认管线不调用本函数；它用于 Phase 7 的新旧并行对比。
+    """
+    if initial_bis is None:
+        bis = generate_bi(fenxing_list, all_klines)
+    elif copy_input:
+        bis = copy.deepcopy(list(initial_bis))
+    else:
+        bis = list(initial_bis)
+    n_klines = len(all_klines)
+    prefix_merged = [0] * (n_klines + 1)
+    prefix_gap = [0] * (n_klines + 1)
+    for index in range(n_klines):
+        kline = all_klines[index]
+        prefix_merged[index + 1] = prefix_merged[index] + (
+            1 if kline.merged_length == 1 else 0
+        )
+        prefix_gap[index + 1] = prefix_gap[index] + (1 if kline.has_gap else 0)
+    high_prices = np.array([kline.merged_high for kline in all_klines])
+    low_prices = np.array([kline.merged_low for kline in all_klines])
+    ctx = BiContext(
+        fenxing_list=fenxing_list,
+        all_klines=all_klines,
+        prefix_merged=prefix_merged,
+        prefix_gap=prefix_gap,
+        high_prices=high_prices,
+        low_prices=low_prices,
+        fenxing_by_time={fx.trade_datetime: fx for fx in fenxing_list},
+    )
+    endpoint_ops = BiEndpointOps(ctx)
+    repair_ops = BiRepairOps(ctx, endpoint_ops)
+    invariants = BiInvariants(ctx)
+
+    for _ in range(max_iterations):
+        violations = invariants.check(bis)
+        if not violations:
+            break
+        changed = False
+        for violation in violations:
+            index = violation.index
+            if index >= len(bis):
+                continue
+            bi = bis[index]
+            if not isinstance(bi, Bi):
+                continue
+            if violation.code in ("range_high_exceeds_fenxing", "range_low_below_fenxing"):
+                high_start = bi.left_fx.high_idx if bi.is_up() else bi.left_fx.low_idx
+                if bi.is_up():
+                    extreme_idx = int(
+                        np.argmax(high_prices[high_start:bi.end_idx + 1])
+                    ) + high_start
+                    extreme_price = float(high_prices[extreme_idx])
+                else:
+                    extreme_idx = int(
+                        np.argmin(low_prices[high_start:bi.end_idx + 1])
+                    ) + high_start
+                    extreme_price = float(low_prices[extreme_idx])
+                next_bi = bis[index + 1] if index + 1 < len(bis) else None
+                continuity_ok = next_bi is None or next_bi.start_idx == extreme_idx
+                if extreme_idx < bi.end_idx and continuity_ok:
+                    bi.end_idx = extreme_idx
+                    bi.end_time = all_klines[extreme_idx].trade_datetime
+                    bi.end_price = extreme_price
+                    bi.invalidate_cache()
+                    changed = True
+                    break
+        if not changed:
+            break
+    return bis

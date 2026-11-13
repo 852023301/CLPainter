@@ -98,7 +98,6 @@ def _iso_time(value: Any) -> str | None:
 
 def canonical_bi(bi: Any) -> list[Any]:
     return [
-        int(getattr(bi, "idx", 0)),
         getattr(getattr(bi, "bi_type", None), "value", str(getattr(bi, "bi_type", None))),
         _iso_time(getattr(bi, "start_time", None)),
         _iso_time(getattr(bi, "end_time", None)),
@@ -112,7 +111,6 @@ def canonical_bi(bi: Any) -> list[Any]:
 
 def canonical_xianduan(segment: Any) -> list[Any]:
     return [
-        int(getattr(segment, "idx", 0)),
         getattr(
             getattr(segment, "xianduan_type", None),
             "value",

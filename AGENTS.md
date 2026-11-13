@@ -198,6 +198,120 @@ ssh CL "ps aux | grep main.py"
 ssh CL "tail -50 /root/CLPainter/web/backend/nohup.out"
 ```
 
+## 大规模修改的可视化人工审核
+
+修改笔、线段、中枢、数据路径或批量重算逻辑后，除了硬门禁全量 dump，还必须做一次新旧结果的可视化人工审核。适用于：
+
+- 修改 `web/backend/app/toolbox/bi.py`、`xianduan.py`、`zhongshu.py` 等核心算法
+- 修改 `settings.py` 的数据路径
+- 批量重算 curated 缓存
+- 任何预计会改变多个标的画线结果的改动
+
+### 1. 生成新旧快照并统计差异
+
+使用：
+
+```bash
+python web/backend/scripts/snapshot_structures.py --dump-dir <旧curated> --output /tmp/old.jsonl
+python web/backend/scripts/snapshot_structures.py --dump-dir <新curated> --output /tmp/new.jsonl
+python web/backend/scripts/compare_structures.py /tmp/old.jsonl /tmp/new.jsonl
+```
+
+必须记录：
+
+- 总缓存数
+- added / removed / changed
+- 按周期、资产类别的 changed 分布
+
+`changed` 是缓存级差异，包含笔、线段、中枢，不等同于某一次算法修复的数量。
+
+快照的 canonical 结构不要包含内部 `idx` 字段。`idx` 会在生成/修复后重新编号，
+把它纳入 hash 会把“仅编号变化”误报成结构变化。比较时应使用列表位置，而不是 `idx`。
+
+### 2. 生成可视化报告
+
+使用 `web/backend/scripts/phase7_visual_report.py` 生成静态 HTML：
+
+```bash
+python web/backend/scripts/phase7_visual_report.py \
+  --old-dump-dir <旧curated> \
+  --new-dump-dir <新curated> \
+  --cases <cases.jsonl> \
+  --output-dir <报告目录> \
+  --old-audit <旧审计.jsonl> \
+  --new-audit <新审计.jsonl>
+```
+
+报告要求：
+
+- 每个案例 Old / New 两张图并排
+- 图中包含 K 线、笔、线段
+- 颜色约定：
+  - 蓝色：笔
+  - 红色：Old 线段
+  - 绿色：New 线段
+  - 紫色：有变化的笔
+  - 橙色：有变化的线段
+- 每个案例附线段端点表，变化行高亮
+- 每个案例附旧/新不变量违规列表
+
+报告目录可以用本地静态服务器打开：
+
+```bash
+python3 -m http.server 15002 --bind 0.0.0.0 --directory <报告目录>
+```
+
+### 3. 案例集必须分层
+
+不能只挑变化案例，也不能只挑目标案例。至少包含：
+
+- S1-S28 全部回归案例
+- 已知目标案例
+- 变化案例的分层抽样（按周期 + 资产类别）
+- 未变化控制样本（用于确认没有误改）
+
+报告中必须明确区分：
+
+- `changed`：实际有差异
+- `unchanged`：控制样本，优化前后应完全一致
+
+### 4. 人工审核步骤
+
+1. 先看 S1-S28 和目标案例
+2. 再看变化样本
+3. 最后看未变化控制样本
+4. 每个案例检查：
+   - 线段方向是否交替
+   - 首尾是否连续
+   - 端点是否落在真实极值附近
+   - fake 首尾段是否合理
+   - 是否有明显反向穿透
+   - 与旧图相比变化是否符合预期
+5. 记录 `通过 / 不通过 / 需讨论`
+
+### 5. 隔离数据目录
+
+生产数据目录和测试数据目录必须分开。大规模重算时：
+
+- 只读生产 raw 数据
+- 写入独立验证目录
+- 不覆盖生产 curated
+- 不覆盖生产 chart_payload
+
+例如：
+
+```text
+/DataDepartmentTest/home/wjl/data_set_phase7_validation
+```
+
+### 6. 验收通过后的推进顺序
+
+1. 新结果先进入测试环境
+2. 测试环境观察前端图表和选股结果
+3. 确认稳定后再更新生产
+4. 生产更新前保留旧 curated 备份
+5. 保留回滚路径
+
 ## 注意事项
 
 1. **本地为准**: 默认修改本地代码，远程部署前先本地完成。

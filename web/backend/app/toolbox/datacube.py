@@ -1,8 +1,11 @@
+import importlib
 import os
 import pickle
 import re
 import json
 import math
+import sys
+import types
 from pathlib import Path
 from typing import List
 from datetime import timezone
@@ -13,7 +16,13 @@ from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.toolbox.bi import generate_bi, Bi
 from CLPainter.web.backend.app.toolbox.fenxing import generate_fenxing, FenXing
 from CLPainter.web.backend.app.toolbox.tezhengxulie import generate_te_zheng_xu_lie, TeZhengXuLie
-from CLPainter.web.backend.app.toolbox.xianduan import generate_xian_duan, XianDuan
+from CLPainter.web.backend.app.toolbox.xianduan import (
+    generate_xian_duan,
+    generate_xian_duan_with_repair_loop,
+    promote_secondary_fakes,
+    reconcile_first_segments,
+    XianDuan,
+)
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi, \
@@ -170,9 +179,14 @@ class _DataCache:
 
     special_path: Path | None
 
-    def __init__(self, special_path: Path | None = None):
+    def __init__(
+        self,
+        special_path: Path | None = None,
+        reference_xian_duan_list: list | None = None,
+    ):
         """初始化懒加载字段，避免创建时立即读取和计算数据。"""
         self.special_path = special_path
+        self.reference_xian_duan_list = reference_xian_duan_list
         self._raw_data = None
         self._origin_kline_data = None
         self._gaps_list = None
@@ -225,7 +239,28 @@ class _DataCache:
         self._te_zheng_xu_lie = generate_te_zheng_xu_lie(self._bi_list)
 
         #  线段
-        self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
+        if settings.ENABLE_XIANDUAN_REPAIR_LOOP:
+            self._xianduan_list = generate_xian_duan_with_repair_loop(
+                self._te_zheng_xu_lie,
+                self._bi_list,
+                use_local_resegment=settings.ENABLE_XIANDUAN_LOCAL_RESEGMENT,
+            )
+        else:
+            self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
+
+        self._xianduan_list = reconcile_first_segments(
+            self._xianduan_list,
+            self.reference_xian_duan_list,
+            self._te_zheng_xu_lie,
+            self._bi_list,
+        )
+        self._xianduan_list = promote_secondary_fakes(
+            self._xianduan_list,
+            self._te_zheng_xu_lie,
+            self._bi_list,
+        )
+        for index, segment in enumerate(self._xianduan_list):
+            segment.idx = index
 
         # print([(i.start_bi_idx,i.end_bi_idx,type(i)) for i in self._xianduan_list])
 
@@ -561,6 +596,64 @@ def _atomic_pickle_dump(value, destination: Path) -> None:
             temp_path.unlink()
 
 
+def _install_host_module_aliases() -> None:
+    """让容器能够反序列化宿主机生成的 CLPainter... 模块路径 pickle。"""
+    package_names = [
+        "CLPainter",
+        "CLPainter.web",
+        "CLPainter.web.backend",
+        "CLPainter.web.backend.app",
+    ]
+    for name in package_names:
+        if name not in sys.modules:
+            module = types.ModuleType(name)
+            module.__path__ = []
+            sys.modules[name] = module
+    module_names = [
+        "_config.settings",
+        "db.base",
+        "db.models",
+        "toolbox.bi",
+        "toolbox.calculate",
+        "toolbox.datacube",
+        "toolbox.fenxing",
+        "toolbox.gap",
+        "toolbox.geometry",
+        "toolbox.merged_kline",
+        "toolbox.origin_kline",
+        "toolbox.tezhengxulie",
+        "toolbox.xianduan",
+        "toolbox.xianduan_tezhengxulie",
+        "toolbox.xianduan_zhongshu",
+        "toolbox.zhongshu",
+    ]
+    for name in module_names:
+        host_name = "CLPainter" + ".web.backend.app." + name
+        module = importlib.import_module(f"app.{name}")
+        sys.modules[host_name] = module
+        parts = host_name.split(".")
+        for index in range(1, len(parts)):
+            package_name = ".".join(parts[:index])
+            if package_name not in sys.modules:
+                package = types.ModuleType(package_name)
+                package.__path__ = []
+                sys.modules[package_name] = package
+        parent_name, child_name = host_name.rsplit(".", 1)
+        setattr(sys.modules[parent_name], child_name, module)
+
+
+def _load_pickle_compatible(path: Path):
+    with path.open("rb") as file:
+        try:
+            return pickle.load(file)
+        except ModuleNotFoundError as error:
+            if "CLPainter" not in str(error):
+                raise
+        _install_host_module_aliases()
+    with path.open("rb") as file:
+        return pickle.load(file)
+
+
 def dump_data_cache_to_pickle(
     source_file: Path,
     dump_dir: Path = CACHE_DUMP_DIR,
@@ -569,6 +662,7 @@ def dump_data_cache_to_pickle(
     market_dir: str = DEFAULT_MARKET_DIR,
     asset_class_dir: str = DEFAULT_ASSET_CLASS_DIR,
     precision: int | None = None,
+    reference_dir: Path | None = None,
 ) -> Path:
     """构建图表payload并可选导出_DataCache，写入过程支持强制覆盖。"""
     source_file = Path(source_file)
@@ -581,7 +675,33 @@ def dump_data_cache_to_pickle(
         market_dir,
         asset_class_dir,
     )
-    cache = _DataCache(source_file)
+    destination = get_cache_dump_path(
+        source_file.stem,
+        frequency,
+        market_dir,
+        asset_class_dir,
+        dump_dir,
+    )
+    reference_path = (
+        get_cache_dump_path(
+            source_file.stem,
+            frequency,
+            market_dir,
+            asset_class_dir,
+            reference_dir,
+        )
+        if reference_dir is not None
+        else destination
+    )
+    reference_xian_duan_list = None
+    if reference_path.exists():
+        try:
+            old_cache = _load_pickle_compatible(reference_path)
+            reference_xian_duan_list = getattr(old_cache, "xian_duan_list", None)
+        except Exception:
+            reference_xian_duan_list = None
+
+    cache = _DataCache(source_file, reference_xian_duan_list=reference_xian_duan_list)
     cache.ensure_loaded()
     chart_precision = precision if precision is not None else _instrument_precision(
         source_file.stem,
@@ -607,13 +727,6 @@ def dump_data_cache_to_pickle(
             asset_class_dir,
         )
 
-    destination = get_cache_dump_path(
-        source_file.stem,
-        frequency,
-        market_dir,
-        asset_class_dir,
-        dump_dir,
-    )
     _atomic_pickle_dump(cache, destination)
 
     return destination
