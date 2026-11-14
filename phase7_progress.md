@@ -1082,3 +1082,12 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - p6 全量 dump：成功 38855，失败 0。
 - v5 与 p6 snapshot 完全一致。
 - 测试：`83 passed, 4 skipped`。
+
+## 2026-11-15 P2 第六轮
+
+- 新增 `_find_extreme_end_bi_index()`，统一 fake 尾段极值搜索。
+- p7 全量 dump：成功 38855，失败 0。
+- v5 与 p7 snapshot 完全一致。
+- 测试：`83 passed, 4 skipped`。
+
+- P2 第六轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。

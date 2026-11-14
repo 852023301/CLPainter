@@ -1075,3 +1075,39 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 ```
 
 结论：纯重构，行为零差异。
+
+## 2026-11-15 P2 第六轮：fake 尾段极值搜索
+
+新增：
+
+```text
+_find_extreme_end_bi_index()
+```
+
+统一 `make_fake_last_after_xianduan()` 与 `_make_fake_latest_xd()` 的尾段极值搜索：
+
+- 是否包含起点；
+- 是否要求比当前终点更极值；
+- 上升/下降方向；
+- 极值索引计算。
+
+验证：
+
+```text
+p7 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p7 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：纯重构，行为零差异。
+
+### P2 第六轮容器同步
+
+第六轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+300327SZ 200
+688611SH 200
+159577SZ 200
+```
