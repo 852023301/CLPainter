@@ -406,3 +406,21 @@ multi_fake_cases: 0
 http://172.17.1.5:15003/phase7_visual_report_v3_first_only/
 http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/
 ```
+
+## 人工确认的 later_exceeds 拆分
+
+已逐段验证 12 个候选拆分：
+
+- 10 个成立并已应用：159852SZ、399991SZ、002025SZ、002054SZ、002073SZ、002099SZ、600038SH、600094SH、600116SH、000789SZ；
+- 2 个不成立，保持原样：300284SZ、688611SH。
+
+不成立原因：
+
+- 300284SZ：2015-06-05 之后找不到合法 tzxl 端点，2016-01-27 不是 tzxl 起点，无法构造标准 2/3 段拆分；
+- 688611SH：2021-05-10 是 fake 起点，不是 tzxl；2021-09-29~2021-11-23 只有两笔，不能成为标准线段。
+
+实现位置：
+
+```text
+web/backend/app/toolbox/phase7_confirmed_splits.py
+```
