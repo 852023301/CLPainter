@@ -29,6 +29,7 @@ from CLPainter.web.backend.app.toolbox.bi import (  # noqa: E402
 from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     SUPPORTED_CHART_FREQUENCIES,
     load_data_cache_pickle,
+    postprocess_xian_duan,
 )
 from CLPainter.web.backend.app.toolbox.tezhengxulie import (  # noqa: E402
     generate_te_zheng_xu_lie,
@@ -143,6 +144,14 @@ def audit_cache(
             initial_segments=None,
             use_local_resegment=use_local_resegment,
             allow_count_changing_repairs=False,
+        )
+        xd_list = postprocess_xian_duan(
+            xd_list,
+            cache.xian_duan_list,
+            tzxl_list,
+            bi_list,
+            symbol=cache_file.stem,
+            frequency=frequency,
         )
 
     prefix_merged, prefix_gap = _prefix_counts(klines)

@@ -11,8 +11,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 from CLPainter.web.backend.app.toolbox.datacube import _DataCache, load_data_cache_pickle  # noqa: E402
 
-OLD_ROOT = Path("/DataDepartmentTest/home/wjl/data_set/dump/curated")
-RAW_ROOT = Path("/DataDepartmentTest/home/wjl/data_set/pv_data")
+OLD_ROOT = Path("/mnt/DataDepartmentTest/home/wjl/data_set/dump/curated")
+RAW_ROOT = Path("/mnt/DataDepartmentTest/home/wjl/data_set/pv_data")
 
 ASSET_CLASS = {
     "000750SZ": "asset_class=stock",

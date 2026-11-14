@@ -15,10 +15,10 @@
 
 ```bash
 cp -a /root/CLPainter /root/CLPainter_backup_$(date +%Y%m%d)
-mv /DataDepartmentTest/home/wjl/data_set/dump/curated \
-   /DataDepartmentTest/home/wjl/data_set/dump/curated_backup_$(date +%Y%m%d)
-mv /DataDepartmentTest/home/wjl/data_set/dump/chart_payload \
-   /DataDepartmentTest/home/wjl/data_set/dump/chart_payload_backup_$(date +%Y%m%d)
+mv /mnt/DataDepartmentTest/home/wjl/data_set/dump/curated \
+   /mnt/DataDepartmentTest/home/wjl/data_set/dump/curated_backup_$(date +%Y%m%d)
+mv /mnt/DataDepartmentTest/home/wjl/data_set/dump/chart_payload \
+   /mnt/DataDepartmentTest/home/wjl/data_set/dump/chart_payload_backup_$(date +%Y%m%d)
 ```
 
 ## 2. 同步代码
@@ -51,15 +51,15 @@ app...
 
 ```bash
 cd /root/CLPainter
-DATA_DIR=/DataDepartmentTest/home/wjl/data_set/pv_data \
-OLD_DATA_DIR=/DataDepartmentTest/home/wjl/data_set/old_pv_data \
-CACHE_DUMP_DIR=/DataDepartmentTest/home/wjl/data_set/dump/curated \
-DB_PATH=/DataDepartmentTest/home/wjl/data_set/instrument.db \
+DATA_DIR=/mnt/DataDepartmentTest/home/wjl/data_set/pv_data \
+OLD_DATA_DIR=/mnt/DataDepartmentTest/home/wjl/data_set/old_pv_data \
+CACHE_DUMP_DIR=/mnt/DataDepartmentTest/home/wjl/data_set/dump/curated \
+DB_PATH=/mnt/DataDepartmentTest/home/wjl/data_set/instrument.db \
 ENABLE_XIANDUAN_REPAIR_LOOP=1 \
 ENABLE_XIANDUAN_LOCAL_RESEGMENT=0 \
 PYTHONPATH=/root/CLPainter/web/backend \
 python web/backend/scripts/dump_stock_caches.py \
-  --source-dirs /DataDepartmentTest/home/wjl/data_set/pv_data
+  --source-dirs /mnt/DataDepartmentTest/home/wjl/data_set/pv_data
 ```
 
 要求：
@@ -109,12 +109,12 @@ mv /root/CLPainter_backup_YYYYMMDD /root/CLPainter
 恢复数据：
 
 ```bash
-rm -rf /DataDepartmentTest/home/wjl/data_set/dump/curated
-rm -rf /DataDepartmentTest/home/wjl/data_set/dump/chart_payload
-mv /DataDepartmentTest/home/wjl/data_set/dump/curated_backup_YYYYMMDD \
-   /DataDepartmentTest/home/wjl/data_set/dump/curated
-mv /DataDepartmentTest/home/wjl/data_set/dump/chart_payload_backup_YYYYMMDD \
-   /DataDepartmentTest/home/wjl/data_set/dump/chart_payload
+rm -rf /mnt/DataDepartmentTest/home/wjl/data_set/dump/curated
+rm -rf /mnt/DataDepartmentTest/home/wjl/data_set/dump/chart_payload
+mv /mnt/DataDepartmentTest/home/wjl/data_set/dump/curated_backup_YYYYMMDD \
+   /mnt/DataDepartmentTest/home/wjl/data_set/dump/curated
+mv /mnt/DataDepartmentTest/home/wjl/data_set/dump/chart_payload_backup_YYYYMMDD \
+   /mnt/DataDepartmentTest/home/wjl/data_set/dump/chart_payload
 ```
 
 重启：
@@ -122,3 +122,14 @@ mv /DataDepartmentTest/home/wjl/data_set/dump/chart_payload_backup_YYYYMMDD \
 ```bash
 kill -HUP <gunicorn-master-pid>
 ```
+
+## 7. 通用合法拆分搜索开关
+
+新增实验开关：
+
+```bash
+ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=0
+```
+
+默认关闭。当前生产部署只启用已人工确认的拆分和 fake 收敛，不启用通用搜索。
+通用搜索需要先在测试环境完成全量不变量审计和人工可视化验收后，再单独评估是否开启。

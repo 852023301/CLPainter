@@ -301,7 +301,7 @@ python3 -m http.server 15002 --bind 0.0.0.0 --directory <报告目录>
 例如：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_phase7_validation
+/mnt/DataDepartmentTest/home/wjl/data_set_phase7_validation
 ```
 
 ### 6. 验收通过后的推进顺序

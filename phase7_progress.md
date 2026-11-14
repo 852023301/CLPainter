@@ -17,13 +17,13 @@
 早期实验使用：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_dev/dump/curated
+/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated
 ```
 
 最终保守模式验证使用生产 raw 的隔离输出：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_phase7_validation_v2/dump/curated
+/mnt/DataDepartmentTest/home/wjl/data_set_phase7_validation_v2/dump/curated
 ```
 
 ## 不变量定义
@@ -392,7 +392,7 @@ new_xd_violations: end=81, start=6, penetrates=51
 为避免覆盖生产 curated，使用独立数据根：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_dev_phase7
+/mnt/DataDepartmentTest/home/wjl/data_set_dev_phase7
 ```
 
 其中：
@@ -418,7 +418,7 @@ ENABLE_XIANDUAN_LOCAL_RESEGMENT=1
 新目录：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_dev_phase7/dump/curated
+/mnt/DataDepartmentTest/home/wjl/data_set_dev_phase7/dump/curated
 ```
 
 结果：
@@ -476,13 +476,13 @@ flags on:  xd_changed=220
 使用生产 raw 数据：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set
+/mnt/DataDepartmentTest/home/wjl/data_set
 ```
 
 隔离输出：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_phase7_validation
+/mnt/DataDepartmentTest/home/wjl/data_set_phase7_validation
 ```
 
 全量导出：
@@ -669,7 +669,7 @@ use_local_resegment = False
 使用生产 raw 数据只读、隔离输出：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_phase7_validation_v2
+/mnt/DataDepartmentTest/home/wjl/data_set_phase7_validation_v2
 ```
 
 开启：
@@ -716,7 +716,7 @@ ENABLE_XIANDUAN_LOCAL_RESEGMENT=0
 生产 raw 数据只读，输出隔离目录：
 
 ```text
-/DataDepartmentTest/home/wjl/data_set_phase7_validation_v2
+/mnt/DataDepartmentTest/home/wjl/data_set_phase7_validation_v2
 ```
 
 生产 curated 未覆盖。
@@ -839,7 +839,7 @@ spot check failures: 0
 
 - 测试容器：`CLPainter`
 - 容器代码备份：`/root/CLPainter_backup_20261112`
-- 容器兼容缓存：`/DataDepartmentTest/home/wjl/data_set_dev_phase7_v2`
+- 容器兼容缓存：`/mnt/DataDepartmentTest/home/wjl/data_set_dev_phase7_v2`
 - 容器内全量导出：成功 38860，失败 0
 - 容器 `DEFAULT_DATA_ROOT` 已切到新缓存目录
 - gunicorn 已平滑重启
@@ -972,3 +972,67 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 全量扫描：`multi_fake_cases: 0`。
 
 可视化报告同步改进：表格只标黄新增线段；图表聚焦最早差异时间点。
+
+## 2026-11-14 续接记录
+
+- 补齐剩余 6 个人工确认拆分：`688611SH`、`300290SZ`、`002045SZ`、`600188SH`、`600502SH`、`600333SH`。
+- 新增 `postprocess_xian_duan()`，统一服务、对比脚本和审计脚本的线段后处理顺序。
+- 新增实验性通用合法拆分搜索 `phase7_legal_splits.py`，通过 `ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1` 启用，默认关闭。
+- 修正回归测试基线：S15 数据日期推进；S24/S27 新 fake 首段；S25 尾部 real/fake 归属。
+- 测试结果：`82 passed, 4 skipped`。
+- 已启动测试环境全量 dump，输出到 `/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated`。
+
+## 2026-11-14 全量验证结果
+
+- 测试环境全量 dump：成功 38855，失败 0。
+- 清理旧缓存 `561970SH` 五个周期，移动到 `dump/stale_20261114`。
+- 测试：`82 passed, 4 skipped`。
+- 纯算法对比：`xd_changed=3605`，`first_only=3569`，`body_changed=36`，`bi_changed=0`。
+- 全量缓存对比（含数据漂移）：`changed=4141`，`first_only=3382`，`body_changed=759`，`multi_fake=0`。
+- 不变量审计：不含 later_exceeds 为 `6603 -> 6613`，含 later_exceeds 为 `6804 -> 6812`，无新增违规类型。
+- 新报告：`phase7_visual_report_v4_body_changed`、`phase7_visual_report_v4_later_exceeds_changed`、`phase7_visual_report_v4_first_only`。
+- API 冒烟：6 个新增拆分标的均返回 200，`xdData` 已确认。
+
+## 2026-11-14 人工验收与 shadow 验证
+
+- 用户确认 `phase7_visual_report_v4_body_changed_other` 全部无问题。
+- 用户确认 `phase7_visual_report_v4_later_exceeds_changed` 全部无问题。
+- v4 冻结为当前候选版本，冻结信息写入 `phase7_v4_freeze.json`。
+- 启动独立 shadow 全量 dump，验证 `ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1`：
+  - 输出：`/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_shadow`
+  - 参考：已验收的 v4 `dump/curated`
+  - 不影响 v4 主目录。
+
+## 2026-11-14 通用合法拆分 shadow 结果
+
+- shadow 全量 dump：成功 38855，失败 0。
+- 相对 v4 仅变化 9 个案例：1 个 first_only，8 个 body_changed。
+- 不变量总数下降：不含 later_exceeds `6613 -> 6596`，含 later_exceeds `6812 -> 6789`。
+- 报告：`http://172.17.1.5:15003/phase7_visual_report_shadow_legal_split/`
+- 通用搜索仍默认关闭，等待人工确认。
+
+## 2026-11-14 v5 候选版本
+
+- 启用 `ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1`，保留 `300327SZ` 显式拆分。
+- v5 全量 dump：成功 38855，失败 0。
+- 测试：`83 passed, 4 skipped`。
+- v5 相对 v4 仅变化 9 个案例：1 first_only / 8 body_changed。
+- 纯算法对比：`xd_changed=3612`，`first_only=3568`，`body_changed=44`，`bi_changed=0`。
+- v5 审计：`penetrates=2670, end=1985, below=865, exceeds=575, start=501, later=193`。
+- v5 报告已生成，冻结信息写入 `phase7_v5_freeze.json`。
+
+## 2026-11-14 测试容器切换到 v5
+
+- 同步容器代码：`datacube.py`、`phase7_confirmed_splits.py`、`phase7_legal_splits.py`、`settings.py`。
+- 容器备份：`/root/CLPainter_backup_20261114_203111`。
+- 容器实际配置文件为 `/root/CLPainter/web/backend/.env`，已指向 `dump_v5/curated`。
+- gunicorn 平滑重启，启动日志确认 `Environment: test`、`Cache Dir: dump_v5/curated`。
+- API 冒烟 9 个标的全部 200，`300327SZ` 和 `688611SH` 的 `xdData` 已确认。
+
+## 2026-11-14 P1 完成
+
+- v5 人工验收通过。
+- 测试容器切换到 `dump_v5/curated`。
+- 容器代码同步并平滑重启。
+- API 冒烟通过。
+- 提交：`当前 HEAD：完成 Phase 7 v5 通用拆分与测试环境切换`。

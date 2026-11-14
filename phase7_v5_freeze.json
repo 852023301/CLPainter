@@ -1,0 +1,39 @@
+{
+  "audit": {
+    "end_not_extreme_bi": 1985,
+    "penetrates_start": 2670,
+    "right_tzxl_below_left": 865,
+    "right_tzxl_exceeds_left": 575,
+    "right_tzxl_later_exceeds_left": 193,
+    "start_extreme_deviation": 501
+  },
+  "candidate": "phase7_v5",
+  "chart_payload": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/chart_payload",
+  "curated": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/curated",
+  "data_root": "/mnt/DataDepartmentTest/home/wjl/data_set_dev",
+  "dump": {
+    "failed": 0,
+    "success": 38855
+  },
+  "files": 38855,
+  "generic_legal_split_search": "enabled in v5",
+  "incremental_vs_v4": {
+    "body_changed": 8,
+    "changed": 9,
+    "first_only": 1,
+    "multi_fake": 0
+  },
+  "pure_algorithm": {
+    "bi_changed": 0,
+    "body_changed": 44,
+    "first_only": 3568,
+    "xd_changed": 3612
+  },
+  "reports": {
+    "body_changed": "http://172.17.1.5:15003/phase7_visual_report_v5_body_changed/",
+    "incremental": "http://172.17.1.5:15003/phase7_visual_report_v5_incremental/",
+    "later_exceeds_changed": "http://172.17.1.5:15003/phase7_visual_report_v5_later_exceeds_changed/"
+  },
+  "status": "accepted; promoted to test environment",
+  "tests": "83 passed, 4 skipped"
+}

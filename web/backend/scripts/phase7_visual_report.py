@@ -275,8 +275,8 @@ function drawChart(id, payload, xdColor, changedBi, changedXd) {
     : -1;
   if (focusIndex >= 0) {
     chart.timeScale().setVisibleLogicalRange({
-      from: Math.max(0, focusIndex - 20),
-      to: focusIndex + 80,
+      from: Math.max(0, focusIndex - 40),
+      to: focusIndex + 160,
     });
   } else {
     chart.timeScale().fitContent();
@@ -344,6 +344,8 @@ def main() -> int:
     old_audit = load_audit(args.old_audit)
     new_audit = load_audit(args.new_audit)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    for stale_case in args.output_dir.glob("case_*.html"):
+        stale_case.unlink()
     if STATIC_JS.exists():
         shutil.copy(STATIC_JS, args.output_dir / STATIC_JS.name)
 

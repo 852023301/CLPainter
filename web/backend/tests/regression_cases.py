@@ -157,6 +157,8 @@ SEGMENT_CASES = (
         "asset_class=stock",
         "prefix",
         (
+            ("2003-09-24", "2003-11-19", "FakeXianDuanFirst", False),
+            ("2003-11-19", "2004-02-06", "XianDuan", True),
             ("2004-02-06", "2005-07-12", "XianDuan", False),
             ("2005-07-12", "2007-10-16", "XianDuan", True),
         ),
@@ -168,8 +170,8 @@ SEGMENT_CASES = (
         "asset_class=stock",
         "suffix",
         (
-            ("2024-02-08", "2025-09-25", "XianDuan", True),
-            ("2025-09-25", "2026-10-19", "FakeXianDuanLast", False),
+            ("2025-09-25", "2026-10-19", "XianDuan", False),
+            ("2026-10-19", "2026-11-10", "FakeXianDuanLast", True),
         ),
     ),
     SegmentCase(
@@ -231,6 +233,7 @@ SEGMENT_CASES = (
         "asset_class=stock",
         "full",
         (
+            ("1999-05-21", "2001-06-08", "FakeXianDuanFirst", True),
             ("2001-06-08", "2005-07-22", "XianDuan", False),
             ("2005-07-22", "2008-05-16", "XianDuan", True),
             ("2008-05-16", "2018-10-19", "XianDuan", False),
@@ -302,7 +305,7 @@ BI_CASES = (
         "freq=1quarter",
         "asset_class=stock",
         "full",
-        (("down", "2017-03-31", "2026-11-06"),),
+        (("down", "2017-03-31", "2026-11-10"),),
     ),
     BiCase(
         "S16",

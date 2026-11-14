@@ -27,10 +27,10 @@ from CLPainter.web.backend.app.toolbox.bi import (  # noqa: E402
 from CLPainter.web.backend.app.toolbox.datacube import (  # noqa: E402
     SUPPORTED_CHART_FREQUENCIES,
     load_data_cache_pickle,
+    postprocess_xian_duan,
 )
 from CLPainter.web.backend.app.toolbox.xianduan import (  # noqa: E402
     generate_xian_duan_with_repair_loop,
-    reconcile_first_segments,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,11 +157,13 @@ def compare_cache(
         use_local_resegment=use_local_resegment,
         allow_count_changing_repairs=False,
     )
-    new_xds = reconcile_first_segments(
+    new_xds = postprocess_xian_duan(
         new_xds,
         old_xds,
         cache.te_zheng_xu_lie_list,
         old_bis,
+        symbol=cache_file.stem,
+        frequency=frequency,
     )
 
     new_bi_canon = [_canonical_bi(bi) for bi in new_bis]

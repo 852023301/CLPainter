@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
     """所有数据库模型的声明基类。"""
 
 
-DATABASE_PATH = Path(settings.DATA_DIR).parent / "instrument.db"
+DATABASE_PATH = Path(settings.DB_PATH)
 
 if DATABASE_PATH.exists() and not os.access(DATABASE_PATH, os.W_OK):
     DATABASE_URL = f"sqlite:///file:{DATABASE_PATH}?mode=ro&immutable=1&uri=true"

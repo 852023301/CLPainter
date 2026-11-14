@@ -13,7 +13,7 @@ from datetime import timezone
 import pandas as pd
 
 from CLPainter.web.backend.app._config.settings import settings
-from CLPainter.web.backend.app.toolbox.bi import generate_bi, Bi
+from CLPainter.web.backend.app.toolbox.bi import generate_bi, Bi, BiBase
 from CLPainter.web.backend.app.toolbox.fenxing import generate_fenxing, FenXing
 from CLPainter.web.backend.app.toolbox.tezhengxulie import generate_te_zheng_xu_lie, TeZhengXuLie
 from CLPainter.web.backend.app.toolbox.xianduan import (
@@ -22,9 +22,13 @@ from CLPainter.web.backend.app.toolbox.xianduan import (
     promote_secondary_fakes,
     reconcile_first_segments,
     XianDuan,
+    XianDuanBase,
 )
 from CLPainter.web.backend.app.toolbox.phase7_confirmed_splits import (
     apply_confirmed_splits,
+)
+from CLPainter.web.backend.app.toolbox.phase7_legal_splits import (
+    search_legal_splits,
 )
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
@@ -176,6 +180,37 @@ def load_raw_data(data_file=None) -> List[List]:
         raise ValueError(f"数据文件解析失败: {e}")
 
 
+def postprocess_xian_duan(
+    segments: List[XianDuanBase],
+    reference_segments: List[XianDuanBase] | None,
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+    symbol: str | None = None,
+    frequency: str | None = None,
+) -> List[XianDuanBase]:
+    """统一线段生成后的后处理，保证服务和审计脚本走同一条路径。"""
+    result = reconcile_first_segments(
+        segments,
+        reference_segments,
+        tzxl_list,
+        bi_list,
+    )
+    if symbol is not None and frequency is not None:
+        result = apply_confirmed_splits(
+            result,
+            symbol,
+            frequency,
+            tzxl_list,
+            bi_list,
+        )
+    if settings.ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH:
+        result = search_legal_splits(result, tzxl_list, bi_list)
+    result = promote_secondary_fakes(result, tzxl_list, bi_list)
+    for index, segment in enumerate(result):
+        segment.idx = index
+    return result
+
+
 # 懒加载数据缓存
 class _DataCache:
     """按数据源独立的懒加载缓存。"""
@@ -251,27 +286,20 @@ class _DataCache:
         else:
             self._xianduan_list = generate_xian_duan(self._te_zheng_xu_lie, self._bi_list)
 
-        self._xianduan_list = reconcile_first_segments(
+        symbol = self.special_path.stem if self.special_path is not None else None
+        frequency = (
+            self.special_path.parent.parent.parent.name
+            if self.special_path is not None
+            else None
+        )
+        self._xianduan_list = postprocess_xian_duan(
             self._xianduan_list,
             self.reference_xian_duan_list,
             self._te_zheng_xu_lie,
             self._bi_list,
+            symbol=symbol,
+            frequency=frequency,
         )
-        self._xianduan_list = promote_secondary_fakes(
-            self._xianduan_list,
-            self._te_zheng_xu_lie,
-            self._bi_list,
-        )
-        if self.special_path is not None:
-            self._xianduan_list = apply_confirmed_splits(
-                self._xianduan_list,
-                self.special_path.stem,
-                self.special_path.parent.parent.parent.name,
-                self._te_zheng_xu_lie,
-                self._bi_list,
-            )
-        for index, segment in enumerate(self._xianduan_list):
-            segment.idx = index
 
         # print([(i.start_bi_idx,i.end_bi_idx,type(i)) for i in self._xianduan_list])
 
@@ -755,8 +783,7 @@ def load_data_cache_pickle(
     if not cache_path.exists():
         raise FileNotFoundError(f"缓存文件不存在: {cache_path}")
 
-    with cache_path.open("rb") as file:
-        cache = pickle.load(file)
+    cache = _load_pickle_compatible(cache_path)
 
     if not isinstance(cache, _DataCache):
         raise TypeError(f"缓存文件类型错误: {type(cache).__module__}.{type(cache).__name__}")
@@ -772,8 +799,7 @@ def load_chart_payload(
 ) -> dict:
     """读取指定标的和周期的预计算图表payload。"""
     payload_path = get_chart_payload_path(symbol, frequency, market_dir, asset_class_dir)
-    with payload_path.open("rb") as file:
-        payload = pickle.load(file)
+    payload = _load_pickle_compatible(payload_path)
     if not isinstance(payload, dict):
         raise TypeError(f"图表缓存类型错误: {type(payload).__module__}.{type(payload).__name__}")
     return payload

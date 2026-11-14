@@ -7,3 +7,5 @@ database>=2.0.7
 tdata
 ddp
 tushare
+pydantic
+pydantic-settings
