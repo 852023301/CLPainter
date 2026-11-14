@@ -2233,6 +2233,342 @@ def _repair_first_segment_reverse_extension(
     return _repair(first.is_down())
 
 
+def _build_fake_boundaries(
+    xianduan_finish_deque: deque,
+    bi_list: List[BiBase],
+    tzxl_list: List[TeZhengXuLie],
+    ctx: XianDuanContext,
+    endpoint_ops: XianDuanEndpointOps,
+) -> None:
+    def make_fake_last_xd():
+        """延长最后一条线段+fake一条线段"""
+        nonlocal xianduan_finish_deque, bi_list
+
+        if len(xianduan_finish_deque) == 0:
+            return
+
+        last_xd: Union[XianDuan, FakeXianDuanLast, FakeXianDuanFirst] = xianduan_finish_deque.pop()
+
+        if isinstance(last_xd, XianDuan):
+            # The tail may still be unconfirmed, but an interior same-direction
+            # extreme still bounds this segment. Split there and fake the reverse
+            # tail through the current directional low instead of extending
+            # through the interior extreme.
+            better_endpoint: Optional[TeZhengXuLie] = None
+            for tzxl in tzxl_list:
+                if last_xd.start_idx >= tzxl.start_idx or tzxl.start_idx >= last_xd.end_idx:
+                    continue
+                if tzxl.type != last_xd.right_tzxl.type:
+                    continue
+                if better_endpoint is None or price_is_more_extreme(
+                    float(tzxl.start_price),
+                    float(better_endpoint.start_price),
+                    last_xd.is_up(),
+                ):
+                    better_endpoint = tzxl
+
+            if (
+                better_endpoint is not None
+                and price_is_more_extreme(
+                    float(better_endpoint.start_price),
+                    float(last_xd.end_price),
+                    last_xd.is_up(),
+                )
+            ):
+                split_segment = XianDuan.from_tzxl(last_xd.left_tzxl, better_endpoint, bi_list)
+                if not split_segment.is_finished:
+                    xianduan_finish_deque.append(last_xd)
+                    return
+
+                reverse_start_bi_idx = split_segment.end_bi_idx + 1
+                reverse_end_bi_idx = endpoint_ops.extreme_end_bi_idx(
+                    reverse_start_bi_idx,
+                    len(bi_list) - 1,
+                    not split_segment.is_up(),
+                )
+                if reverse_end_bi_idx is None:
+                    xianduan_finish_deque.append(last_xd)
+                    return
+
+                reverse_tail = endpoint_ops.make_bi_range_segment(
+                    reverse_start_bi_idx,
+                    reverse_end_bi_idx,
+                    not split_segment.is_up(),
+                )
+                xianduan_finish_deque.extend([split_segment, reverse_tail])
+
+                # The first reverse fake tail may itself need a same-direction
+                # extreme tail. Keep processing the new tail instead of stopping
+                # after one split.
+                next_reverse_start_bi_idx = reverse_tail.end_bi_idx + 1
+                next_reverse_end_bi_idx = endpoint_ops.extreme_end_bi_idx(
+                    next_reverse_start_bi_idx,
+                    len(bi_list) - 1,
+                    not reverse_tail.is_up(),
+                )
+                if (
+                    next_reverse_end_bi_idx is not None
+                    and next_reverse_end_bi_idx >= next_reverse_start_bi_idx + 2
+                ):
+                    next_reverse_tail = endpoint_ops.make_bi_range_segment(
+                        next_reverse_start_bi_idx,
+                        next_reverse_end_bi_idx,
+                        not reverse_tail.is_up(),
+                    )
+                    if next_reverse_tail.has_enough_bi():
+                        xianduan_finish_deque.append(next_reverse_tail)
+                return
+
+        if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
+            origin_end_cursor_bi_index = last_xd.right_tzxl.mid_bi_idx
+        else:
+            # 只有FakeXianDuanLast
+            origin_end_cursor_bi_index = last_xd.end_bi_idx
+        end_bi_index = origin_end_cursor_bi_index
+        sl = slice(end_bi_index, len(bi_list))
+        bi_high_prices = ctx.bi_high_prices[sl]
+        bi_low_prices = ctx.bi_low_prices[sl]
+        local_max_idx = int(np.argmax(bi_high_prices))
+        local_min_idx = int(np.argmin(bi_low_prices))
+
+        if last_xd.is_up() and local_max_idx > 0 and bi_high_prices[
+            local_max_idx] > \
+            bi_list[end_bi_index].high_price:
+            end_bi_index = end_bi_index + local_max_idx
+        elif last_xd.is_down() and local_min_idx > 0 and bi_low_prices[
+            local_min_idx] < bi_list[end_bi_index].low_price:
+            end_bi_index = end_bi_index + local_min_idx
+
+        last_xd_extend = False
+        if end_bi_index != origin_end_cursor_bi_index:
+            # 最后一段能延长
+            last_xd_extend = True
+
+        ##### 考虑fake_latest_xd存在的可能性
+
+        fake_latest_xd_exist = False
+        last_xd_new_tzxl = None  # 扩展后的新线段是否有新的特征序列
+
+        if not last_xd_extend:
+            fake_latest_xd_exist = True
+        else:
+            extend_dest_time = bi_list[end_bi_index].end_time
+
+            for ix in tzxl_list:
+                if isinstance(last_xd, XianDuan) and ix.start_time <= last_xd.left_tzxl.start_time:
+                    continue
+                if ix.start_time == extend_dest_time:
+                    fake_latest_xd_exist = True
+                    last_xd_new_tzxl = ix
+                    break
+
+        def _make_fake_last_xd_extend_by_extrema():
+            """用极值点来延长线段"""
+            nonlocal last_xd, end_bi_index, bi_list
+            start_bi_idx = last_xd.start_bi_idx
+            first_bi = bi_list[start_bi_idx]
+            end_bi = bi_list[end_bi_index]
+            # end_bi_index+1的逻辑不需要往上移，因为end_bi_index的初值源自右侧特征序列游标，比较起来比较直观
+            if first_bi.is_up() != end_bi.is_up():
+                end_bi_index += 1
+                end_bi = bi_list[end_bi_index]
+
+            fake_last_xd = _make_fake_last(
+                bi_list,
+                start_bi_idx,
+                end_bi_index,
+                last_xd.is_up(),
+            )
+            if fake_last_xd is not None:
+                last_xd = fake_last_xd
+
+        def _make_fake_latest_xd():
+            """
+            制造fake latest xd线段
+            """
+            nonlocal xianduan_finish_deque, bi_list, fake_latest_xd, last_xd
+            # 函数外部将xianduan_finish_deque pop出一个后才进入这个函数，所以xianduan_finish_deque长度可能为0，不需要判断
+            if last_xd.is_up():
+                fake_last_xd_direction_type = XianDuanDirectionType.DOWN
+            else:
+                fake_last_xd_direction_type = XianDuanDirectionType.UP
+
+            if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
+                first_bi_index = last_xd.right_tzxl.mid_bi_idx
+            else:
+                # 只有FakeXianDuanLast
+                first_bi_index = last_xd.end_bi_idx + 1
+            end_bi_index = _find_extreme_end_bi_index(
+                bi_list,
+                ctx.bi_high_prices,
+                ctx.bi_low_prices,
+                last_xd.right_tzxl.right_bi_idx,
+                fake_last_xd_direction_type == XianDuanDirectionType.UP,
+                include_start=False,
+                require_more_extreme=True,
+            )
+
+            first_bi = bi_list[first_bi_index]
+            end_bi = bi_list[end_bi_index]
+
+            fake_dest_time = end_bi.end_time
+
+            # 有可能出现假线段变真线段的情况，例如all_etf/516700SH  20260611前后线段变真线段
+            fake_is_true = False
+            new_fx = None
+
+            for idx in tzxl_list:
+                if isinstance(last_xd, XianDuan) and idx.start_time <= last_xd.left_tzxl.start_time:
+                    continue
+                if idx.start_time == fake_dest_time:
+                    new_fx = idx
+                    fake_is_true = True
+                    break
+
+            if fake_is_true and new_fx is not None:
+                if not isinstance(last_xd.right_tzxl, TeZhengXuLie):
+                    raise ValueError(f"last_xd.right_tzxl不是TeZhengXuLie")
+                fake_latest_xd = XianDuan.from_tzxl(last_xd.right_tzxl, new_fx, bi_list)
+
+
+            else:
+                fake_latest_xd = _make_fake_last(
+                    bi_list,
+                    first_bi_index,
+                    end_bi_index,
+                    fake_last_xd_direction_type == XianDuanDirectionType.UP,
+                )
+
+        fake_latest_xd: Optional[Union[XianDuan, FakeXianDuanLast]] = None
+
+        if last_xd_extend and fake_latest_xd_exist:
+            if last_xd_new_tzxl is None:
+                raise ValueError(f"last_xd_extend和fake_latest_xd_exist为True时，last_xd_new_tzxl不能为None")
+            if isinstance(last_xd, XianDuan):
+
+                last_xd = XianDuan.from_tzxl(last_xd.left_tzxl, last_xd_new_tzxl, bi_list)
+            elif isinstance(last_xd, FakeXianDuanFirst):
+                last_xd = last_xd.extend(last_xd_new_tzxl)
+            else:
+                raise ValueError(f"last_xd类型错误")
+            _make_fake_latest_xd()
+        elif last_xd_extend and not fake_latest_xd_exist:
+            _make_fake_last_xd_extend_by_extrema()
+        elif not last_xd_extend and fake_latest_xd_exist:
+            _make_fake_latest_xd()
+
+        xianduan_finish_deque.append(last_xd)
+        if fake_latest_xd is not None:
+            xianduan_finish_deque.append(fake_latest_xd)
+
+            while isinstance(fake_latest_xd, XianDuan):
+                last_xd = fake_latest_xd
+                fake_latest_xd = None
+                _make_fake_latest_xd()
+                if fake_latest_xd is not None:
+                    xianduan_finish_deque.append(fake_latest_xd)
+
+    def make_fake_first_xd_extend():
+        """
+         fake延长first线段
+        """
+        nonlocal xianduan_finish_deque, bi_list
+        if len(xianduan_finish_deque) == 0:
+            return
+        first_xd: Union[XianDuan, FakeXianDuanFirst] = xianduan_finish_deque.popleft()
+
+        origin_first_bi_index = first_xd.start_bi_idx
+        first_bi_index = _find_extreme_start_bi_index(
+            bi_list,
+            ctx.bi_high_prices,
+            ctx.bi_low_prices,
+            origin_first_bi_index,
+            first_xd.is_up(),
+            strict=False,
+        )
+        first_bi = bi_list[first_bi_index]
+
+        # 如果没找到更早更极值的笔，则不变
+        first_xd_reverse_extend = first_bi_index != origin_first_bi_index
+
+        def _make_fake_earliest_xd():
+            """
+            制造fake earliest线段
+            """
+            nonlocal xianduan_finish_deque, bi_list, fake_earliest_xd, first_xd
+            # 函数外部将xianduan_finish_deque popleft出一个后才进入这个函数，所以xianduan_finish_deque长度可能为0，不需要判断
+            if first_xd.is_up():
+                fake_earliest_xd_direction_type = XianDuanDirectionType.DOWN
+            else:
+                fake_earliest_xd_direction_type = XianDuanDirectionType.UP
+
+            origin_first_bi_index = first_xd.start_bi_idx - 1
+            if origin_first_bi_index <= 0:
+                return
+            first_bi_index = _find_extreme_start_bi_index(
+                bi_list,
+                ctx.bi_high_prices,
+                ctx.bi_low_prices,
+                origin_first_bi_index,
+                fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
+                strict=True,
+            )
+            first_bi = bi_list[first_bi_index]
+            # 如果没变化，或者变化量小于2，则不进行fake线段的制造
+            if first_bi_index == origin_first_bi_index or (origin_first_bi_index - first_bi_index) < 2:
+                return
+
+            candidate = _make_earliest_candidate(
+                first_xd,
+                first_bi_index,
+                origin_first_bi_index,
+                fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
+                first_xd.left_tzxl,
+                tzxl_list,
+                bi_list,
+                allow_real=True,
+            )
+            if candidate is not None:
+                fake_earliest_xd = candidate
+
+        if first_xd_reverse_extend:
+            candidate = _make_earliest_candidate(
+                first_xd,
+                first_bi_index,
+                first_xd.end_bi_idx,
+                first_xd.is_up(),
+                first_xd.right_tzxl,
+                tzxl_list,
+                bi_list,
+                allow_real=isinstance(first_xd, XianDuan),
+            )
+            if candidate is not None:
+                first_xd = candidate
+
+        fake_earliest_xd: Optional[Union[XianDuan, FakeXianDuanFirst]] = None
+
+        # 反向延长段完成后，如果始于一个普通分析，那么才能考虑fake_earliest_xd存在的可能性
+        if isinstance(first_xd, XianDuan):
+            _make_fake_earliest_xd()
+
+        xianduan_finish_deque.appendleft(first_xd)
+        # print(f"{first_xd.start_time=},{first_xd.end_time=}")
+        if fake_earliest_xd is not None and fake_earliest_xd.is_finished:
+            xianduan_finish_deque.appendleft(fake_earliest_xd)
+            # print(f"{fake_earliest_xd.start_time=},{fake_earliest_xd.end_time=}")
+            while isinstance(fake_earliest_xd, XianDuan):
+                first_xd = fake_earliest_xd
+                fake_earliest_xd = None
+                _make_fake_earliest_xd()
+                if fake_earliest_xd is not None and fake_earliest_xd.is_finished:
+                    xianduan_finish_deque.appendleft(fake_earliest_xd)
+
+    make_fake_first_xd_extend()
+
+    make_fake_last_xd()
+
+
+
 def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> List[XianDuanBase]:
     """
     根据特征序列分型划分线段。
@@ -2742,332 +3078,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
     machine.repair_queue_gaps()
     xianduan_finish_deque = machine.finish_deque
 
-    def make_fake_last_xd():
-        """延长最后一条线段+fake一条线段"""
-        nonlocal xianduan_finish_deque, bi_list
-
-        if len(xianduan_finish_deque) == 0:
-            return
-
-        last_xd: Union[XianDuan, FakeXianDuanLast, FakeXianDuanFirst] = xianduan_finish_deque.pop()
-
-        if isinstance(last_xd, XianDuan):
-            # The tail may still be unconfirmed, but an interior same-direction
-            # extreme still bounds this segment. Split there and fake the reverse
-            # tail through the current directional low instead of extending
-            # through the interior extreme.
-            better_endpoint: Optional[TeZhengXuLie] = None
-            for tzxl in tzxl_list:
-                if last_xd.start_idx >= tzxl.start_idx or tzxl.start_idx >= last_xd.end_idx:
-                    continue
-                if tzxl.type != last_xd.right_tzxl.type:
-                    continue
-                if better_endpoint is None or price_is_more_extreme(
-                    float(tzxl.start_price),
-                    float(better_endpoint.start_price),
-                    last_xd.is_up(),
-                ):
-                    better_endpoint = tzxl
-
-            if (
-                better_endpoint is not None
-                and price_is_more_extreme(
-                    float(better_endpoint.start_price),
-                    float(last_xd.end_price),
-                    last_xd.is_up(),
-                )
-            ):
-                split_segment = XianDuan.from_tzxl(last_xd.left_tzxl, better_endpoint, bi_list)
-                if not split_segment.is_finished:
-                    xianduan_finish_deque.append(last_xd)
-                    return
-
-                reverse_start_bi_idx = split_segment.end_bi_idx + 1
-                reverse_end_bi_idx = endpoint_ops.extreme_end_bi_idx(
-                    reverse_start_bi_idx,
-                    len(bi_list) - 1,
-                    not split_segment.is_up(),
-                )
-                if reverse_end_bi_idx is None:
-                    xianduan_finish_deque.append(last_xd)
-                    return
-
-                reverse_tail = endpoint_ops.make_bi_range_segment(
-                    reverse_start_bi_idx,
-                    reverse_end_bi_idx,
-                    not split_segment.is_up(),
-                )
-                xianduan_finish_deque.extend([split_segment, reverse_tail])
-
-                # The first reverse fake tail may itself need a same-direction
-                # extreme tail. Keep processing the new tail instead of stopping
-                # after one split.
-                next_reverse_start_bi_idx = reverse_tail.end_bi_idx + 1
-                next_reverse_end_bi_idx = endpoint_ops.extreme_end_bi_idx(
-                    next_reverse_start_bi_idx,
-                    len(bi_list) - 1,
-                    not reverse_tail.is_up(),
-                )
-                if (
-                    next_reverse_end_bi_idx is not None
-                    and next_reverse_end_bi_idx >= next_reverse_start_bi_idx + 2
-                ):
-                    next_reverse_tail = endpoint_ops.make_bi_range_segment(
-                        next_reverse_start_bi_idx,
-                        next_reverse_end_bi_idx,
-                        not reverse_tail.is_up(),
-                    )
-                    if next_reverse_tail.has_enough_bi():
-                        xianduan_finish_deque.append(next_reverse_tail)
-                return
-
-        if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
-            origin_end_cursor_bi_index = last_xd.right_tzxl.mid_bi_idx
-        else:
-            # 只有FakeXianDuanLast
-            origin_end_cursor_bi_index = last_xd.end_bi_idx
-        end_bi_index = origin_end_cursor_bi_index
-        sl = slice(end_bi_index, len(bi_list))
-        bi_high_prices = ctx.bi_high_prices[sl]
-        bi_low_prices = ctx.bi_low_prices[sl]
-        local_max_idx = int(np.argmax(bi_high_prices))
-        local_min_idx = int(np.argmin(bi_low_prices))
-
-        if last_xd.is_up() and local_max_idx > 0 and bi_high_prices[
-            local_max_idx] > \
-            bi_list[end_bi_index].high_price:
-            end_bi_index = end_bi_index + local_max_idx
-        elif last_xd.is_down() and local_min_idx > 0 and bi_low_prices[
-            local_min_idx] < bi_list[end_bi_index].low_price:
-            end_bi_index = end_bi_index + local_min_idx
-
-        last_xd_extend = False
-        if end_bi_index != origin_end_cursor_bi_index:
-            # 最后一段能延长
-            last_xd_extend = True
-
-        ##### 考虑fake_latest_xd存在的可能性
-
-        fake_latest_xd_exist = False
-        last_xd_new_tzxl = None  # 扩展后的新线段是否有新的特征序列
-
-        if not last_xd_extend:
-            fake_latest_xd_exist = True
-        else:
-            extend_dest_time = bi_list[end_bi_index].end_time
-
-            for ix in tzxl_list:
-                if isinstance(last_xd, XianDuan) and ix.start_time <= last_xd.left_tzxl.start_time:
-                    continue
-                if ix.start_time == extend_dest_time:
-                    fake_latest_xd_exist = True
-                    last_xd_new_tzxl = ix
-                    break
-
-        def _make_fake_last_xd_extend_by_extrema():
-            """用极值点来延长线段"""
-            nonlocal last_xd, end_bi_index, bi_list
-            start_bi_idx = last_xd.start_bi_idx
-            first_bi = bi_list[start_bi_idx]
-            end_bi = bi_list[end_bi_index]
-            # end_bi_index+1的逻辑不需要往上移，因为end_bi_index的初值源自右侧特征序列游标，比较起来比较直观
-            if first_bi.is_up() != end_bi.is_up():
-                end_bi_index += 1
-                end_bi = bi_list[end_bi_index]
-
-            fake_last_xd = _make_fake_last(
-                bi_list,
-                start_bi_idx,
-                end_bi_index,
-                last_xd.is_up(),
-            )
-            if fake_last_xd is not None:
-                last_xd = fake_last_xd
-
-        def _make_fake_latest_xd():
-            """
-            制造fake latest xd线段
-            """
-            nonlocal xianduan_finish_deque, bi_list, fake_latest_xd, last_xd
-            # 函数外部将xianduan_finish_deque pop出一个后才进入这个函数，所以xianduan_finish_deque长度可能为0，不需要判断
-            if last_xd.is_up():
-                fake_last_xd_direction_type = XianDuanDirectionType.DOWN
-            else:
-                fake_last_xd_direction_type = XianDuanDirectionType.UP
-
-            if isinstance(last_xd, (XianDuan, FakeXianDuanFirst)):
-                first_bi_index = last_xd.right_tzxl.mid_bi_idx
-            else:
-                # 只有FakeXianDuanLast
-                first_bi_index = last_xd.end_bi_idx + 1
-            end_bi_index = _find_extreme_end_bi_index(
-                bi_list,
-                ctx.bi_high_prices,
-                ctx.bi_low_prices,
-                last_xd.right_tzxl.right_bi_idx,
-                fake_last_xd_direction_type == XianDuanDirectionType.UP,
-                include_start=False,
-                require_more_extreme=True,
-            )
-
-            first_bi = bi_list[first_bi_index]
-            end_bi = bi_list[end_bi_index]
-
-            fake_dest_time = end_bi.end_time
-
-            # 有可能出现假线段变真线段的情况，例如all_etf/516700SH  20260611前后线段变真线段
-            fake_is_true = False
-            new_fx = None
-
-            for idx in tzxl_list:
-                if isinstance(last_xd, XianDuan) and idx.start_time <= last_xd.left_tzxl.start_time:
-                    continue
-                if idx.start_time == fake_dest_time:
-                    new_fx = idx
-                    fake_is_true = True
-                    break
-
-            if fake_is_true and new_fx is not None:
-                if not isinstance(last_xd.right_tzxl, TeZhengXuLie):
-                    raise ValueError(f"last_xd.right_tzxl不是TeZhengXuLie")
-                fake_latest_xd = XianDuan.from_tzxl(last_xd.right_tzxl, new_fx, bi_list)
-
-
-            else:
-                fake_latest_xd = _make_fake_last(
-                    bi_list,
-                    first_bi_index,
-                    end_bi_index,
-                    fake_last_xd_direction_type == XianDuanDirectionType.UP,
-                )
-
-        fake_latest_xd: Optional[Union[XianDuan, FakeXianDuanLast]] = None
-
-        if last_xd_extend and fake_latest_xd_exist:
-            if last_xd_new_tzxl is None:
-                raise ValueError(f"last_xd_extend和fake_latest_xd_exist为True时，last_xd_new_tzxl不能为None")
-            if isinstance(last_xd, XianDuan):
-
-                last_xd = XianDuan.from_tzxl(last_xd.left_tzxl, last_xd_new_tzxl, bi_list)
-            elif isinstance(last_xd, FakeXianDuanFirst):
-                last_xd = last_xd.extend(last_xd_new_tzxl)
-            else:
-                raise ValueError(f"last_xd类型错误")
-            _make_fake_latest_xd()
-        elif last_xd_extend and not fake_latest_xd_exist:
-            _make_fake_last_xd_extend_by_extrema()
-        elif not last_xd_extend and fake_latest_xd_exist:
-            _make_fake_latest_xd()
-
-        xianduan_finish_deque.append(last_xd)
-        if fake_latest_xd is not None:
-            xianduan_finish_deque.append(fake_latest_xd)
-
-            while isinstance(fake_latest_xd, XianDuan):
-                last_xd = fake_latest_xd
-                fake_latest_xd = None
-                _make_fake_latest_xd()
-                if fake_latest_xd is not None:
-                    xianduan_finish_deque.append(fake_latest_xd)
-
-    def make_fake_first_xd_extend():
-        """
-         fake延长first线段
-        """
-        nonlocal xianduan_finish_deque, bi_list
-        if len(xianduan_finish_deque) == 0:
-            return
-        first_xd: Union[XianDuan, FakeXianDuanFirst] = xianduan_finish_deque.popleft()
-
-        origin_first_bi_index = first_xd.start_bi_idx
-        first_bi_index = _find_extreme_start_bi_index(
-            bi_list,
-            ctx.bi_high_prices,
-            ctx.bi_low_prices,
-            origin_first_bi_index,
-            first_xd.is_up(),
-            strict=False,
-        )
-        first_bi = bi_list[first_bi_index]
-
-        # 如果没找到更早更极值的笔，则不变
-        first_xd_reverse_extend = first_bi_index != origin_first_bi_index
-
-        def _make_fake_earliest_xd():
-            """
-            制造fake earliest线段
-            """
-            nonlocal xianduan_finish_deque, bi_list, fake_earliest_xd, first_xd
-            # 函数外部将xianduan_finish_deque popleft出一个后才进入这个函数，所以xianduan_finish_deque长度可能为0，不需要判断
-            if first_xd.is_up():
-                fake_earliest_xd_direction_type = XianDuanDirectionType.DOWN
-            else:
-                fake_earliest_xd_direction_type = XianDuanDirectionType.UP
-
-            origin_first_bi_index = first_xd.start_bi_idx - 1
-            if origin_first_bi_index <= 0:
-                return
-            first_bi_index = _find_extreme_start_bi_index(
-                bi_list,
-                ctx.bi_high_prices,
-                ctx.bi_low_prices,
-                origin_first_bi_index,
-                fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
-                strict=True,
-            )
-            first_bi = bi_list[first_bi_index]
-            # 如果没变化，或者变化量小于2，则不进行fake线段的制造
-            if first_bi_index == origin_first_bi_index or (origin_first_bi_index - first_bi_index) < 2:
-                return
-
-            candidate = _make_earliest_candidate(
-                first_xd,
-                first_bi_index,
-                origin_first_bi_index,
-                fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
-                first_xd.left_tzxl,
-                tzxl_list,
-                bi_list,
-                allow_real=True,
-            )
-            if candidate is not None:
-                fake_earliest_xd = candidate
-
-        if first_xd_reverse_extend:
-            candidate = _make_earliest_candidate(
-                first_xd,
-                first_bi_index,
-                first_xd.end_bi_idx,
-                first_xd.is_up(),
-                first_xd.right_tzxl,
-                tzxl_list,
-                bi_list,
-                allow_real=isinstance(first_xd, XianDuan),
-            )
-            if candidate is not None:
-                first_xd = candidate
-
-        fake_earliest_xd: Optional[Union[XianDuan, FakeXianDuanFirst]] = None
-
-        # 反向延长段完成后，如果始于一个普通分析，那么才能考虑fake_earliest_xd存在的可能性
-        if isinstance(first_xd, XianDuan):
-            _make_fake_earliest_xd()
-
-        xianduan_finish_deque.appendleft(first_xd)
-        # print(f"{first_xd.start_time=},{first_xd.end_time=}")
-        if fake_earliest_xd is not None and fake_earliest_xd.is_finished:
-            xianduan_finish_deque.appendleft(fake_earliest_xd)
-            # print(f"{fake_earliest_xd.start_time=},{fake_earliest_xd.end_time=}")
-            while isinstance(fake_earliest_xd, XianDuan):
-                first_xd = fake_earliest_xd
-                fake_earliest_xd = None
-                _make_fake_earliest_xd()
-                if fake_earliest_xd is not None and fake_earliest_xd.is_finished:
-                    xianduan_finish_deque.appendleft(fake_earliest_xd)
-
-    make_fake_first_xd_extend()
-
-    make_fake_last_xd()
+    _build_fake_boundaries(xianduan_finish_deque, bi_list, tzxl_list, ctx, endpoint_ops)
 
     def make_fake_last_after_xianduan(left_xianduan: XianDuan) -> Optional[FakeXianDuanLast]:
         """以已确认线段末端为起点，用后续真实反向极值构造假线段。"""

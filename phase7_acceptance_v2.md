@@ -1111,3 +1111,40 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 688611SH 200
 159577SZ 200
 ```
+
+## 2026-11-15 P2 第七轮：抽取 fake 边界构建
+
+将 `generate_xian_duan()` 内部的整段 fake 首尾边界构建流程抽成：
+
+```text
+_build_fake_boundaries(
+    xianduan_finish_deque,
+    bi_list,
+    tzxl_list,
+    ctx,
+    endpoint_ops,
+)
+```
+
+`generate_xian_duan()` 现在只调用该函数，不再内嵌首尾 fake 的完整构建流程。
+
+验证：
+
+```text
+p8 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p8 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：纯重构，行为零差异。
+
+### P2 第七轮容器同步
+
+第七轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+300327SZ 200
+688611SH 200
+159577SZ 200
+```

@@ -1091,3 +1091,12 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 测试：`83 passed, 4 skipped`。
 
 - P2 第六轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-15 P2 第七轮
+
+- 抽取 `_build_fake_boundaries()`，缩短 `generate_xian_duan()`。
+- p8 全量 dump：成功 38855，失败 0。
+- v5 与 p8 snapshot 完全一致。
+- 测试：`83 passed, 4 skipped`。
+
+- P2 第七轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
