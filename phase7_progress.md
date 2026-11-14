@@ -1036,3 +1036,16 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 容器代码同步并平滑重启。
 - API 冒烟通过。
 - 提交：`当前 HEAD：完成 Phase 7 v5 通用拆分与测试环境切换`。
+
+## 2026-11-14 P2 代码整合
+
+- 新增 `_make_fake_last()`，统一 fake 尾段构造。
+- fake 首段构造统一复用 `_make_fake_first()`。
+- 修复整合中发现的 `FakeXianDuanLast` 兼容问题。
+- p2 全量 dump：成功 38855，失败 0。
+- 测试：`83 passed, 4 skipped`。
+- v5 与 p2 snapshot 完全一致：
+  `565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1`
+- 不变量审计与 v5 完全一致。
+
+- P2 重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。

@@ -904,3 +904,63 @@ API 冒烟：
 ```text
 /root/CLPainter_backup_20261114_203111
 ```
+
+## 2026-11-14 P2 代码整合（零 diff）
+
+本轮只做纯重构，不改变 v5 行为：
+
+- 新增 `_make_fake_last()`，统一 `FakeXianDuanLast` 的字段赋值；
+- `FakeXianDuanFirst` 的构造统一复用 `_make_fake_first()`；
+- 替换 `generate_xian_duan()` 内部重复的 fake 首段/尾段手工构造；
+- 修复整合过程中发现的 `FakeXianDuanLast` 传入 `make_fake_first_before_xianduan()` 的兼容问题。
+
+全量验证：
+
+```text
+dump_p2：成功 38855，失败 0
+测试：83 passed, 4 skipped
+```
+
+v5 与 p2 快照：
+
+```text
+SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+不变量审计与 v5 完全一致：
+
+```text
+penetrates_start         2670
+end_not_extreme_bi       1985
+right_tzxl_below_left     865
+right_tzxl_exceeds_left   575
+start_extreme_deviation   501
+right_tzxl_later_exceeds_left 193
+```
+
+结论：本次代码整合为纯重构，行为零差异。v5 测试环境数据保持不变，p2 仅作为验证目录。
+
+### P2 容器同步
+
+重构后的 `xianduan.py` 已同步到测试容器并平滑重启：
+
+```text
+/root/CLPainter/web/backend/app/toolbox/xianduan.py
+```
+
+API 冒烟：
+
+```text
+300327SZ 200
+688611SH 200
+300290SZ 200
+159577SZ 200
+```
+
+容器启动日志仍为：
+
+```text
+Environment: test
+Cache Dir: /mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/curated
+```
