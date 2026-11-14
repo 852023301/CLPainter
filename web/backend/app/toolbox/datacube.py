@@ -23,6 +23,9 @@ from CLPainter.web.backend.app.toolbox.xianduan import (
     reconcile_first_segments,
     XianDuan,
 )
+from CLPainter.web.backend.app.toolbox.phase7_confirmed_splits import (
+    apply_confirmed_splits,
+)
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine
 from CLPainter.web.backend.app.toolbox.origin_kline import OriginKLine, generate_origin_klines
 from CLPainter.web.backend.app.toolbox.zhongshu import ZhongShuBase, generate_zhongshu_from_bi, \
@@ -259,6 +262,14 @@ class _DataCache:
             self._te_zheng_xu_lie,
             self._bi_list,
         )
+        if self.special_path is not None:
+            self._xianduan_list = apply_confirmed_splits(
+                self._xianduan_list,
+                self.special_path.stem,
+                self.special_path.parent.parent.parent.name,
+                self._te_zheng_xu_lie,
+                self._bi_list,
+            )
         for index, segment in enumerate(self._xianduan_list):
             segment.idx = index
 
