@@ -1774,6 +1774,38 @@ def _find_extreme_start_bi_index(
     return start_idx
 
 
+def _find_tzxl_by_start_time(
+    tzxl_list: List[TeZhengXuLie],
+    time: pd.Timestamp,
+) -> Optional[TeZhengXuLie]:
+    for tzxl in tzxl_list:
+        if tzxl.start_time == time:
+            return tzxl
+    return None
+
+
+def _make_earliest_candidate(
+    first_xd: Union[XianDuan, FakeXianDuanFirst],
+    start_bi_idx: int,
+    end_bi_idx: int,
+    fake_is_up: bool,
+    right_tzxl: TeZhengXuLie,
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+    allow_real: bool,
+) -> Optional[Union[XianDuan, FakeXianDuanFirst]]:
+    """优先把更早起点转成真实线段，否则构造合法 fake 首段。"""
+    start_bi = bi_list[start_bi_idx]
+    if allow_real:
+        new_tzxl = _find_tzxl_by_start_time(tzxl_list, start_bi.start_time)
+        if new_tzxl is not None:
+            return XianDuan.from_tzxl(new_tzxl, right_tzxl, bi_list)
+    fake = _make_fake_first(bi_list, start_bi_idx, end_bi_idx, fake_is_up, right_tzxl)
+    if fake is not None and fake.is_finished:
+        return fake
+    return None
+
+
 def _make_fake_first(
     bi_list: List[BiBase],
     start_bi_idx: int,
@@ -2940,31 +2972,7 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         first_bi = bi_list[first_bi_index]
 
         # 如果没找到更早更极值的笔，则不变
-        first_xd_reverse_extend = False
-        earliest_xd_new_tzxl = None
-        if first_bi_index != origin_first_bi_index:
-            first_xd_reverse_extend = True
-
-        if first_xd_reverse_extend:
-            extend_dest_time = first_bi.start_time
-            for ix in tzxl_list:
-                if ix.start_time == extend_dest_time:
-                    earliest_xd_new_tzxl = ix
-                    break
-
-        def _make_fake_earliest_xd_extend_by_extrema():
-            """用极值点来延长线段"""
-            nonlocal first_xd, first_bi_index, bi_list
-            fake_first_xd = _make_fake_first(
-                bi_list,
-                first_bi_index,
-                first_xd.end_bi_idx,
-                first_xd.is_up(),
-                first_xd.right_tzxl,
-            )
-            # 需要考虑is_finished
-            if fake_first_xd is not None and fake_first_xd.is_finished:
-                first_xd = fake_first_xd
+        first_xd_reverse_extend = first_bi_index != origin_first_bi_index
 
         def _make_fake_earliest_xd():
             """
@@ -2993,37 +3001,32 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             if first_bi_index == origin_first_bi_index or (origin_first_bi_index - first_bi_index) < 2:
                 return
 
-            fake_start_time = first_bi.start_time
-            # 有可能出现假线段变真线段的情况?
-            fake_is_true = False
-            new_fx = None
-
-            for idx in tzxl_list:
-                if idx.start_time == fake_start_time:
-                    new_fx = idx
-                    fake_is_true = True
-                    break
-
-            if fake_is_true and new_fx is not None:
-                fake_earliest_xd = XianDuan.from_tzxl(new_fx, first_xd.left_tzxl, bi_list)
-                # raise ValueError(f"还真有啊")
-
-            else:
-                temp_fake_earliest_xd = _make_fake_first(
-                    bi_list,
-                    first_bi_index,
-                    origin_first_bi_index,
-                    fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
-                    first_xd.left_tzxl,
-                )
-                if temp_fake_earliest_xd is not None and temp_fake_earliest_xd.is_finished:
-                    fake_earliest_xd = temp_fake_earliest_xd
+            candidate = _make_earliest_candidate(
+                first_xd,
+                first_bi_index,
+                origin_first_bi_index,
+                fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
+                first_xd.left_tzxl,
+                tzxl_list,
+                bi_list,
+                allow_real=True,
+            )
+            if candidate is not None:
+                fake_earliest_xd = candidate
 
         if first_xd_reverse_extend:
-            if isinstance(first_xd, XianDuan) and earliest_xd_new_tzxl is not None:
-                first_xd = XianDuan.from_tzxl(earliest_xd_new_tzxl, first_xd.right_tzxl, bi_list)
-            else:
-                _make_fake_earliest_xd_extend_by_extrema()
+            candidate = _make_earliest_candidate(
+                first_xd,
+                first_bi_index,
+                first_xd.end_bi_idx,
+                first_xd.is_up(),
+                first_xd.right_tzxl,
+                tzxl_list,
+                bi_list,
+                allow_real=isinstance(first_xd, XianDuan),
+            )
+            if candidate is not None:
+                first_xd = candidate
 
         fake_earliest_xd: Optional[Union[XianDuan, FakeXianDuanFirst]] = None
 

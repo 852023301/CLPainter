@@ -1050,3 +1050,28 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 ```
 
 结论：纯重构，行为零差异。
+
+## 2026-11-15 P2 第五轮：首段 fake 候选构造
+
+新增：
+
+- `_find_tzxl_by_start_time()`
+- `_make_earliest_candidate()`
+
+统一 `make_fake_first_xd_extend()` 和 `_make_fake_earliest_xd()` 中重复的：
+
+- 按起点时间查找 tzxl；
+- 优先转真实线段；
+- 否则构造 fake 首段；
+- `is_finished` 校验。
+
+验证：
+
+```text
+p6 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p6 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：纯重构，行为零差异。

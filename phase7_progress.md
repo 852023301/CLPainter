@@ -1074,3 +1074,11 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - p5 全量 dump：成功 38855，失败 0。
 - v5 与 p5 snapshot 完全一致。
 - 测试：`83 passed, 4 skipped`。
+
+## 2026-11-15 P2 第五轮
+
+- 新增 `_find_tzxl_by_start_time()` 和 `_make_earliest_candidate()`。
+- 统一首段 fake 候选构造。
+- p6 全量 dump：成功 38855，失败 0。
+- v5 与 p6 snapshot 完全一致。
+- 测试：`83 passed, 4 skipped`。
