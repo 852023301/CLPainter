@@ -964,3 +964,39 @@ API 冒烟：
 Environment: test
 Cache Dir: /mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/curated
 ```
+
+## 2026-11-14 P2 第二轮：首段极值搜索整合
+
+新增：
+
+```text
+_find_extreme_start_bi_index()
+```
+
+统一 `make_fake_first_xd_extend()` 和 `_make_fake_earliest_xd()` 中重复的：
+
+- `[0, origin_bi_idx]` 切片；
+- `argmax/argmin` 极值搜索；
+- `>= / >` 与 `<= / <` 的严格比较；
+- 笔方向不一致时的 `+1` 校正。
+
+验证：
+
+```text
+p3 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p3 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：第二轮仍为纯重构，行为零差异。
+
+### P2 第二轮容器同步
+
+第二轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+300327SZ 200
+688611SH 200
+159577SZ 200
+```

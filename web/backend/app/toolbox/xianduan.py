@@ -1729,6 +1729,51 @@ def _fake_start_index(
     return index
 
 
+def _find_extreme_start_bi_index(
+    bi_list: List[BiBase],
+    high_prices: np.ndarray,
+    low_prices: np.ndarray,
+    origin_bi_idx: int,
+    is_up: bool,
+    strict: bool = False,
+) -> int:
+    """在 [0, origin_bi_idx] 内寻找更早的同向极值起点，并校正方向。"""
+    sl = slice(0, origin_bi_idx + 1)
+    local_max_idx = int(np.argmax(high_prices[sl]))
+    local_min_idx = int(np.argmin(low_prices[sl]))
+    start_idx = origin_bi_idx
+    origin_bi = bi_list[origin_bi_idx]
+
+    if is_up:
+        candidate = local_min_idx
+        if candidate < origin_bi_idx:
+            candidate_price = float(low_prices[candidate])
+            origin_price = float(origin_bi.low_price)
+            is_more_extreme = (
+                candidate_price < origin_price
+                if strict
+                else candidate_price <= origin_price
+            )
+            if is_more_extreme:
+                start_idx = candidate
+    else:
+        candidate = local_max_idx
+        if candidate < origin_bi_idx:
+            candidate_price = float(high_prices[candidate])
+            origin_price = float(origin_bi.high_price)
+            is_more_extreme = (
+                candidate_price > origin_price
+                if strict
+                else candidate_price >= origin_price
+            )
+            if is_more_extreme:
+                start_idx = candidate
+
+    if bi_list[start_idx].is_up() != is_up:
+        start_idx += 1
+    return start_idx
+
+
 def _make_fake_first(
     bi_list: List[BiBase],
     start_bi_idx: int,
@@ -2751,25 +2796,15 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         first_xd: Union[XianDuan, FakeXianDuanFirst] = xianduan_finish_deque.popleft()
 
         origin_first_bi_index = first_xd.start_bi_idx
-        first_bi_index = origin_first_bi_index
-        sl = slice(0, origin_first_bi_index + 1)
-
-        bi_high_prices = ctx.bi_high_prices[sl]
-        bi_low_prices = ctx.bi_low_prices[sl]
-        local_max_idx = int(np.argmax(bi_high_prices))
-        local_min_idx = int(np.argmin(bi_low_prices))
-
-        if first_xd.is_down() and local_max_idx < origin_first_bi_index and \
-            bi_high_prices[local_max_idx] >= bi_list[origin_first_bi_index].high_price:
-            first_bi_index = local_max_idx
-        elif first_xd.is_up() and local_min_idx < origin_first_bi_index and \
-            bi_low_prices[local_min_idx] <= bi_list[origin_first_bi_index].low_price:
-            first_bi_index = local_min_idx
-
+        first_bi_index = _find_extreme_start_bi_index(
+            bi_list,
+            ctx.bi_high_prices,
+            ctx.bi_low_prices,
+            origin_first_bi_index,
+            first_xd.is_up(),
+            strict=False,
+        )
         first_bi = bi_list[first_bi_index]
-        if first_bi.is_up() != bi_list[origin_first_bi_index].is_up():
-            first_bi_index += 1
-            first_bi = bi_list[first_bi_index]
 
         # 如果没找到更早更极值的笔，则不变
         first_xd_reverse_extend = False
@@ -2812,25 +2847,15 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
             origin_first_bi_index = first_xd.start_bi_idx - 1
             if origin_first_bi_index <= 0:
                 return
-            first_bi_index = origin_first_bi_index
-            sl = slice(0, origin_first_bi_index + 1)
-
-            bi_high_prices = ctx.bi_high_prices[sl]
-            bi_low_prices = ctx.bi_low_prices[sl]
-            local_max_idx = int(np.argmax(bi_high_prices))
-            local_min_idx = int(np.argmin(bi_low_prices))
-            if fake_earliest_xd_direction_type == XianDuanDirectionType.DOWN and local_max_idx < origin_first_bi_index and \
-                bi_high_prices[local_max_idx] > bi_list[origin_first_bi_index].high_price:
-                first_bi_index = local_max_idx
-            elif fake_earliest_xd_direction_type == XianDuanDirectionType.UP and local_min_idx < origin_first_bi_index and \
-                bi_low_prices[local_min_idx] < bi_list[origin_first_bi_index].low_price:
-                first_bi_index = local_min_idx
-
+            first_bi_index = _find_extreme_start_bi_index(
+                bi_list,
+                ctx.bi_high_prices,
+                ctx.bi_low_prices,
+                origin_first_bi_index,
+                fake_earliest_xd_direction_type == XianDuanDirectionType.UP,
+                strict=True,
+            )
             first_bi = bi_list[first_bi_index]
-
-            if first_bi.is_up() != bi_list[origin_first_bi_index].is_up():
-                first_bi_index += 1
-                first_bi = bi_list[first_bi_index]
             # 如果没变化，或者变化量小于2，则不进行fake线段的制造
             if first_bi_index == origin_first_bi_index or (origin_first_bi_index - first_bi_index) < 2:
                 return
