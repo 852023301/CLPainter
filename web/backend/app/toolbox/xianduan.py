@@ -2043,6 +2043,139 @@ def reconcile_first_segments(
     return result
 
 
+def _validate_xianduan_structure(
+    segments: List[XianDuanBase],
+    bi_list: List[BiBase],
+) -> None:
+    if not segments:
+        return
+    if np.any(np.diff([item.is_up() for item in segments]) == 0):
+        raise RuntimeError("线段结构校验失败: 方向不交替")
+
+    for index, item in enumerate(segments):
+        if not 0 <= item.start_bi_idx <= item.end_bi_idx < len(bi_list):
+            raise RuntimeError(
+                f"线段结构校验失败: 笔覆盖越界 {item.start_bi_idx=}, {item.end_bi_idx=}"
+            )
+        if not item.has_enough_bi():
+            raise RuntimeError(
+                f"线段结构校验失败: 笔数不足 {item.start_time=} ~ {item.end_time=}"
+            )
+
+        start_bi = bi_list[item.start_bi_idx]
+        end_bi = bi_list[item.end_bi_idx]
+        if (
+            item.start_idx != start_bi.start_idx
+            or item.start_time != start_bi.start_time
+            or item.start_price != start_bi.start_price
+            or item.end_idx != end_bi.end_idx
+            or item.end_time != end_bi.end_time
+            or item.end_price != end_bi.end_price
+        ):
+            raise RuntimeError(
+                f"线段结构校验失败: 端点与覆盖笔不一致 {item.start_time=} ~ {item.end_time=}"
+            )
+
+        if index and segments[index - 1].end_bi_idx + 1 != item.start_bi_idx:
+            raise RuntimeError(
+                f"线段结构校验失败: 笔覆盖不连续 {segments[index - 1].end_time=} -> {item.start_time=}"
+            )
+
+    for previous_item, item in zip(segments, segments[1:]):
+        if previous_item.end_idx != item.start_idx:
+            raise RuntimeError(
+                f"线段结构校验失败: K线边界不连续 {previous_item.end_time=} -> {item.start_time=}"
+            )
+
+
+def _repair_first_segment_reverse_extension(
+    segments: List[XianDuanBase],
+    tzxl_list: List[TeZhengXuLie],
+    bi_list: List[BiBase],
+) -> List[XianDuanBase]:
+    """首段内部出现更极值反向端点时，补出反向 fake 首段。"""
+    if not segments:
+        return segments
+    first = segments[0]
+    if not isinstance(first, XianDuan):
+        return segments
+
+    def _repair(primary_is_high: bool) -> List[XianDuanBase]:
+        if primary_is_high:
+            primary_idx = max(
+                range(first.start_bi_idx, first.end_bi_idx + 1),
+                key=lambda idx: float(bi_list[idx].high_price),
+            )
+            if primary_idx <= first.start_bi_idx:
+                return segments
+            if float(bi_list[primary_idx].high_price) <= float(first.start_price) + 1e-8:
+                return segments
+            secondary_idx = min(
+                range(0, primary_idx + 1),
+                key=lambda idx: float(bi_list[idx].low_price),
+            )
+            primary_bi = bi_list[primary_idx]
+            primary_tzxl = next(
+                (
+                    tzxl
+                    for tzxl in tzxl_list
+                    if tzxl.start_time == primary_bi.end_time
+                    and tzxl.is_top()
+                    and abs(float(tzxl.start_price) - float(primary_bi.end_price)) <= 1e-6
+                ),
+                None,
+            )
+            fake_is_up = True
+        else:
+            primary_idx = min(
+                range(first.start_bi_idx, first.end_bi_idx + 1),
+                key=lambda idx: float(bi_list[idx].low_price),
+            )
+            if primary_idx <= first.start_bi_idx:
+                return segments
+            if float(bi_list[primary_idx].low_price) >= float(first.start_price) - 1e-8:
+                return segments
+            secondary_idx = max(
+                range(0, primary_idx + 1),
+                key=lambda idx: float(bi_list[idx].high_price),
+            )
+            primary_bi = bi_list[primary_idx]
+            primary_tzxl = next(
+                (
+                    tzxl
+                    for tzxl in tzxl_list
+                    if tzxl.start_time == primary_bi.end_time
+                    and tzxl.is_bottom()
+                    and abs(float(tzxl.start_price) - float(primary_bi.end_price)) <= 1e-6
+                ),
+                None,
+            )
+            fake_is_up = False
+
+        if primary_idx - secondary_idx < 3:
+            return segments
+        if primary_tzxl is None:
+            return segments
+        try:
+            new_first = XianDuan.from_tzxl(primary_tzxl, first.right_tzxl, bi_list)
+        except ValueError:
+            return segments
+        if not new_first.is_finished or not new_first.has_enough_bi():
+            return segments
+        fake = _make_fake_first(
+            bi_list,
+            secondary_idx + 1,
+            primary_idx,
+            fake_is_up,
+            primary_tzxl,
+        )
+        if fake is None:
+            return segments
+        return [fake, new_first, *segments[1:]]
+
+    return _repair(first.is_down())
+
+
 def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> List[XianDuanBase]:
     """
     根据特征序列分型划分线段。
@@ -3229,47 +3362,6 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
     xianduan_list = repair_ops.merge_same_direction(xianduan_list)
     xianduan_list = repair_xianduan_endpoints_and_wraparound(xianduan_list)
 
-    def validate_xianduan_structure() -> None:
-        if not xianduan_list:
-            return
-        if np.any(np.diff([item.is_up() for item in xianduan_list]) == 0):
-            raise RuntimeError("线段结构校验失败: 方向不交替")
-
-        for index, item in enumerate(xianduan_list):
-            if not 0 <= item.start_bi_idx <= item.end_bi_idx < len(bi_list):
-                raise RuntimeError(
-                    f"线段结构校验失败: 笔覆盖越界 {item.start_bi_idx=}, {item.end_bi_idx=}"
-                )
-            if not item.has_enough_bi():
-                raise RuntimeError(
-                    f"线段结构校验失败: 笔数不足 {item.start_time=} ~ {item.end_time=}"
-                )
-
-            start_bi = bi_list[item.start_bi_idx]
-            end_bi = bi_list[item.end_bi_idx]
-            if (
-                item.start_idx != start_bi.start_idx
-                or item.start_time != start_bi.start_time
-                or item.start_price != start_bi.start_price
-                or item.end_idx != end_bi.end_idx
-                or item.end_time != end_bi.end_time
-                or item.end_price != end_bi.end_price
-            ):
-                raise RuntimeError(
-                    f"线段结构校验失败: 端点与覆盖笔不一致 {item.start_time=} ~ {item.end_time=}"
-                )
-
-            if index and xianduan_list[index - 1].end_bi_idx + 1 != item.start_bi_idx:
-                raise RuntimeError(
-                    f"线段结构校验失败: 笔覆盖不连续 {xianduan_list[index - 1].end_time=} -> {item.start_time=}"
-                )
-
-        for previous_item, item in zip(xianduan_list, xianduan_list[1:]):
-            if previous_item.end_idx != item.start_idx:
-                raise RuntimeError(
-                    f"线段结构校验失败: K线边界不连续 {previous_item.end_time=} -> {item.start_time=}"
-                )
-
     ####################### 检查
     # 检查笔上下交替
     assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
@@ -3294,95 +3386,10 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         xianduan_list[i], xianduan_list[i + 1] = machine.adjust_pair(temp_xd_lm, temp_xd_mr)
 
     # 特征序列只提供候选分界；最终结果必须校准真实极值，避免明显头尾不在极值的线段。
-    def repair_first_segment_reverse_extension(
-        segments: List[XianDuanBase],
-    ) -> List[XianDuanBase]:
-        """首段内部出现更极值反向端点时，补出反向 fake 首段。"""
-        if not segments:
-            return segments
-        first = segments[0]
-        if not isinstance(first, XianDuan):
-            return segments
-
-        def _repair(primary_is_high: bool) -> List[XianDuanBase]:
-            if primary_is_high:
-                primary_idx = max(
-                    range(first.start_bi_idx, first.end_bi_idx + 1),
-                    key=lambda idx: float(bi_list[idx].high_price),
-                )
-                if primary_idx <= first.start_bi_idx:
-                    return segments
-                if float(bi_list[primary_idx].high_price) <= float(first.start_price) + 1e-8:
-                    return segments
-                secondary_idx = min(
-                    range(0, primary_idx + 1),
-                    key=lambda idx: float(bi_list[idx].low_price),
-                )
-                primary_bi = bi_list[primary_idx]
-                primary_tzxl = next(
-                    (
-                        tzxl
-                        for tzxl in tzxl_list
-                        if tzxl.start_time == primary_bi.end_time
-                        and tzxl.is_top()
-                        and abs(float(tzxl.start_price) - float(primary_bi.end_price)) <= 1e-6
-                    ),
-                    None,
-                )
-                fake_is_up = True
-            else:
-                primary_idx = min(
-                    range(first.start_bi_idx, first.end_bi_idx + 1),
-                    key=lambda idx: float(bi_list[idx].low_price),
-                )
-                if primary_idx <= first.start_bi_idx:
-                    return segments
-                if float(bi_list[primary_idx].low_price) >= float(first.start_price) - 1e-8:
-                    return segments
-                secondary_idx = max(
-                    range(0, primary_idx + 1),
-                    key=lambda idx: float(bi_list[idx].high_price),
-                )
-                primary_bi = bi_list[primary_idx]
-                primary_tzxl = next(
-                    (
-                        tzxl
-                        for tzxl in tzxl_list
-                        if tzxl.start_time == primary_bi.end_time
-                        and tzxl.is_bottom()
-                        and abs(float(tzxl.start_price) - float(primary_bi.end_price)) <= 1e-6
-                    ),
-                    None,
-                )
-                fake_is_up = False
-
-            if primary_idx - secondary_idx < 3:
-                return segments
-            if primary_tzxl is None:
-                return segments
-            try:
-                new_first = XianDuan.from_tzxl(primary_tzxl, first.right_tzxl, bi_list)
-            except ValueError:
-                return segments
-            if not new_first.is_finished or not new_first.has_enough_bi():
-                return segments
-            fake = _make_fake_first(
-                bi_list,
-                secondary_idx + 1,
-                primary_idx,
-                fake_is_up,
-                primary_tzxl,
-            )
-            if fake is None:
-                return segments
-            return [fake, new_first, *segments[1:]]
-
-        return _repair(first.is_down())
-
     xianduan_list = repair_xianduan_extremes(xianduan_list)
     xianduan_list = repair_xianduan_endpoint_extremes(xianduan_list)
-    xianduan_list = repair_first_segment_reverse_extension(xianduan_list)
-    validate_xianduan_structure()
+    xianduan_list = _repair_first_segment_reverse_extension(xianduan_list, tzxl_list, bi_list)
+    _validate_xianduan_structure(xianduan_list, bi_list)
 
     for i in range(len(xianduan_list)):
         xianduan_list[i].idx = i
