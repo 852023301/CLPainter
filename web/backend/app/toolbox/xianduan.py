@@ -3304,92 +3304,80 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
         if not isinstance(first, XianDuan):
             return segments
 
-        if first.is_down():
-            high_idx = max(
-                range(first.start_bi_idx, first.end_bi_idx + 1),
-                key=lambda idx: float(bi_list[idx].high_price),
-            )
-            if high_idx <= first.start_bi_idx:
+        def _repair(primary_is_high: bool) -> List[XianDuanBase]:
+            if primary_is_high:
+                primary_idx = max(
+                    range(first.start_bi_idx, first.end_bi_idx + 1),
+                    key=lambda idx: float(bi_list[idx].high_price),
+                )
+                if primary_idx <= first.start_bi_idx:
+                    return segments
+                if float(bi_list[primary_idx].high_price) <= float(first.start_price) + 1e-8:
+                    return segments
+                secondary_idx = min(
+                    range(0, primary_idx + 1),
+                    key=lambda idx: float(bi_list[idx].low_price),
+                )
+                primary_bi = bi_list[primary_idx]
+                primary_tzxl = next(
+                    (
+                        tzxl
+                        for tzxl in tzxl_list
+                        if tzxl.start_time == primary_bi.end_time
+                        and tzxl.is_top()
+                        and abs(float(tzxl.start_price) - float(primary_bi.end_price)) <= 1e-6
+                    ),
+                    None,
+                )
+                fake_is_up = True
+            else:
+                primary_idx = min(
+                    range(first.start_bi_idx, first.end_bi_idx + 1),
+                    key=lambda idx: float(bi_list[idx].low_price),
+                )
+                if primary_idx <= first.start_bi_idx:
+                    return segments
+                if float(bi_list[primary_idx].low_price) >= float(first.start_price) - 1e-8:
+                    return segments
+                secondary_idx = max(
+                    range(0, primary_idx + 1),
+                    key=lambda idx: float(bi_list[idx].high_price),
+                )
+                primary_bi = bi_list[primary_idx]
+                primary_tzxl = next(
+                    (
+                        tzxl
+                        for tzxl in tzxl_list
+                        if tzxl.start_time == primary_bi.end_time
+                        and tzxl.is_bottom()
+                        and abs(float(tzxl.start_price) - float(primary_bi.end_price)) <= 1e-6
+                    ),
+                    None,
+                )
+                fake_is_up = False
+
+            if primary_idx - secondary_idx < 3:
                 return segments
-            if float(bi_list[high_idx].high_price) <= float(first.start_price) + 1e-8:
-                return segments
-            low_idx = min(
-                range(0, high_idx + 1),
-                key=lambda idx: float(bi_list[idx].low_price),
-            )
-            if high_idx - low_idx < 3:
-                return segments
-            high_bi = bi_list[high_idx]
-            high_tzxl = None
-            for tzxl in tzxl_list:
-                if (
-                    tzxl.start_time == high_bi.end_time
-                    and tzxl.is_top()
-                    and abs(float(tzxl.start_price) - float(high_bi.end_price)) <= 1e-6
-                ):
-                    high_tzxl = tzxl
-                    break
-            if high_tzxl is None:
+            if primary_tzxl is None:
                 return segments
             try:
-                new_first = XianDuan.from_tzxl(high_tzxl, first.right_tzxl, bi_list)
+                new_first = XianDuan.from_tzxl(primary_tzxl, first.right_tzxl, bi_list)
             except ValueError:
                 return segments
             if not new_first.is_finished or not new_first.has_enough_bi():
                 return segments
             fake = _make_fake_first(
                 bi_list,
-                low_idx + 1,
-                high_idx,
-                True,
-                high_tzxl,
+                secondary_idx + 1,
+                primary_idx,
+                fake_is_up,
+                primary_tzxl,
             )
             if fake is None:
                 return segments
             return [fake, new_first, *segments[1:]]
 
-        low_idx = min(
-            range(first.start_bi_idx, first.end_bi_idx + 1),
-            key=lambda idx: float(bi_list[idx].low_price),
-        )
-        if low_idx <= first.start_bi_idx:
-            return segments
-        if float(bi_list[low_idx].low_price) >= float(first.start_price) - 1e-8:
-            return segments
-        high_idx = max(
-            range(0, low_idx + 1),
-            key=lambda idx: float(bi_list[idx].high_price),
-        )
-        if low_idx - high_idx < 3:
-            return segments
-        low_bi = bi_list[low_idx]
-        low_tzxl = None
-        for tzxl in tzxl_list:
-            if (
-                tzxl.start_time == low_bi.end_time
-                and tzxl.is_bottom()
-                and abs(float(tzxl.start_price) - float(low_bi.end_price)) <= 1e-6
-            ):
-                low_tzxl = tzxl
-                break
-        if low_tzxl is None:
-            return segments
-        try:
-            new_first = XianDuan.from_tzxl(low_tzxl, first.right_tzxl, bi_list)
-        except ValueError:
-            return segments
-        if not new_first.is_finished or not new_first.has_enough_bi():
-            return segments
-        fake = _make_fake_first(
-            bi_list,
-            high_idx + 1,
-            low_idx,
-            False,
-            low_tzxl,
-        )
-        if fake is None:
-            return segments
-        return [fake, new_first, *segments[1:]]
+        return _repair(first.is_down())
 
     xianduan_list = repair_xianduan_extremes(xianduan_list)
     xianduan_list = repair_xianduan_endpoint_extremes(xianduan_list)

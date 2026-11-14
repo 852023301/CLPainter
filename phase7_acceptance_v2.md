@@ -1000,3 +1000,33 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 688611SH 200
 159577SZ 200
 ```
+
+## 2026-11-14 P2 第三轮：首段反向延长整合
+
+将 `repair_first_segment_reverse_extension()` 的上升/下降重复分支合并为统一的 `_repair(primary_is_high)`：
+
+- 统一主极值点搜索；
+- 统一次极值点搜索；
+- 统一 tzxl 匹配；
+- 统一 `XianDuan.from_tzxl()` 和 `_make_fake_first()` 构造。
+
+验证：
+
+```text
+p4 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p4 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：第三轮仍为纯重构，行为零差异。
+
+### P2 第三轮容器同步
+
+第三轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+300327SZ 200
+688611SH 200
+159577SZ 200
+```

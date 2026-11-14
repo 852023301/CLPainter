@@ -1058,3 +1058,12 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 测试：`83 passed, 4 skipped`。
 
 - P2 第二轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-14 P2 第三轮
+
+- 合并 `repair_first_segment_reverse_extension()` 的上升/下降重复分支。
+- p4 全量 dump：成功 38855，失败 0。
+- v5 与 p4 snapshot 完全一致。
+- 测试：`83 passed, 4 skipped`。
+
+- P2 第三轮重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
