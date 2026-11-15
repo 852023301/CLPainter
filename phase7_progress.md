@@ -1163,3 +1163,24 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 
 - 数据质量测试移除 skipif，数据缺失时改为明确失败。
 - 当前测试：`87 passed, 0 skipped`。
+
+## 2026-11-15 P4 继续拆分
+
+- 从 `generate_bi()` 抽取 `_completed_merged_count()`、`_opening_span_is_long_enough()`、`_prepend_opening_up_bi_to_qualifying_top()`、`_prepend_opening_down_bi_to_lowest_bottom()`、`_make_opening_bi()`、`_bis_after_endpoint()`、`_install_opening_bi()`、`_opening_bi_sequence_is_valid()`。
+- 从 `generate_bi()` 抽取 `_split_bi_by_internal_extreme()`、`_prepend_initial_extreme_bi()`、`_supplement_last_fake_bi_with_reverse_bi()`。
+- 从 `generate_xian_duan()` 抽取 `_start_extremum_error()`、`_find_tzxl_by_time()`、`_get_right_tzxl()`、`_set_left_tzxl()`、`_set_right_tzxl()`、`_repair_xianduan_extremes()`、`_split_bi_range()`、`_repair_uncovered_prefix()`、`_repair_xianduan_endpoint_extremes()`、`_make_local_xianduan()`、`_repair_xianduan_endpoints_and_wraparound()`。
+- `generate_bi()`：703 行 -> 238 行。
+- `generate_xian_duan()`：855 行 -> 472 行。
+- p4final 全量 dump：成功 38855，失败 0。
+- v5 与 p4final snapshot：`changed: 0`。
+- 测试：`87 passed, 0 skipped`。
+- 提交：`73ec610 继续拆分笔与线段生成函数的嵌套辅助逻辑`。
+- 重构后的 `bi.py`、`xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-15 P7 旧备份清理
+
+- 删除 `dump/curated_backup_20261114`、`dump/chart_payload_backup_20261114`，释放约 68G。
+- 删除 `dump_p4a`、`dump_p4a2`、`dump_p4bc`、`dump_p4final`、`dump_p4a_sample`、`dump_p4a_debug`、`dump_p4bc_sample`，释放约 213G。
+- 删除 `instrument_p4a.db`、`instrument_p11.db*`、`instrument_p12.db*`、`instrument_p9.db*` 残留。
+- 保留 `dump/curated`、`dump/chart_payload`（v4 回滚）与 `dump_v5`（当前测试环境）。
+- 当前占用：`dump` 71G，`dump_v5` 70G。
