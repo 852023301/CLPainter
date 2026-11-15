@@ -1110,3 +1110,9 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 测试：`83 passed, 4 skipped`。
 
 - P2 第八轮 `bi.py`、`xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-15 决策：保留白名单
+
+- 保留 `phase7_confirmed_splits.py`，不删除。
+- 通用合法拆分搜索继续作为实验能力，默认关闭。
+- 原因：多数人工确认案例存在多个合法候选，通用化需要额外评分器，复杂度和回归风险过高。
