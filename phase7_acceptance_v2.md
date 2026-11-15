@@ -1148,3 +1148,30 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 688611SH 200
 159577SZ 200
 ```
+
+## 2026-11-15 P2 第八轮：bi.py 尾段极值复用与核心文件去示例标的
+
+- `bi.py` 的尾段极值搜索统一复用 `range_extreme_indices()`；
+- 移除 `bi.py`、`xianduan.py` 注释中的具体标的/日期示例，改为通用描述；
+- 核心算法文件的可执行逻辑中不再出现硬编码标的或日期。
+
+验证：
+
+```text
+p9 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p9 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：纯重构，行为零差异。
+
+### P2 第八轮容器同步
+
+`bi.py` 和 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+300327SZ 200
+688611SH 200
+159577SZ 200
+```

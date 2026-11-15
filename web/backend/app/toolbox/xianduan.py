@@ -2413,7 +2413,7 @@ def _build_fake_boundaries(
 
             fake_dest_time = end_bi.end_time
 
-            # 有可能出现假线段变真线段的情况，例如all_etf/516700SH  20260611前后线段变真线段
+            # 某些标的在尾部确认前后会由 fake 线段转为真实线段
             fake_is_true = False
             new_fx = None
 

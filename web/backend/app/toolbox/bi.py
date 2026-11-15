@@ -1021,7 +1021,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
         ##### 考虑fake_earliest_bi存在的可能性
         fake_earliest_bi_exist = False
-        # 在fake_first_bi之前，还有可能存在一笔更早的反向笔（如603533SH），这一笔的前提是first_kline_index（含）之前至少有3根k线（考虑跳空两次）
+        # 在 fake_first_bi 之前，还可能存在一笔更早的反向笔；其前提是 first_kline_index（含）之前至少有 3 根 K 线（考虑跳空两次）
         if first_kline_index < 2:
             fake_earliest_bi_exist = False
 
@@ -1434,17 +1434,18 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         end_kline_idx = len(all_klines) - 1
 
         if start_kline_idx < end_kline_idx:
-            sl = slice(start_kline_idx, end_kline_idx + 1)
             fake_type = last_bi.bi_type
-            kline_high_prices = high_prices[sl]
-            kline_low_prices = low_prices[sl]
-            local_max_idx = int(np.argmax(kline_high_prices))
-            local_min_idx = int(np.argmin(kline_low_prices))
+            local_max_idx, local_min_idx = range_extreme_indices(
+                high_prices,
+                low_prices,
+                start_kline_idx,
+                end_kline_idx,
+            )
 
-            if bi_is_up and local_max_idx > 0 and kline_high_prices[local_max_idx] > last_bi.high_price:
-                start_kline_idx += local_max_idx
-            elif not bi_is_up and local_min_idx > 0 and kline_low_prices[local_min_idx] < last_bi.low_price:
-                start_kline_idx += local_min_idx
+            if bi_is_up and local_max_idx > start_kline_idx and high_prices[local_max_idx] > last_bi.high_price:
+                start_kline_idx = local_max_idx
+            elif not bi_is_up and local_min_idx > start_kline_idx and low_prices[local_min_idx] < last_bi.low_price:
+                start_kline_idx = local_min_idx
 
             last_bi_extend = False
             if start_kline_idx != origin_kline_index:
@@ -1517,20 +1518,20 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
                 origin_kline_index = last_bi.right_fx.high_idx if last_bi.is_up() else last_bi.right_fx.low_idx
                 start_kline_idx = origin_kline_index
                 end_kline_idx = len(all_klines) - 1
-                sl = slice(start_kline_idx, end_kline_idx + 1)
-
                 if start_kline_idx >= end_kline_idx:
                     return
 
-                kline_high_prices = high_prices[sl]
-                kline_low_prices = low_prices[sl]
-                local_max_idx = int(np.argmax(kline_high_prices))
-                local_min_idx = int(np.argmin(kline_low_prices))
+                local_max_idx, local_min_idx = range_extreme_indices(
+                    high_prices,
+                    low_prices,
+                    start_kline_idx,
+                    end_kline_idx,
+                )
 
-                if fake_type == BiDirectionType.UP and local_max_idx > 0:
-                    start_kline_idx += local_max_idx
-                elif fake_type == BiDirectionType.DOWN and local_min_idx > 0:
-                    start_kline_idx += local_min_idx
+                if fake_type == BiDirectionType.UP and local_max_idx > start_kline_idx:
+                    start_kline_idx = local_max_idx
+                elif fake_type == BiDirectionType.DOWN and local_min_idx > start_kline_idx:
+                    start_kline_idx = local_min_idx
 
                 if start_kline_idx == origin_kline_index:
                     return
