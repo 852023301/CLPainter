@@ -1184,3 +1184,21 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 删除 `instrument_p4a.db`、`instrument_p11.db*`、`instrument_p12.db*`、`instrument_p9.db*` 残留。
 - 保留 `dump/curated`、`dump/chart_payload`（v4 回滚）与 `dump_v5`（当前测试环境）。
 - 当前占用：`dump` 71G，`dump_v5` 70G。
+
+## 2026-11-15 P4 续二：线段 fake 边界辅助逻辑
+
+- 从 `generate_xian_duan()` 抽取 `_make_fake_last_after_xianduan()`、`_make_fake_first_before_xianduan()`、`_extend_confirmed_segment_past_penetrated_tail()`、`_make_fake_first_reverse_segment()`、`_merge_penetrated_fake_tail()`、`_merge_penetrated_opposite_segments()`、`_find_confirmed_xianduan_pair()`。
+- `generate_xian_duan()`：472 行 -> 222 行，已无嵌套函数。
+- p4d 全量 dump：成功 38855，失败 0。
+- v5 与 p4d snapshot：`changed: 0`。
+- 测试：`87 passed, 0 skipped`。
+- 提交：`6ec27d9 继续拆分线段 fake 边界辅助逻辑`。
+- 重构后的 `xianduan.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-15 v5 first_only 全量报告
+
+- 使用 `phase7_v5_first_only_cases.jsonl` 生成 v5 `first_only` 全量报告。
+- 案例数：3568。
+- 报告目录：`phase7_visual_report_v5_first_only`，约 1.3G。
+- index 链接数：3568。
+- 访问地址：`http://172.17.1.5:15003/phase7_visual_report_v5_first_only/`。

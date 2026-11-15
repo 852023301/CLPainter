@@ -32,7 +32,8 @@
   "reports": {
     "body_changed": "http://172.17.1.5:15003/phase7_visual_report_v5_body_changed/",
     "incremental": "http://172.17.1.5:15003/phase7_visual_report_v5_incremental/",
-    "later_exceeds_changed": "http://172.17.1.5:15003/phase7_visual_report_v5_later_exceeds_changed/"
+    "later_exceeds_changed": "http://172.17.1.5:15003/phase7_visual_report_v5_later_exceeds_changed/",
+    "first_only": "http://172.17.1.5:15003/phase7_visual_report_v5_first_only/"
   },
   "status": "accepted; promoted to test environment",
   "tests": "87 passed, 0 skipped"

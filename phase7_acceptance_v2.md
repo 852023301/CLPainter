@@ -1446,3 +1446,10 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 ```text
 87 passed, 0 skipped
 ```
+
+## 2026-11-15 v5 first_only 全量报告
+
+- 案例清单：`phase7_v5_first_only_cases.jsonl`，3568 个。
+- 报告目录：`phase7_visual_report_v5_first_only`。
+- index 与 HTML 文件数均为 3568。
+- 访问地址：`http://172.17.1.5:15003/phase7_visual_report_v5_first_only/`。
