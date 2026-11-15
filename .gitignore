@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.ruff_cache/
+
+# Phase 7 generated validation artifacts
+phase7_visual_report*/
+phase7_classification_*/
+phase7_*_summary.json
+phase7_*_cases.jsonl
+phase7_changed_cases_v2.jsonl
+phase7_first_segment_changes_v3.jsonl
+phase7_same_count_review.csv
+phase7_v4_freeze.json
+run_phase7_after_delay.sh
