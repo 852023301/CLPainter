@@ -4,13 +4,13 @@
 
 ## 1. 当前测试环境状态
 
-- 测试数据：`/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5`
+- 测试数据：`/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump`
 - 测试容器：`CLPainter`
 - 容器配置：`/root/CLPainter/web/backend/.env`
 - 容器代码备份：`/root/CLPainter_backup_20261114_203111`
 - 测试容器当前使用：
   - `APP_ENV=test`
-  - `CACHE_DUMP_DIR=/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/curated`
+  - `CACHE_DUMP_DIR=/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated`
   - `ENABLE_XIANDUAN_REPAIR_LOOP=0`
   - `ENABLE_XIANDUAN_LOCAL_RESEGMENT=0`
   - `ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1`

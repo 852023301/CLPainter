@@ -8,8 +8,8 @@
     "start_extreme_deviation": 501
   },
   "candidate": "phase7_v5",
-  "chart_payload": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/chart_payload",
-  "curated": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5/curated",
+  "chart_payload": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/chart_payload",
+  "curated": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated",
   "data_root": "/mnt/DataDepartmentTest/home/wjl/data_set_dev",
   "dump": {
     "failed": 0,
@@ -39,9 +39,18 @@
   "tests": "87 passed, 0 skipped",
   "accepted_at": "2026-11-15",
   "acceptance_scope": "v5 full cache + v5 first_only full report",
-  "rollback": {
-    "curated": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated",
-    "chart_payload": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/chart_payload"
-  },
-  "production_deploy": "pending manual deployment"
+  "rollback": "v4 removed during cleanup; no local rollback cache",
+  "production_deploy": "pending manual deployment",
+  "cleanup": {
+    "renamed": "data_set_dev/dump_v5 -> data_set_dev/dump",
+    "deleted": [
+      "data_set_dev_phase7",
+      "data_set_dev_phase7_v2",
+      "data_set_dev_phase7_v3",
+      "data_set_phase7_validation",
+      "data_set_phase7_validation_v2",
+      "data_set_dev/data_set_dev",
+      "data_set_dev/dump (v4)"
+    ]
+  }
 }

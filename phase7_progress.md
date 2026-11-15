@@ -1210,3 +1210,14 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - v5 状态更新为 `accepted`。
 - 保留 v4 回滚目录：`dump/curated`、`dump/chart_payload`。
 - 生产部署仍为手动执行，按 `phase7_handoff.md` 进行。
+
+## 2026-11-15 测试目录收尾
+
+- 删除历史验证目录：`data_set_dev_phase7`、`data_set_dev_phase7_v2`、`data_set_dev_phase7_v3`、`data_set_phase7_validation`、`data_set_phase7_validation_v2`。
+- 删除 `data_set_dev/data_set_dev` 嵌套副本。
+- 删除旧 `data_set_dev/dump`（v4 回滚）。
+- 将 `data_set_dev/dump_v5` 改名为 `data_set_dev/dump`。
+- 测试容器 `CACHE_DUMP_DIR` 更新为 `/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated`。
+- 改名后全量 snapshot 与 v5 基线一致：`changed: 0`。
+- 当前测试数据：`dump/curated` 38855，`dump/chart_payload` 38855。
+- 当前不再保留本地 v4 回滚缓存。

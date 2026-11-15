@@ -1461,3 +1461,12 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 冻结状态：`accepted`。
 - 回滚版本：`dump/curated`、`dump/chart_payload`（v4）。
 - 生产部署：待手动执行，依据 `phase7_handoff.md`。
+
+## 2026-11-15 测试目录收尾
+
+- 历史验证目录和 `data_set_dev/data_set_dev` 嵌套副本已删除。
+- 旧 `data_set_dev/dump`（v4）已删除。
+- `data_set_dev/dump_v5` 已改名为 `data_set_dev/dump`。
+- 当前测试缓存：`/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated`。
+- 改名后 snapshot 与 v5 基线一致：`changed: 0`。
+- 当前不再保留本地 v4 回滚缓存。
