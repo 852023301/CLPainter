@@ -1422,6 +1422,516 @@ def _repair_initial_fake_front_bi(
     split_initial_fake_front_by_internal_extreme()
 
 
+def _completed_merged_count(all_klines, start_idx, end_idx):
+    if end_idx < start_idx:
+        return 0
+    count = 0
+    index = start_idx
+    while index <= end_idx:
+        chain_end = index
+        while (
+            chain_end + 1 <= end_idx
+            and all_klines[chain_end + 1].merged_length == all_klines[chain_end].merged_length + 1
+        ):
+            chain_end += 1
+        count += 1
+        index = chain_end + 1
+    return count
+
+
+def _opening_span_is_long_enough(all_klines, prefix_gap, start_idx, end_idx):
+    """原始K线含端点至少5根；端点前的合并K线（含缺口）至少4根。"""
+    if end_idx <= start_idx:
+        return False
+    real_origin_count = end_idx - start_idx + 1
+    gap_count = prefix_gap[end_idx + 1] - prefix_gap[start_idx + 1]
+    merged_before_endpoint = _completed_merged_count(all_klines, start_idx, end_idx - 1)
+    return real_origin_count + gap_count >= 5 and merged_before_endpoint + gap_count >= 4
+
+
+def _prepend_opening_up_bi_to_qualifying_top(
+    bi_list, fenxing_list, all_klines, high_prices, low_prices, prefix_merged, prefix_gap, endpoint_ops
+):
+    """起点保持极值时，把第一笔补到第一个够长的极值分型。"""
+    if len(all_klines) < 5 or not fenxing_list:
+        return False
+    chosen_top = None
+    blocked_by_lower_low = False
+    for fenxing in fenxing_list:
+        if not fenxing.is_top():
+            continue
+        end_idx = fenxing.high_idx
+        if end_idx <= 0:
+            continue
+        if float(np.min(low_prices[:end_idx + 1])) < float(low_prices[0]) - 1e-8:
+            blocked_by_lower_low = True
+            break
+        if float(np.max(high_prices[:end_idx + 1])) > float(fenxing.high_price) + 1e-8:
+            continue
+        if not _opening_span_is_long_enough(all_klines, prefix_gap, 0, end_idx):
+            continue
+        chosen_top = fenxing
+        break
+    if chosen_top is not None:
+        return _install_opening_bi(
+            bi_list, low_prices, high_prices, endpoint_ops, all_klines, prefix_merged, prefix_gap, chosen_top, BiDirectionType.UP
+        )
+    if blocked_by_lower_low:
+        return _prepend_opening_down_bi_to_lowest_bottom(
+            bi_list, fenxing_list, all_klines, high_prices, low_prices, prefix_merged, prefix_gap, endpoint_ops
+        )
+    return False
+
+
+def _prepend_opening_down_bi_to_lowest_bottom(
+    bi_list, fenxing_list, all_klines, high_prices, low_prices, prefix_merged, prefix_gap, endpoint_ops
+):
+    chosen_bottom = None
+    for fenxing in fenxing_list:
+        if fenxing.is_top():
+            continue
+        end_idx = fenxing.low_idx
+        if end_idx <= 0:
+            continue
+        if float(np.min(low_prices[:end_idx + 1])) < float(fenxing.low_price) - 1e-8:
+            continue
+        if float(np.max(high_prices[:end_idx + 1])) > float(high_prices[0]) + 1e-8:
+            break
+        if not _opening_span_is_long_enough(all_klines, prefix_gap, 0, end_idx):
+            continue
+        chosen_bottom = fenxing
+        break
+    if chosen_bottom is None:
+        return False
+    chosen_top = None
+    for fenxing in fenxing_list:
+        if fenxing.low_idx <= chosen_bottom.low_idx or not fenxing.is_top():
+            continue
+        end_idx = fenxing.high_idx
+        if float(np.min(low_prices[chosen_bottom.low_idx:end_idx + 1])) < float(chosen_bottom.low_price) - 1e-8:
+            break
+        if float(np.max(high_prices[chosen_bottom.low_idx:end_idx + 1])) > float(fenxing.high_price) + 1e-8:
+            continue
+        if not _opening_span_is_long_enough(all_klines, prefix_gap, chosen_bottom.low_idx, end_idx):
+            continue
+        chosen_top = fenxing
+        break
+    if chosen_top is None:
+        return False
+    try:
+        rising_bi = Bi.from_fenxing(chosen_bottom, chosen_top, all_klines, prefix_merged, prefix_gap)
+    except ValueError:
+        return False
+    if not rising_bi.is_finished or not rising_bi.is_kline_count_enough():
+        return False
+    opening_bi = _make_opening_bi(
+        endpoint_ops,
+        all_klines,
+        prefix_gap,
+        chosen_bottom.low_idx,
+        float(high_prices[0]),
+        float(chosen_bottom.low_price),
+        BiDirectionType.DOWN,
+        chosen_bottom,
+    )
+    if opening_bi is None:
+        return False
+    kept = _bis_after_endpoint(
+        bi_list, all_klines, prefix_merged, prefix_gap, chosen_top, chosen_top.high_idx, opening_direction=BiDirectionType.UP
+    )
+    rebuilt = [opening_bi, rising_bi, *kept]
+    if not _opening_bi_sequence_is_valid(rebuilt, high_prices, low_prices):
+        return False
+    bi_list[:] = rebuilt
+    return True
+
+
+def _make_opening_bi(endpoint_ops, all_klines, prefix_gap, end_idx, start_price, end_price, bi_type, right_fx):
+    opening_bi = endpoint_ops.make_fake_front(
+        start_idx=0,
+        end_idx=end_idx,
+        bi_type=bi_type,
+        start_price=start_price,
+        end_price=end_price,
+        right_fx=right_fx,
+        end_time=right_fx.trade_datetime,
+    )
+    if not _opening_span_is_long_enough(all_klines, prefix_gap, 0, end_idx):
+        return None
+    return opening_bi
+
+
+def _bis_after_endpoint(bi_list, all_klines, prefix_merged, prefix_gap, endpoint_fx, end_idx, opening_direction):
+    kept = []
+    later_bis = [existing_bi for existing_bi in bi_list if existing_bi.end_idx > end_idx]
+    if not later_bis:
+        return kept
+    nxt = later_bis[0]
+    if (
+        isinstance(nxt, Bi)
+        and nxt.left_fx is not None
+        and nxt.start_idx >= end_idx
+        and nxt.bi_type != opening_direction
+    ):
+        return later_bis
+    anchor = next(
+        (
+            existing_bi for existing_bi in later_bis
+            if isinstance(existing_bi, Bi)
+            and existing_bi.left_fx is not None
+            and existing_bi.left_fx.trade_datetime > endpoint_fx.trade_datetime
+        ),
+        None,
+    )
+    if anchor is not None and anchor.bi_type == opening_direction:
+        try:
+            connector = Bi.from_fenxing(endpoint_fx, anchor.left_fx, all_klines, prefix_merged, prefix_gap)
+        except ValueError:
+            connector = None
+        if (
+            connector is not None
+            and connector.is_finished
+            and connector.is_kline_count_enough()
+            and connector.bi_type != opening_direction
+        ):
+            kept.append(connector)
+    if anchor is not None:
+        kept.extend(later_bis[later_bis.index(anchor):])
+    return kept
+
+
+def _install_opening_bi(
+    bi_list, low_prices, high_prices, endpoint_ops, all_klines, prefix_merged, prefix_gap, chosen_top, opening_direction
+):
+    end_idx = chosen_top.high_idx
+    opening_bi = _make_opening_bi(
+        endpoint_ops,
+        all_klines,
+        prefix_gap,
+        end_idx,
+        float(low_prices[0]),
+        float(chosen_top.high_price),
+        opening_direction,
+        chosen_top,
+    )
+    if opening_bi is None:
+        return False
+    kept = _bis_after_endpoint(
+            bi_list, all_klines, prefix_merged, prefix_gap, chosen_top, end_idx, opening_direction
+        )
+    rebuilt = [opening_bi, *kept]
+    if not _opening_bi_sequence_is_valid(rebuilt, high_prices, low_prices):
+        return False
+    bi_list[:] = rebuilt
+    return True
+
+
+def _opening_bi_sequence_is_valid(sequence, high_prices, low_prices):
+    for index, bi in enumerate(sequence):
+        if bi.origin_kline_count < 5:
+            return False
+        if index == 0:
+            continue
+        previous = sequence[index - 1]
+        if previous.bi_type == bi.bi_type:
+            return False
+        if isinstance(bi, Bi) and bi.left_fx is not None:
+            if bi.left_fx.trade_datetime != previous.end_time:
+                return False
+            if bi.right_fx is None:
+                return False
+            high_start = bi.left_fx.high_idx if bi.is_up() else bi.left_fx.low_idx
+            covered_high = float(np.max(high_prices[high_start:bi.end_idx + 1]))
+            covered_low = float(np.min(low_prices[high_start:bi.end_idx + 1]))
+            if covered_high > max(bi.left_fx.high_price, bi.right_fx.high_price) + 1e-8:
+                return False
+            if covered_low < min(bi.left_fx.low_price, bi.right_fx.low_price) - 1e-8:
+                return False
+        elif bi.start_time != previous.end_time:
+            return False
+    return True
+
+
+def _split_bi_by_internal_extreme(
+    bi_list, fenxing_list, fenxing_mid_indices, all_klines, prefix_merged, prefix_gap
+) -> bool:
+    """用相邻两笔区间内的更极值分型重接两笔端点。"""
+    for bi_index in range(0, len(bi_list) - 1):
+        current_bi = bi_list[bi_index]
+        next_bi = bi_list[bi_index + 1]
+        if not isinstance(current_bi, Bi) or not isinstance(next_bi, Bi):
+            continue
+
+        if current_bi.left_fx is None or next_bi.left_fx is None:
+            continue
+
+        extreme_fx = None
+        extreme_value = current_bi.end_price
+        start_fx_idx = bisect_right(fenxing_mid_indices, current_bi.left_fx.mid_idx)
+        end_fx_idx = bisect_right(fenxing_mid_indices, next_bi.left_fx.mid_idx)
+        for fx_idx in range(start_fx_idx, end_fx_idx):
+            candidate_fx = fenxing_list[fx_idx]
+            candidate_value = candidate_fx.low_price if current_bi.is_down() else candidate_fx.high_price
+            if (candidate_value < extreme_value) if current_bi.is_down() else (candidate_value > extreme_value):
+                extreme_value = candidate_value
+                extreme_fx = candidate_fx
+
+        if (
+                extreme_fx is None
+                or extreme_fx.mid_idx <= current_bi.left_fx.mid_idx
+                or extreme_fx.mid_idx >= next_bi.left_fx.mid_idx
+        ):
+            continue
+
+        try:
+            replaced_current_bi = Bi.from_fenxing(
+                current_bi.left_fx,
+                extreme_fx,
+                all_klines,
+                prefix_merged,
+                prefix_gap,
+            )
+            replaced_next_bi = Bi.from_fenxing(
+                extreme_fx,
+                next_bi.right_fx,
+                all_klines,
+                prefix_merged,
+                prefix_gap,
+            )
+        except ValueError:
+            continue
+
+        if (
+                replaced_current_bi.end_idx > replaced_next_bi.start_idx
+                or not replaced_current_bi.is_finished
+                or not replaced_next_bi.is_finished
+        ):
+            continue
+
+        bi_list[bi_index:bi_index + 2] = [replaced_current_bi, replaced_next_bi]
+        return True
+
+    return False
+
+
+def _prepend_initial_extreme_bi(bi_list, low_prices, high_prices, endpoint_ops) -> bool:
+    """首个正式笔左侧有同向更极值时，沿原方向把起点回延到该极值。"""
+    if not bi_list or not isinstance(bi_list[0], Bi):
+        return False
+
+    first_bi = bi_list[0]
+    prefix_end_idx = first_bi.start_idx - 1
+    if prefix_end_idx < 0:
+        return False
+
+    if first_bi.is_up():
+        extreme_idx = int(np.argmin(low_prices[:prefix_end_idx + 1]))
+        extreme_price = float(low_prices[extreme_idx])
+        if extreme_idx >= first_bi.start_idx or extreme_price >= first_bi.start_price:
+            return False
+        covered_high = float(np.max(high_prices[extreme_idx:first_bi.end_idx + 1]))
+        if covered_high > float(first_bi.end_price) + 1e-8:
+            return False
+    else:
+        extreme_idx = int(np.argmax(high_prices[:prefix_end_idx + 1]))
+        extreme_price = float(high_prices[extreme_idx])
+        if extreme_idx >= first_bi.start_idx or extreme_price <= first_bi.start_price:
+            return False
+        covered_low = float(np.min(low_prices[extreme_idx:first_bi.end_idx + 1]))
+        if covered_low < float(first_bi.end_price) - 1e-8:
+            return False
+
+    extended_bi = endpoint_ops.make_fake_front(
+        start_idx=extreme_idx,
+        end_idx=first_bi.end_idx,
+        bi_type=first_bi.bi_type,
+        start_price=extreme_price,
+        end_price=first_bi.end_price,
+        right_fx=first_bi.right_fx,
+    )
+    if not extended_bi.is_kline_count_enough():
+        return False
+    bi_list[0] = extended_bi
+    return True
+
+
+def _supplement_last_fake_bi_with_reverse_bi(
+    bi_list, fenxing_list, all_klines, high_prices, low_prices, prefix_merged, prefix_gap, endpoint_ops, repair_ops
+):
+    if not bi_list or not isinstance(bi_list[-1], FakeBiLast):
+        return bi_list
+
+    tail_bi = bi_list[-1]
+    if bi_list[:-1]:
+        return bi_list
+
+    current_fx = tail_bi.left_fx
+    if current_fx is None or current_fx.idx is None or current_fx.idx < 2:
+        return bi_list
+
+    supplemented_bis = []
+
+    def find_complete_reverse_bi():
+        for candidate_idx in range(current_fx.idx - 1, -1, -1):
+            candidate_fx = fenxing_list[candidate_idx]
+            if candidate_fx.fenxing_type == current_fx.fenxing_type:
+                continue
+
+            try:
+                candidate_bi = Bi.from_fenxing(
+                    candidate_fx,
+                    current_fx,
+                    all_klines,
+                    prefix_merged,
+                    prefix_gap,
+                )
+            except ValueError:
+                continue
+
+            if candidate_bi.is_kline_count_enough() and repair_ops.candidate_extremes_are_valid(candidate_bi):
+                return candidate_bi
+
+            extended_bi = make_extended_front_bi(candidate_bi)
+            if extended_bi is not None:
+                return extended_bi
+
+        return None
+
+    def find_reverse_bi_chain():
+        reverse_bi = find_complete_reverse_bi()
+        if reverse_bi is None:
+            return None
+
+        previous_fx = reverse_bi.left_fx
+        for candidate_idx in range(previous_fx.idx - 1, -1, -1):
+            candidate_fx = fenxing_list[candidate_idx]
+            if candidate_fx.fenxing_type == previous_fx.fenxing_type:
+                continue
+            previous_bi_is_up = previous_fx.is_top()
+            if previous_bi_is_up == reverse_bi.is_up():
+                continue
+
+            try:
+                previous_bi = Bi.from_fenxing(
+                    candidate_fx,
+                    previous_fx,
+                    all_klines,
+                    prefix_merged,
+                    prefix_gap,
+                )
+            except ValueError:
+                continue
+
+            front_bi = make_extended_front_bi(previous_bi)
+            if front_bi is not None:
+                return [front_bi, reverse_bi]
+
+        return [reverse_bi]
+
+    def make_front_reverse_bi():
+        if current_fx.is_top():
+            reverse_bi_type = BiDirectionType.DOWN
+            end_idx = current_fx.high_idx
+            end_price = current_fx.high_price
+            start_idx = int(np.argmax(high_prices[:end_idx]))
+            start_price = high_prices[start_idx]
+        else:
+            reverse_bi_type = BiDirectionType.UP
+            end_idx = current_fx.low_idx
+            end_price = current_fx.low_price
+            start_idx = int(np.argmin(low_prices[:end_idx]))
+            start_price = low_prices[start_idx]
+
+        if start_idx >= end_idx:
+            return None
+
+        fake_front_bi = endpoint_ops.make_fake_front(
+            start_idx=start_idx,
+            end_idx=end_idx,
+            bi_type=reverse_bi_type,
+            start_price=start_price,
+            end_price=end_price,
+            left_fx=current_fx,
+            right_fx=current_fx,
+            end_time=current_fx.trade_datetime,
+        )
+
+        if not fake_front_bi.is_kline_count_enough():
+            return None
+        if not repair_ops.candidate_extremes_are_valid(fake_front_bi):
+            return None
+        return fake_front_bi
+
+    def make_extended_front_bi(candidate_bi):
+        if candidate_bi.is_down():
+            start_idx = int(np.argmax(high_prices[:candidate_bi.start_idx]))
+            start_price = high_prices[start_idx]
+            if start_price < candidate_bi.start_price:
+                return None
+        else:
+            start_idx = int(np.argmin(low_prices[:candidate_bi.start_idx]))
+            start_price = low_prices[start_idx]
+            if start_price > candidate_bi.start_price:
+                return None
+
+        count_end_idx = candidate_bi.left_fx.end_idx_list[0]
+        extended_bi = endpoint_ops.make_fake_front(
+            start_idx=start_idx,
+            end_idx=candidate_bi.end_idx,
+            bi_type=candidate_bi.bi_type,
+            start_price=start_price,
+            end_price=candidate_bi.end_price,
+            left_fx=candidate_bi.left_fx,
+            right_fx=candidate_bi.right_fx,
+            end_time=candidate_bi.end_time,
+            real_origin_kline_count=(
+                candidate_bi.real_origin_kline_count
+                + candidate_bi.start_idx
+                - start_idx
+            ),
+            real_merged_kline_count=(
+                candidate_bi.real_merged_kline_count
+                + prefix_merged[count_end_idx + 1]
+                - prefix_merged[candidate_bi.start_idx]
+            ),
+            has_gap_count=(
+                candidate_bi.has_gap_count
+                + prefix_gap[count_end_idx + 1]
+                - prefix_gap[candidate_bi.start_idx + 1]
+            ),
+        )
+
+        if not extended_bi.is_kline_count_enough():
+            return None
+        if not repair_ops.candidate_extremes_are_valid(extended_bi):
+            return None
+        return extended_bi
+
+    while current_fx.idx > 0:
+        reverse_bis = find_reverse_bi_chain()
+
+        if reverse_bis is None:
+            reverse_bi = make_front_reverse_bi()
+            reverse_bis = [reverse_bi] if reverse_bi is not None else None
+
+        if reverse_bis is None:
+            break
+
+        if len(reverse_bis) > 1:
+            supplemented_bis = reverse_bis
+        else:
+            supplemented_bis = [*reverse_bis, *supplemented_bis]
+        if isinstance(reverse_bis[0], FakeBiFront):
+            break
+        current_fx = reverse_bis[0].left_fx
+
+    if supplemented_bis:
+        bi_list = [*supplemented_bis, tail_bi]
+
+    bi_list = repair_ops.merge_front_and_tail_into_one_bi(bi_list)
+    return bi_list
+
+
 def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBiLast]]:
     """
     根据分型列表划分缠论笔
@@ -1475,64 +1985,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     bi_lm = machine.bi_lm
     bi_mr = machine.bi_mr
 
-    def split_bi_by_internal_extreme():
-        """用相邻两笔区间内的更极值分型重接两笔端点。"""
-        for bi_index in range(0, len(bi_list) - 1):
-            current_bi = bi_list[bi_index]
-            next_bi = bi_list[bi_index + 1]
-            if not isinstance(current_bi, Bi) or not isinstance(next_bi, Bi):
-                continue
-
-            if current_bi.left_fx is None or next_bi.left_fx is None:
-                continue
-
-            extreme_fx = None
-            extreme_value = current_bi.end_price
-            start_fx_idx = bisect_right(fenxing_mid_indices, current_bi.left_fx.mid_idx)
-            end_fx_idx = bisect_right(fenxing_mid_indices, next_bi.left_fx.mid_idx)
-            for fx_idx in range(start_fx_idx, end_fx_idx):
-                candidate_fx = fenxing_list[fx_idx]
-                candidate_value = candidate_fx.low_price if current_bi.is_down() else candidate_fx.high_price
-                if (candidate_value < extreme_value) if current_bi.is_down() else (candidate_value > extreme_value):
-                    extreme_value = candidate_value
-                    extreme_fx = candidate_fx
-
-            if (
-                    extreme_fx is None
-                    or extreme_fx.mid_idx <= current_bi.left_fx.mid_idx
-                    or extreme_fx.mid_idx >= next_bi.left_fx.mid_idx
-            ):
-                continue
-
-            try:
-                replaced_current_bi = Bi.from_fenxing(
-                    current_bi.left_fx,
-                    extreme_fx,
-                    all_klines,
-                    prefix_merged,
-                    prefix_gap,
-                )
-                replaced_next_bi = Bi.from_fenxing(
-                    extreme_fx,
-                    next_bi.right_fx,
-                    all_klines,
-                    prefix_merged,
-                    prefix_gap,
-                )
-            except ValueError:
-                continue
-
-            if (
-                    replaced_current_bi.end_idx > replaced_next_bi.start_idx
-                    or not replaced_current_bi.is_finished
-                    or not replaced_next_bi.is_finished
-            ):
-                continue
-
-            bi_list[bi_index:bi_index + 2] = [replaced_current_bi, replaced_next_bi]
-            return True
-
-        return False
 
     # def make_fake_last_bi():
     #
@@ -1621,250 +2073,10 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             bi_lm = bi_mr
             bi_mr = None
 
-    def prepend_initial_extreme_bi():
-        """首个正式笔左侧有同向更极值时，沿原方向把起点回延到该极值。"""
-        if not bi_list or not isinstance(bi_list[0], Bi):
-            return False
 
-        first_bi = bi_list[0]
-        prefix_end_idx = first_bi.start_idx - 1
-        if prefix_end_idx < 0:
-            return False
-
-        if first_bi.is_up():
-            extreme_idx = int(np.argmin(low_prices[:prefix_end_idx + 1]))
-            extreme_price = float(low_prices[extreme_idx])
-            if extreme_idx >= first_bi.start_idx or extreme_price >= first_bi.start_price:
-                return False
-            covered_high = float(np.max(high_prices[extreme_idx:first_bi.end_idx + 1]))
-            if covered_high > float(first_bi.end_price) + 1e-8:
-                return False
-        else:
-            extreme_idx = int(np.argmax(high_prices[:prefix_end_idx + 1]))
-            extreme_price = float(high_prices[extreme_idx])
-            if extreme_idx >= first_bi.start_idx or extreme_price <= first_bi.start_price:
-                return False
-            covered_low = float(np.min(low_prices[extreme_idx:first_bi.end_idx + 1]))
-            if covered_low < float(first_bi.end_price) - 1e-8:
-                return False
-
-        extended_bi = endpoint_ops.make_fake_front(
-            start_idx=extreme_idx,
-            end_idx=first_bi.end_idx,
-            bi_type=first_bi.bi_type,
-            start_price=extreme_price,
-            end_price=first_bi.end_price,
-            right_fx=first_bi.right_fx,
-        )
-        if not extended_bi.is_kline_count_enough():
-            return False
-        bi_list[0] = extended_bi
-        return True
-
-    def _completed_merged_count(start_idx, end_idx):
-        if end_idx < start_idx:
-            return 0
-        count = 0
-        index = start_idx
-        while index <= end_idx:
-            chain_end = index
-            while (
-                chain_end + 1 <= end_idx
-                and all_klines[chain_end + 1].merged_length == all_klines[chain_end].merged_length + 1
-            ):
-                chain_end += 1
-            count += 1
-            index = chain_end + 1
-        return count
-
-    def _opening_span_is_long_enough(start_idx, end_idx):
-        """原始K线含端点至少5根；端点前的合并K线（含缺口）至少4根。"""
-        if end_idx <= start_idx:
-            return False
-        real_origin_count = end_idx - start_idx + 1
-        gap_count = prefix_gap[end_idx + 1] - prefix_gap[start_idx + 1]
-        merged_before_endpoint = _completed_merged_count(start_idx, end_idx - 1)
-        return real_origin_count + gap_count >= 5 and merged_before_endpoint + gap_count >= 4
-
-    def prepend_opening_up_bi_to_qualifying_top():
-        """起点保持极值时，把第一笔补到第一个够长的极值分型。"""
-        if len(all_klines) < 5 or not fenxing_list:
-            return False
-        chosen_top = None
-        blocked_by_lower_low = False
-        for fenxing in fenxing_list:
-            if not fenxing.is_top():
-                continue
-            end_idx = fenxing.high_idx
-            if end_idx <= 0:
-                continue
-            if float(np.min(low_prices[:end_idx + 1])) < float(low_prices[0]) - 1e-8:
-                blocked_by_lower_low = True
-                break
-            if float(np.max(high_prices[:end_idx + 1])) > float(fenxing.high_price) + 1e-8:
-                continue
-            if not _opening_span_is_long_enough(0, end_idx):
-                continue
-            chosen_top = fenxing
-            break
-        if chosen_top is not None:
-            return _install_opening_bi(chosen_top, BiDirectionType.UP)
-        if blocked_by_lower_low:
-            return _prepend_opening_down_bi_to_lowest_bottom()
-        return False
-
-    def _prepend_opening_down_bi_to_lowest_bottom():
-        chosen_bottom = None
-        for fenxing in fenxing_list:
-            if fenxing.is_top():
-                continue
-            end_idx = fenxing.low_idx
-            if end_idx <= 0:
-                continue
-            if float(np.min(low_prices[:end_idx + 1])) < float(fenxing.low_price) - 1e-8:
-                continue
-            if float(np.max(high_prices[:end_idx + 1])) > float(high_prices[0]) + 1e-8:
-                break
-            if not _opening_span_is_long_enough(0, end_idx):
-                continue
-            chosen_bottom = fenxing
-            break
-        if chosen_bottom is None:
-            return False
-        chosen_top = None
-        for fenxing in fenxing_list:
-            if fenxing.low_idx <= chosen_bottom.low_idx or not fenxing.is_top():
-                continue
-            end_idx = fenxing.high_idx
-            if float(np.min(low_prices[chosen_bottom.low_idx:end_idx + 1])) < float(chosen_bottom.low_price) - 1e-8:
-                break
-            if float(np.max(high_prices[chosen_bottom.low_idx:end_idx + 1])) > float(fenxing.high_price) + 1e-8:
-                continue
-            if not _opening_span_is_long_enough(chosen_bottom.low_idx, end_idx):
-                continue
-            chosen_top = fenxing
-            break
-        if chosen_top is None:
-            return False
-        try:
-            rising_bi = Bi.from_fenxing(chosen_bottom, chosen_top, all_klines, prefix_merged, prefix_gap)
-        except ValueError:
-            return False
-        if not rising_bi.is_finished or not rising_bi.is_kline_count_enough():
-            return False
-        opening_bi = _make_opening_bi(
-            chosen_bottom.low_idx,
-            float(high_prices[0]),
-            float(chosen_bottom.low_price),
-            BiDirectionType.DOWN,
-            chosen_bottom,
-        )
-        if opening_bi is None:
-            return False
-        kept = _bis_after_endpoint(chosen_top, chosen_top.high_idx, opening_direction=BiDirectionType.UP)
-        rebuilt = [opening_bi, rising_bi, *kept]
-        if not _opening_bi_sequence_is_valid(rebuilt):
-            return False
-        bi_list[:] = rebuilt
-        return True
-
-    def _make_opening_bi(end_idx, start_price, end_price, bi_type, right_fx):
-        opening_bi = endpoint_ops.make_fake_front(
-            start_idx=0,
-            end_idx=end_idx,
-            bi_type=bi_type,
-            start_price=start_price,
-            end_price=end_price,
-            right_fx=right_fx,
-            end_time=right_fx.trade_datetime,
-        )
-        if not _opening_span_is_long_enough(0, end_idx):
-            return None
-        return opening_bi
-
-    def _bis_after_endpoint(endpoint_fx, end_idx, opening_direction):
-        kept = []
-        later_bis = [existing_bi for existing_bi in bi_list if existing_bi.end_idx > end_idx]
-        if not later_bis:
-            return kept
-        nxt = later_bis[0]
-        if (
-            isinstance(nxt, Bi)
-            and nxt.left_fx is not None
-            and nxt.start_idx >= end_idx
-            and nxt.bi_type != opening_direction
-        ):
-            return later_bis
-        anchor = next(
-            (
-                existing_bi for existing_bi in later_bis
-                if isinstance(existing_bi, Bi)
-                and existing_bi.left_fx is not None
-                and existing_bi.left_fx.trade_datetime > endpoint_fx.trade_datetime
-            ),
-            None,
-        )
-        if anchor is not None and anchor.bi_type == opening_direction:
-            try:
-                connector = Bi.from_fenxing(endpoint_fx, anchor.left_fx, all_klines, prefix_merged, prefix_gap)
-            except ValueError:
-                connector = None
-            if (
-                connector is not None
-                and connector.is_finished
-                and connector.is_kline_count_enough()
-                and connector.bi_type != opening_direction
-            ):
-                kept.append(connector)
-        if anchor is not None:
-            kept.extend(later_bis[later_bis.index(anchor):])
-        return kept
-
-    def _install_opening_bi(chosen_top, opening_direction):
-        end_idx = chosen_top.high_idx
-        opening_bi = _make_opening_bi(
-            end_idx,
-            float(low_prices[0]),
-            float(chosen_top.high_price),
-            opening_direction,
-            chosen_top,
-        )
-        if opening_bi is None:
-            return False
-        kept = _bis_after_endpoint(chosen_top, end_idx, opening_direction)
-        rebuilt = [opening_bi, *kept]
-        if not _opening_bi_sequence_is_valid(rebuilt):
-            return False
-        bi_list[:] = rebuilt
-        return True
-
-    def _opening_bi_sequence_is_valid(sequence):
-        for index, bi in enumerate(sequence):
-            if bi.origin_kline_count < 5:
-                return False
-            if index == 0:
-                continue
-            previous = sequence[index - 1]
-            if previous.bi_type == bi.bi_type:
-                return False
-            if isinstance(bi, Bi) and bi.left_fx is not None:
-                if bi.left_fx.trade_datetime != previous.end_time:
-                    return False
-                if bi.right_fx is None:
-                    return False
-                high_start = bi.left_fx.high_idx if bi.is_up() else bi.left_fx.low_idx
-                covered_high = float(np.max(high_prices[high_start:bi.end_idx + 1]))
-                covered_low = float(np.min(low_prices[high_start:bi.end_idx + 1]))
-                if covered_high > max(bi.left_fx.high_price, bi.right_fx.high_price) + 1e-8:
-                    return False
-                if covered_low < min(bi.left_fx.low_price, bi.right_fx.low_price) - 1e-8:
-                    return False
-            elif bi.start_time != previous.end_time:
-                return False
-        return True
 
     bi_list = list(bi_finish_deque)
-    prepend_initial_extreme_bi()
+    _prepend_initial_extreme_bi(bi_list, low_prices, high_prices, endpoint_ops)
     _repair_initial_fake_front_bi(
         bi_list,
         fenxing_list,
@@ -1873,9 +2085,13 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         prefix_gap,
         endpoint_ops,
     )
-    while split_bi_by_internal_extreme():
+    while _split_bi_by_internal_extreme(
+        bi_list, fenxing_list, fenxing_mid_indices, all_klines, prefix_merged, prefix_gap
+    ):
         pass
-    prepend_opening_up_bi_to_qualifying_top()
+    _prepend_opening_up_bi_to_qualifying_top(
+        bi_list, fenxing_list, all_klines, high_prices, low_prices, prefix_merged, prefix_gap, endpoint_ops
+    )
 
 
     if not bi_lm.is_finished:
@@ -1896,181 +2112,10 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         prefix_gap,
     )
 
-    def supplement_last_fake_bi_with_reverse_bi():
-        nonlocal bi_list
-        if not bi_list or not isinstance(bi_list[-1], FakeBiLast):
-            return
 
-        tail_bi = bi_list[-1]
-        if bi_list[:-1]:
-            return
-
-        current_fx = tail_bi.left_fx
-        if current_fx is None or current_fx.idx is None or current_fx.idx < 2:
-            return
-
-        supplemented_bis = []
-
-        def find_complete_reverse_bi():
-            for candidate_idx in range(current_fx.idx - 1, -1, -1):
-                candidate_fx = fenxing_list[candidate_idx]
-                if candidate_fx.fenxing_type == current_fx.fenxing_type:
-                    continue
-
-                try:
-                    candidate_bi = Bi.from_fenxing(
-                        candidate_fx,
-                        current_fx,
-                        all_klines,
-                        prefix_merged,
-                        prefix_gap,
-                    )
-                except ValueError:
-                    continue
-
-                if candidate_bi.is_kline_count_enough() and repair_ops.candidate_extremes_are_valid(candidate_bi):
-                    return candidate_bi
-
-                extended_bi = make_extended_front_bi(candidate_bi)
-                if extended_bi is not None:
-                    return extended_bi
-
-            return None
-
-        def find_reverse_bi_chain():
-            reverse_bi = find_complete_reverse_bi()
-            if reverse_bi is None:
-                return None
-
-            previous_fx = reverse_bi.left_fx
-            for candidate_idx in range(previous_fx.idx - 1, -1, -1):
-                candidate_fx = fenxing_list[candidate_idx]
-                if candidate_fx.fenxing_type == previous_fx.fenxing_type:
-                    continue
-                previous_bi_is_up = previous_fx.is_top()
-                if previous_bi_is_up == reverse_bi.is_up():
-                    continue
-
-                try:
-                    previous_bi = Bi.from_fenxing(
-                        candidate_fx,
-                        previous_fx,
-                        all_klines,
-                        prefix_merged,
-                        prefix_gap,
-                    )
-                except ValueError:
-                    continue
-
-                front_bi = make_extended_front_bi(previous_bi)
-                if front_bi is not None:
-                    return [front_bi, reverse_bi]
-
-            return [reverse_bi]
-
-        def make_front_reverse_bi():
-            if current_fx.is_top():
-                reverse_bi_type = BiDirectionType.DOWN
-                end_idx = current_fx.high_idx
-                end_price = current_fx.high_price
-                start_idx = int(np.argmax(high_prices[:end_idx]))
-                start_price = high_prices[start_idx]
-            else:
-                reverse_bi_type = BiDirectionType.UP
-                end_idx = current_fx.low_idx
-                end_price = current_fx.low_price
-                start_idx = int(np.argmin(low_prices[:end_idx]))
-                start_price = low_prices[start_idx]
-
-            if start_idx >= end_idx:
-                return None
-
-            fake_front_bi = endpoint_ops.make_fake_front(
-                start_idx=start_idx,
-                end_idx=end_idx,
-                bi_type=reverse_bi_type,
-                start_price=start_price,
-                end_price=end_price,
-                left_fx=current_fx,
-                right_fx=current_fx,
-                end_time=current_fx.trade_datetime,
-            )
-
-            if not fake_front_bi.is_kline_count_enough():
-                return None
-            if not repair_ops.candidate_extremes_are_valid(fake_front_bi):
-                return None
-            return fake_front_bi
-
-        def make_extended_front_bi(candidate_bi):
-            if candidate_bi.is_down():
-                start_idx = int(np.argmax(high_prices[:candidate_bi.start_idx]))
-                start_price = high_prices[start_idx]
-                if start_price < candidate_bi.start_price:
-                    return None
-            else:
-                start_idx = int(np.argmin(low_prices[:candidate_bi.start_idx]))
-                start_price = low_prices[start_idx]
-                if start_price > candidate_bi.start_price:
-                    return None
-
-            count_end_idx = candidate_bi.left_fx.end_idx_list[0]
-            extended_bi = endpoint_ops.make_fake_front(
-                start_idx=start_idx,
-                end_idx=candidate_bi.end_idx,
-                bi_type=candidate_bi.bi_type,
-                start_price=start_price,
-                end_price=candidate_bi.end_price,
-                left_fx=candidate_bi.left_fx,
-                right_fx=candidate_bi.right_fx,
-                end_time=candidate_bi.end_time,
-                real_origin_kline_count=(
-                    candidate_bi.real_origin_kline_count
-                    + candidate_bi.start_idx
-                    - start_idx
-                ),
-                real_merged_kline_count=(
-                    candidate_bi.real_merged_kline_count
-                    + prefix_merged[count_end_idx + 1]
-                    - prefix_merged[candidate_bi.start_idx]
-                ),
-                has_gap_count=(
-                    candidate_bi.has_gap_count
-                    + prefix_gap[count_end_idx + 1]
-                    - prefix_gap[candidate_bi.start_idx + 1]
-                ),
-            )
-
-            if not extended_bi.is_kline_count_enough():
-                return None
-            if not repair_ops.candidate_extremes_are_valid(extended_bi):
-                return None
-            return extended_bi
-
-        while current_fx.idx > 0:
-            reverse_bis = find_reverse_bi_chain()
-
-            if reverse_bis is None:
-                reverse_bi = make_front_reverse_bi()
-                reverse_bis = [reverse_bi] if reverse_bi is not None else None
-
-            if reverse_bis is None:
-                break
-
-            if len(reverse_bis) > 1:
-                supplemented_bis = reverse_bis
-            else:
-                supplemented_bis = [*reverse_bis, *supplemented_bis]
-            if isinstance(reverse_bis[0], FakeBiFront):
-                break
-            current_fx = reverse_bis[0].left_fx
-
-        if supplemented_bis:
-            bi_list = [*supplemented_bis, tail_bi]
-
-        bi_list = repair_ops.merge_front_and_tail_into_one_bi(bi_list)
-
-    supplement_last_fake_bi_with_reverse_bi()
+    bi_list = _supplement_last_fake_bi_with_reverse_bi(
+        bi_list, fenxing_list, all_klines, high_prices, low_prices, prefix_merged, prefix_gap, endpoint_ops, repair_ops
+    )
 
     ####################### 检查
     # 检查笔的极值在两端
