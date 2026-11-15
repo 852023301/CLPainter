@@ -1150,3 +1150,13 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - `generate_bi` 典型提升约 2~12 倍。
 - p12 全量 dump：成功 38855，失败 0。
 - v5 与 p12 snapshot 完全一致。
+
+## 2026-11-15 风险修复
+
+- 将 `fenxing.py`、`merged_kline.py`、`tezhengxulie.py` 的 assert 改为显式 RuntimeError。
+- 确认参考缓存加载失败会记录 warning。
+- 确认白名单匹配失败会记录 warning。
+- 确认当前后处理顺序为 reconcile -> promote -> apply -> search。
+- p12 全量 dump：成功 38855，失败 0。
+- 测试：`87 passed, 0 skipped`。
+- v5 与 p12 snapshot 完全一致。

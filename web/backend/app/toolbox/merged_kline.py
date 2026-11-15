@@ -213,4 +213,5 @@ def find_top_bottom(all_klines: List[MergedKLine]) -> None:
 
     lst = [i for i in all_klines if i.is_top_bottom != MergedKLineType.NORMAL]
 
-    assert all(lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0 for i in range(len(lst) - 1)), "K线的顶底分型标志不满足交替出现的要求"
+    if not all(lst[i].is_top_bottom + lst[i + 1].is_top_bottom == 0 for i in range(len(lst) - 1)):
+        raise RuntimeError("K线的顶底分型标志不满足交替出现的要求")

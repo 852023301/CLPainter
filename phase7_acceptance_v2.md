@@ -1374,3 +1374,58 @@ p12 全量 dump：成功 38855，失败 0
 v5 与 p12 snapshot：SNAPSHOT_IDENTICAL
 sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 ```
+
+## 2026-11-15 风险修复
+
+### 风险二：生产代码中的 assert
+
+`xianduan.py` 和 `bi.py` 当前已无 assert。
+
+其余核心文件中的 assert 已改为显式 RuntimeError：
+
+```text
+fenxing.py
+merged_kline.py
+tezhengxulie.py
+```
+
+### 风险三：参考缓存加载失败静默吞掉
+
+已确认 `datacube.py` 当前会记录 warning：
+
+```text
+读取参考线段缓存失败，退回无首段锚点
+```
+
+### 风险四：白名单精确日期匹配失败静默跳过
+
+已确认 `phase7_confirmed_splits.py` 当前会记录 warning：
+
+- 未匹配到线段；
+- 无法构造合法替换；
+- 与前一阶段不连续；
+- 与后一阶段不连续。
+
+### 风险五：后处理顺序
+
+当前实际顺序已经是：
+
+```text
+reconcile_first_segments
+-> promote_secondary_fakes
+-> apply_confirmed_splits
+-> search_legal_splits
+```
+
+因此不存在“确认拆分引入 fake 后被 promote 删除”的顺序问题。
+
+残留说明：确认拆分新引入的 fake 不会再次 promote，这是当前有意保留的行为。
+
+### 验证
+
+```text
+p12 全量 dump：成功 38855，失败 0
+测试：87 passed, 0 skipped
+v5 与 p12 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```

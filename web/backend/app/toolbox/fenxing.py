@@ -178,7 +178,8 @@ def generate_fenxing(all_klines: List[MergedKLine]) -> List[FenXing]:
 
         fenxing_list.append(fenxing)
 
-    assert np.all(np.diff([fx.is_top() for fx in fenxing_list]) != 0), "不满足分型交替的要求"
+    if not np.all(np.diff([fx.is_top() for fx in fenxing_list]) != 0):
+        raise RuntimeError("不满足分型交替的要求")
     for i in range(len(fenxing_list)):
         fenxing_list[i].idx = i
     # print(fenxing_list)

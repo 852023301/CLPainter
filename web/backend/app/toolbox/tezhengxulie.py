@@ -206,7 +206,8 @@ def generate_te_zheng_xu_lie(bi_list: List[BiBase]) -> List[TeZhengXuLie]:
             )
 
     filtered = _filter_extreme_sequences(sequences)
-    assert np.all(np.diff([tzxl.is_top() for tzxl in filtered]) != 0), "不满足特征序列顶底交替的要求"
+    if not np.all(np.diff([tzxl.is_top() for tzxl in filtered]) != 0):
+        raise RuntimeError("不满足特征序列顶底交替的要求")
     for i, tzxl in enumerate(filtered):
         tzxl.idx = i
     return filtered
