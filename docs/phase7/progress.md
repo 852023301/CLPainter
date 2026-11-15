@@ -977,7 +977,7 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 
 - 补齐剩余 6 个人工确认拆分：`688611SH`、`300290SZ`、`002045SZ`、`600188SH`、`600502SH`、`600333SH`。
 - 新增 `postprocess_xian_duan()`，统一服务、对比脚本和审计脚本的线段后处理顺序。
-- 新增实验性通用合法拆分搜索 `phase7_legal_splits.py`，通过 `ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1` 启用，默认关闭。
+- 新增实验性通用合法拆分搜索 `legal_splits.py`，通过 `ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1` 启用，默认关闭。
 - 修正回归测试基线：S15 数据日期推进；S24/S27 新 fake 首段；S25 尾部 real/fake 归属。
 - 测试结果：`82 passed, 4 skipped`。
 - 已启动测试环境全量 dump，输出到 `/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated`。
@@ -1019,11 +1019,11 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - v5 相对 v4 仅变化 9 个案例：1 first_only / 8 body_changed。
 - 纯算法对比：`xd_changed=3612`，`first_only=3568`，`body_changed=44`，`bi_changed=0`。
 - v5 审计：`penetrates=2670, end=1985, below=865, exceeds=575, start=501, later=193`。
-- v5 报告已生成，冻结信息写入 `phase7_v5_freeze.json`。
+- v5 报告已生成，冻结信息写入 `v5_freeze.json`。
 
 ## 2026-11-14 测试容器切换到 v5
 
-- 同步容器代码：`datacube.py`、`phase7_confirmed_splits.py`、`phase7_legal_splits.py`、`settings.py`。
+- 同步容器代码：`datacube.py`、`confirmed_splits.py`、`legal_splits.py`、`settings.py`。
 - 容器备份：`/root/CLPainter_backup_20261114_203111`。
 - 容器实际配置文件为 `/root/CLPainter/web/backend/.env`，已指向 `dump_v5/curated`。
 - gunicorn 平滑重启，启动日志确认 `Environment: test`、`Cache Dir: dump_v5/curated`。
@@ -1113,7 +1113,7 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 
 ## 2026-11-15 决策：保留白名单
 
-- 保留 `phase7_confirmed_splits.py`，不删除。
+- 保留 `confirmed_splits.py`，不删除。
 - 通用合法拆分搜索继续作为实验能力，默认关闭。
 - 原因：多数人工确认案例存在多个合法候选，通用化需要额外评分器，复杂度和回归风险过高。
 
@@ -1125,7 +1125,7 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 测试：`83 passed, 4 skipped`。
 - 删除 `dump_shadow`、`dump_p2~p12`、`instrument_p9.db`、`instrument_p11.db`，释放约 780G。
 - 非 Phase 7 的 docker-compose / deploy / .env 改动保持不动。
-- 生产交接文档：`phase7_handoff.md`。
+- 生产交接文档：`handoff.md`。
 
 - P4 抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟通过。
 
@@ -1209,7 +1209,7 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 验收范围：v5 全量缓存 + v5 `first_only` 全量报告。
 - v5 状态更新为 `accepted`。
 - 保留 v4 回滚目录：`dump/curated`、`dump/chart_payload`。
-- 生产部署仍为手动执行，按 `phase7_handoff.md` 进行。
+- 生产部署仍为手动执行，按 `handoff.md` 进行。
 
 ## 2026-11-15 测试目录收尾
 
@@ -1225,19 +1225,19 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 ## 2026-11-15 CLPainter 项目内部整理
 
 - 保留运行时与测试：
-  `web/backend/app/toolbox/phase7_confirmed_splits.py`、
-  `web/backend/app/toolbox/phase7_legal_splits.py`、
-  `web/backend/tests/test_phase7_confirmed_splits.py`、
-  `web/backend/tests/test_phase7_legal_splits.py`。
-- 归档维护脚本到 `web/backend/scripts/phase7_archive/`：
+  `web/backend/app/toolbox/confirmed_splits.py`、
+  `web/backend/app/toolbox/legal_splits.py`、
+  `web/backend/tests/test_confirmed_splits.py`、
+  `web/backend/tests/test_legal_splits.py`。
+- 归档维护脚本到 `web/backend/scripts/archive/phase7/`：
   `phase7_classify_changes.py`、`phase7_invariant_audit.py`、
   `phase7_parallel_compare.py`、`phase7_visual_report.py`。
 - 删除全部可视化报告、分类目录、cases JSONL、summary JSON、CSV 和
   `run_phase7_after_delay.sh`。
-- 保留文档与冻结清单：`phase7_acceptance_v2.md`、`phase7_handoff.md`、
-  `phase7_v5_freeze.json`、`CODE_CHANGE_STANDARD.md`、`AGENTS.md`、
-  `phase7_progress.md`；`phase7_production_deploy.md` 已合并到 `phase7_handoff.md` 并删除。
-- `phase7_v5_freeze.json` 在删除清单中也出现过，但按保留清单处理，未删除。
+- 保留文档与冻结清单：`acceptance.md`、`handoff.md`、
+  `v5_freeze.json`、`CODE_CHANGE_STANDARD.md`、`AGENTS.md`、
+  `progress.md`；`phase7_production_deploy.md` 已合并到 `handoff.md` 并删除。
+- `v5_freeze.json` 在删除清单中也出现过，但按保留清单处理，未删除。
 
 ## 2026-11-15 归档剩余一次性脚本
 
@@ -1245,9 +1245,22 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - `phase7_gray_rollout.py`
 - `phase7_spot_check.py`
 
-以上脚本已归档到 `web/backend/scripts/phase7_archive/`。
+以上脚本已归档到 `web/backend/scripts/archive/phase7/`。
 
 ## 2026-11-15 合并生产部署文档
 
-- `phase7_production_deploy.md` 的前置条件和导入路径注意事项已合并到 `phase7_handoff.md`。
+- `phase7_production_deploy.md` 的前置条件和导入路径注意事项已合并到 `handoff.md`。
 - `phase7_production_deploy.md` 已删除。
+
+## 2026-11-16 运行时去 phase7 前缀与目录整理
+
+- `phase7_confirmed_splits.py` 改名为 `confirmed_splits.py`。
+- `phase7_legal_splits.py` 改名为 `legal_splits.py`。
+- 对应测试改名为 `test_confirmed_splits.py`、`test_legal_splits.py`。
+- `datacube.py` 导入路径同步更新。
+- 文档移动到 `docs/phase7/`：`acceptance.md`、`handoff.md`、`progress.md`、`v5_freeze.json`。
+- 归档脚本移动到 `web/backend/scripts/archive/phase7/`。
+- 全量 dump：成功 38855，失败 0。
+- 与 v5 基线 snapshot：`changed: 0`。
+- 测试：`87 passed, 0 skipped`。
+- 测试容器已同步新模块名并平滑重启，API 冒烟通过。

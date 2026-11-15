@@ -25,10 +25,10 @@ from CLPainter.web.backend.app.toolbox.xianduan import (
     XianDuan,
     XianDuanBase,
 )
-from CLPainter.web.backend.app.toolbox.phase7_confirmed_splits import (
+from CLPainter.web.backend.app.toolbox.confirmed_splits import (
     apply_confirmed_splits,
 )
-from CLPainter.web.backend.app.toolbox.phase7_legal_splits import (
+from CLPainter.web.backend.app.toolbox.legal_splits import (
     search_legal_splits,
 )
 from CLPainter.web.backend.app.toolbox.merged_kline import generate_merge_klines, find_top_bottom, MergedKLine

@@ -28,8 +28,8 @@
 web/backend/app/toolbox/bi.py
 web/backend/app/toolbox/xianduan.py
 web/backend/app/toolbox/datacube.py
-web/backend/app/toolbox/phase7_confirmed_splits.py
-web/backend/app/toolbox/phase7_legal_splits.py
+web/backend/app/toolbox/confirmed_splits.py
+web/backend/app/toolbox/legal_splits.py
 web/backend/app/_config/settings.py
 web/backend/app/db/base.py
 web/backend/app/main.py
@@ -52,7 +52,7 @@ app...
 如需保留审计能力，可同步：
 
 ```text
-web/backend/scripts/phase7_archive/phase7_*.py
+web/backend/scripts/archive/phase7/phase7_*.py
 web/backend/tests/
 ```
 

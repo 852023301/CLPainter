@@ -9,7 +9,7 @@ from CLPainter.web.backend.app.toolbox.datacube import (
     CACHE_DUMP_DIR,
     load_data_cache_pickle,
 )
-from CLPainter.web.backend.app.toolbox.phase7_legal_splits import (
+from CLPainter.web.backend.app.toolbox.legal_splits import (
     _violations,
     find_legal_split,
     search_legal_splits,

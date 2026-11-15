@@ -12,7 +12,7 @@ from CLPainter.web.backend.app.toolbox.datacube import (
     CACHE_DUMP_DIR,
     load_data_cache_pickle,
 )
-from CLPainter.web.backend.app.toolbox.phase7_confirmed_splits import (
+from CLPainter.web.backend.app.toolbox.confirmed_splits import (
     apply_confirmed_splits,
 )
 

@@ -88,7 +88,7 @@ spot check failures: 0
 - 3267 个首段变化已按你的规则推广；
 - 336 个 body_changed 案例需要单独复核：
   `http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/`
-- 确认后再按 `phase7_handoff.md` 协调生产更新。
+- 确认后再按 `handoff.md` 协调生产更新。
 
 ## 右侧特征序列第 4 笔及以后
 
@@ -198,7 +198,7 @@ docker exec CLPainter bash -lc 'kill -HUP <gunicorn-master-pid>'
 ## 生产部署清单
 
 ```text
-/home/wjl/TechFinWorkSpace_v2/CLPainter/phase7_handoff.md
+/home/wjl/TechFinWorkSpace_v2/CLPainter/docs/phase7/handoff.md
 ```
 
 ## 报告访问
@@ -422,14 +422,14 @@ http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/
 实现位置：
 
 ```text
-web/backend/app/toolbox/phase7_confirmed_splits.py
+web/backend/app/toolbox/confirmed_splits.py
 ```
 
 ## 2026-11-14 续接：剩余确认拆分与统一后处理
 
 ### 已应用剩余人工确认拆分
 
-在 `web/backend/app/toolbox/phase7_confirmed_splits.py` 中新增：
+在 `web/backend/app/toolbox/confirmed_splits.py` 中新增：
 
 - `688611SH`：fake `2021-05-10 ~ 2021-11-23`，后接两段真实线段；
 - `300290SZ`：从 `2013-06-13` 开始四段真实线段，删除前置 fake；
@@ -459,7 +459,7 @@ reconcile_first_segments
 新增实验模块：
 
 ```text
-web/backend/app/toolbox/phase7_legal_splits.py
+web/backend/app/toolbox/legal_splits.py
 ```
 
 能力：
@@ -485,8 +485,8 @@ ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1
 
 新增测试：
 
-- `test_phase7_confirmed_splits.py`
-- `test_phase7_legal_splits.py`
+- `test_confirmed_splits.py`
+- `test_legal_splits.py`
 
 ## 2026-11-14 全量验证结果（最新）
 
@@ -609,7 +609,7 @@ http://172.17.1.5:15003/phase7_visual_report_v4_first_only/
 测试容器当前直接读取新缓存，API 冒烟已通过。但容器内 Python 代码尚未同步本轮新增的：
 
 ```text
-web/backend/app/toolbox/phase7_legal_splits.py
+web/backend/app/toolbox/legal_splits.py
 datacube.postprocess_xian_duan
 ```
 
@@ -744,7 +744,7 @@ http://172.17.1.5:15003/phase7_visual_report_shadow_legal_split/
 - 首尾连续；
 - 笔索引连续。
 
-已在 `phase7_confirmed_splits.py` 中增加 `300327SZ` 的显式拆分，并重新生成 shadow 单标的缓存和报告：
+已在 `confirmed_splits.py` 中增加 `300327SZ` 的显式拆分，并重新生成 shadow 单标的缓存和报告：
 
 ```text
 http://172.17.1.5:15003/phase7_visual_report_shadow_legal_split/case_0005.html
@@ -825,7 +825,7 @@ http://172.17.1.5:15003/phase7_visual_report_v5_later_exceeds_changed/
 v5 冻结信息：
 
 ```text
-/home/wjl/TechFinWorkSpace_v2/CLPainter/phase7_v5_freeze.json
+/home/wjl/TechFinWorkSpace_v2/CLPainter/docs/phase7/v5_freeze.json
 ```
 
 ## 2026-11-14 测试容器切换到 v5
@@ -834,8 +834,8 @@ v5 冻结信息：
 
 ```text
 /root/CLPainter/web/backend/app/toolbox/datacube.py
-/root/CLPainter/web/backend/app/toolbox/phase7_confirmed_splits.py
-/root/CLPainter/web/backend/app/toolbox/phase7_legal_splits.py
+/root/CLPainter/web/backend/app/toolbox/confirmed_splits.py
+/root/CLPainter/web/backend/app/toolbox/legal_splits.py
 /root/CLPainter/web/backend/app/_config/settings.py
 ```
 
@@ -1178,7 +1178,7 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 
 ## 2026-11-15 决策：保留人工确认白名单
 
-结论：**保留 `phase7_confirmed_splits.py` 白名单，不在本阶段删除。**
+结论：**保留 `confirmed_splits.py` 白名单，不在本阶段删除。**
 
 原因：
 
@@ -1191,7 +1191,7 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 因此：
 
 - 白名单继续作为验收锚点和运行时显式配置；
-- `phase7_legal_splits.py` 继续作为实验能力，默认关闭；
+- `legal_splits.py` 继续作为实验能力，默认关闭；
 - 通用搜索不替代白名单。
 
 ## 2026-11-15 P4：笔 fake 尾段构建抽取
@@ -1311,7 +1311,7 @@ make_fake_last_bi_v2()
 
 ### 风险 4：白名单精确日期匹配静默跳过
 
-`phase7_confirmed_splits.py` 在以下情况记录 warning：
+`confirmed_splits.py` 在以下情况记录 warning：
 
 - 确认拆分未匹配到线段；
 - 无法构造合法替换；
@@ -1399,7 +1399,7 @@ tezhengxulie.py
 
 ### 风险四：白名单精确日期匹配失败静默跳过
 
-已确认 `phase7_confirmed_splits.py` 当前会记录 warning：
+已确认 `confirmed_splits.py` 当前会记录 warning：
 
 - 未匹配到线段；
 - 无法构造合法替换；
@@ -1460,7 +1460,7 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 验收范围：v5 全量缓存 + v5 `first_only` 全量报告。
 - 冻结状态：`accepted`。
 - 回滚版本：`dump/curated`、`dump/chart_payload`（v4）。
-- 生产部署：待手动执行，依据 `phase7_handoff.md`。
+- 生产部署：待手动执行，依据 `handoff.md`。
 
 ## 2026-11-15 测试目录收尾
 
@@ -1473,10 +1473,10 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 
 ## 2026-11-15 CLPainter 项目内部整理
 
-- 4 个维护脚本已归档到 `web/backend/scripts/phase7_archive/`。
+- 4 个维护脚本已归档到 `web/backend/scripts/archive/phase7/`。
 - 生成物（可视化报告、分类目录、JSONL、summary、CSV、延迟脚本）已删除。
-- 运行时 `phase7_confirmed_splits.py`、`phase7_legal_splits.py` 及对应测试保留。
-- 文档与 `phase7_v5_freeze.json` 保留。
+- 运行时 `confirmed_splits.py`、`legal_splits.py` 及对应测试保留。
+- 文档与 `v5_freeze.json` 保留。
 
 ## 2026-11-15 归档剩余一次性脚本
 
@@ -1484,9 +1484,17 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - `phase7_gray_rollout.py`
 - `phase7_spot_check.py`
 
-以上脚本已归档到 `web/backend/scripts/phase7_archive/`。
+以上脚本已归档到 `web/backend/scripts/archive/phase7/`。
 
 ## 2026-11-15 合并生产部署文档
 
-- `phase7_production_deploy.md` 中仍有效的前置条件和导入路径注意事项已合并到 `phase7_handoff.md`。
-- `phase7_production_deploy.md` 已删除，后续只保留 `phase7_handoff.md` 作为唯一生产交接文档。
+- `phase7_production_deploy.md` 中仍有效的前置条件和导入路径注意事项已合并到 `handoff.md`。
+- `phase7_production_deploy.md` 已删除，后续只保留 `handoff.md` 作为唯一生产交接文档。
+
+## 2026-11-16 运行时去 phase7 前缀与目录整理
+
+- 运行时模块改名为 `confirmed_splits.py`、`legal_splits.py`。
+- 测试改名为 `test_confirmed_splits.py`、`test_legal_splits.py`。
+- 文档移动到 `docs/phase7/`。
+- 归档脚本移动到 `web/backend/scripts/archive/phase7/`。
+- 全量 dump 38855/0，snapshot changed 0，测试 87 passed。
