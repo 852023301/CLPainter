@@ -2,6 +2,13 @@
 
 > 当前环境是测试环境，本文档只作为生产环境手动部署依据，不在当前环境执行生产操作。
 
+## 0. 生产前置条件
+
+- 测试环境已完成人工验收；
+- 生产 `data_set` 的 raw 数据已更新到目标日期；
+- 已确认生产容器内代码导入方式是 `app...` 还是 `CLPainter...`；
+- 已准备回滚窗口。
+
 ## 1. 当前测试环境状态
 
 - 测试数据：`/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump`
@@ -27,6 +34,20 @@ web/backend/app/_config/settings.py
 web/backend/app/db/base.py
 web/backend/app/main.py
 ```
+
+注意：如果生产容器使用 `app...` 导入，需要把代码中的：
+
+```text
+CLPainter.web.backend.app...
+```
+
+替换为：
+
+```text
+app...
+```
+
+否则 pickle 模块路径会不一致，容器无法反序列化。
 
 如需保留审计能力，可同步：
 

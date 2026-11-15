@@ -88,7 +88,7 @@ spot check failures: 0
 - 3267 个首段变化已按你的规则推广；
 - 336 个 body_changed 案例需要单独复核：
   `http://172.17.1.5:15003/phase7_visual_report_v3_body_changed/`
-- 确认后再按 `phase7_production_deploy.md` 协调生产更新。
+- 确认后再按 `phase7_handoff.md` 协调生产更新。
 
 ## 右侧特征序列第 4 笔及以后
 
@@ -198,7 +198,7 @@ docker exec CLPainter bash -lc 'kill -HUP <gunicorn-master-pid>'
 ## 生产部署清单
 
 ```text
-/home/wjl/TechFinWorkSpace_v2/CLPainter/phase7_production_deploy.md
+/home/wjl/TechFinWorkSpace_v2/CLPainter/phase7_handoff.md
 ```
 
 ## 报告访问
@@ -1485,3 +1485,8 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - `phase7_spot_check.py`
 
 以上脚本已归档到 `web/backend/scripts/phase7_archive/`。
+
+## 2026-11-15 合并生产部署文档
+
+- `phase7_production_deploy.md` 中仍有效的前置条件和导入路径注意事项已合并到 `phase7_handoff.md`。
+- `phase7_production_deploy.md` 已删除，后续只保留 `phase7_handoff.md` 作为唯一生产交接文档。
