@@ -19,10 +19,14 @@ from CLPainter.web.backend.tests.regression_cases import DATA_QUALITY_CASES
 
 DATA_ROOT = Path(settings.DATA_DIR)
 CACHE_ROOT = Path(CACHE_DUMP_DIR)
-pytestmark = pytest.mark.skipif(
-    not DATA_ROOT.exists() or not CACHE_ROOT.exists(),
-    reason=f"测试数据目录不存在: {DATA_ROOT} / {CACHE_ROOT}",
-)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_test_data():
+    """数据质量回归必须使用真实测试数据，缺失时明确失败而不是 skip。"""
+    missing = [str(path) for path in (DATA_ROOT, CACHE_ROOT) if not path.exists()]
+    if missing:
+        pytest.fail(f"数据质量回归缺少测试数据目录: {', '.join(missing)}")
 
 
 def _source_path(case) -> Path:

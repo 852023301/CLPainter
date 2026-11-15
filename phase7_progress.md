@@ -1160,3 +1160,6 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - p12 全量 dump：成功 38855，失败 0。
 - 测试：`87 passed, 0 skipped`。
 - v5 与 p12 snapshot 完全一致。
+
+- 数据质量测试移除 skipif，数据缺失时改为明确失败。
+- 当前测试：`87 passed, 0 skipped`。

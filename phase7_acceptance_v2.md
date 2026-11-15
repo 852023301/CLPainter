@@ -1429,3 +1429,20 @@ p12 全量 dump：成功 38855，失败 0
 v5 与 p12 snapshot：SNAPSHOT_IDENTICAL
 sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 ```
+
+### 数据质量测试不再 skip
+
+`test_data_quality_regressions.py` 已移除数据目录缺失时的 skip 行为。
+
+现在：
+
+```text
+数据存在 -> 正常执行
+数据缺失 -> pytest.fail，明确失败
+```
+
+当前结果：
+
+```text
+87 passed, 0 skipped
+```
