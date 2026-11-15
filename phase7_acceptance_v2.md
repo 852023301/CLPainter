@@ -1477,3 +1477,11 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 生成物（可视化报告、分类目录、JSONL、summary、CSV、延迟脚本）已删除。
 - 运行时 `phase7_confirmed_splits.py`、`phase7_legal_splits.py` 及对应测试保留。
 - 文档与 `phase7_v5_freeze.json` 保留。
+
+## 2026-11-15 归档剩余一次性脚本
+
+- `phase7_first_segment_check.py`
+- `phase7_gray_rollout.py`
+- `phase7_spot_check.py`
+
+以上脚本已归档到 `web/backend/scripts/phase7_archive/`。

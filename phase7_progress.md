@@ -1238,3 +1238,11 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
   `phase7_v5_freeze.json`、`CODE_CHANGE_STANDARD.md`、`AGENTS.md`、
   `phase7_progress.md`、`phase7_production_deploy.md`。
 - `phase7_v5_freeze.json` 在删除清单中也出现过，但按保留清单处理，未删除。
+
+## 2026-11-15 归档剩余一次性脚本
+
+- `phase7_first_segment_check.py`
+- `phase7_gray_rollout.py`
+- `phase7_spot_check.py`
+
+以上脚本已归档到 `web/backend/scripts/phase7_archive/`。
