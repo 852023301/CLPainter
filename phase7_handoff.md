@@ -58,7 +58,12 @@ ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1
 
 ## 4. 生产缓存生成
 
-不要直接复制宿主机生成的 pickle。生产容器内重新生成：
+不要直接复制宿主机生成的 pickle。生产容器内重新生成。
+
+> 如果生产 gunicorn 正在运行，SQLite 在网络文件系统上可能出现
+> `sqlite3.OperationalError: locking protocol`。建议先平滑停止服务，
+> 或使用 `sqlite3 instrument.db ".backup '/tmp/instrument_dump.db'"` 生成
+> 一份一致性副本，并把 `DB_PATH` 指向该副本后再执行全量 dump。
 
 ```bash
 cd /root/CLPainter
