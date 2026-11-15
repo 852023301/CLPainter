@@ -1193,3 +1193,65 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 白名单继续作为验收锚点和运行时显式配置；
 - `phase7_legal_splits.py` 继续作为实验能力，默认关闭；
 - 通用搜索不替代白名单。
+
+## 2026-11-15 P4：笔 fake 尾段构建抽取
+
+将 `generate_bi()` 内部的 `make_fake_last_bi_v2` 整段逻辑抽成模块级：
+
+```text
+_build_fake_last_bi()
+```
+
+验证：
+
+```text
+p10 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p10 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+结论：纯重构，行为零差异。
+
+## 2026-11-15 收尾清理
+
+已删除临时验证目录：
+
+```text
+dump_shadow
+dump_p2 ~ dump_p10
+instrument_p9.db
+```
+
+保留：
+
+```text
+/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump
+/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5
+```
+
+释放约 638G 临时空间。
+
+非 Phase 7 改动保持不动：
+
+```text
+.env
+README.md
+docker-compose.yml
+deploy/
+docker-compose.prod.yml
+docker-compose.test.yml
+```
+
+这些留给后续 docker-compose 做生产和测试的服务级隔离。
+
+### P4 容器同步
+
+抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+603306SH 1week stock 200
+300327SZ 1day stock 200
+688611SH 1day stock 200
+159577SZ 1day fund 200
+```

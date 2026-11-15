@@ -1116,3 +1116,15 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 保留 `phase7_confirmed_splits.py`，不删除。
 - 通用合法拆分搜索继续作为实验能力，默认关闭。
 - 原因：多数人工确认案例存在多个合法候选，通用化需要额外评分器，复杂度和回归风险过高。
+
+## 2026-11-15 P4 与收尾
+
+- 抽取 `_build_fake_last_bi()`，缩短 `generate_bi()`。
+- p10 全量 dump：成功 38855，失败 0。
+- v5 与 p10 snapshot 完全一致。
+- 测试：`83 passed, 4 skipped`。
+- 删除 `dump_shadow`、`dump_p2~p10`、`instrument_p9.db`，释放约 638G。
+- 非 Phase 7 的 docker-compose / deploy / .env 改动保持不动。
+- 生产交接文档：`phase7_handoff.md`。
+
+- P4 抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟通过。

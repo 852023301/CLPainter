@@ -930,6 +930,160 @@ class BiStateMachine:
                 )
 
 
+def _build_fake_last_bi(
+    bi_list: List[BiBase],
+    all_klines: List[MergedKLine],
+    high_prices: np.ndarray,
+    low_prices: np.ndarray,
+    ctx: BiContext,
+    endpoint_ops: BiEndpointOps,
+    prefix_merged: List[int],
+    prefix_gap: List[int],
+) -> None:
+    def make_fake_last_bi_v2():
+
+        nonlocal all_klines, bi_list
+        if len(bi_list) < 1:
+            return
+
+        last_bi: BiBase = bi_list[-1]
+        bi_is_up = last_bi.is_up()
+        origin_kline_index = last_bi.right_fx.high_idx if bi_is_up else last_bi.right_fx.low_idx
+        start_kline_idx = origin_kline_index
+        end_kline_idx = len(all_klines) - 1
+
+        if start_kline_idx < end_kline_idx:
+            fake_type = last_bi.bi_type
+            local_max_idx, local_min_idx = range_extreme_indices(
+                high_prices,
+                low_prices,
+                start_kline_idx,
+                end_kline_idx,
+            )
+
+            if bi_is_up and local_max_idx > start_kline_idx and high_prices[local_max_idx] > last_bi.high_price:
+                start_kline_idx = local_max_idx
+            elif not bi_is_up and local_min_idx > start_kline_idx and low_prices[local_min_idx] < last_bi.low_price:
+                start_kline_idx = local_min_idx
+
+            last_bi_extend = False
+            if start_kline_idx != origin_kline_index:
+                last_bi_extend = True
+
+            def _make_fake_last_bi_extend():
+                nonlocal last_bi, start_kline_idx
+                if isinstance(last_bi, FakeBiFront):
+                    if not last_bi_extend:
+                        return
+                    extend_dest_time = all_klines[start_kline_idx].trade_datetime
+                    new_fx = ctx.fenxing_by_time.get(extend_dest_time)
+                    if (
+                        new_fx is not None
+                        and last_bi.right_fx is not None
+                        and new_fx.idx <= last_bi.right_fx.idx
+                    ):
+                        new_fx = None
+                    end_price = float(high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx])
+                    new_bi = endpoint_ops.make_fake_front(
+                        start_idx=last_bi.start_idx,
+                        end_idx=start_kline_idx,
+                        bi_type=last_bi.bi_type,
+                        start_price=last_bi.start_price,
+                        end_price=end_price,
+                        right_fx=new_fx,
+                    )
+                    if new_bi.is_kline_count_enough():
+                        last_bi = new_bi
+                    return
+                extend_dest_time = all_klines[start_kline_idx].trade_datetime
+                new_fx = ctx.fenxing_by_time.get(extend_dest_time)
+                if (
+                    new_fx is not None
+                    and last_bi.right_fx is not None
+                    and new_fx.idx <= last_bi.right_fx.idx
+                ):
+                    new_fx = None
+
+                if last_bi_extend:
+                    if new_fx is not None:
+                        if last_bi.right_fx.fenxing_type != new_fx.fenxing_type:
+                            new_bi = Bi.from_fenxing(last_bi.right_fx, new_fx, all_klines, prefix_merged, prefix_gap)
+                        else:
+                            new_bi = FakeBiLast.from_fenxing(
+                                left_fx=last_bi.left_fx,
+                                right_fx_mid_idx=start_kline_idx,
+                                start_price=last_bi.start_price,
+                                end_price=high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx],
+                                bi_type=fake_type,
+                                all_klines=all_klines,
+                                prefix_merged=prefix_merged,
+                                prefix_gap=prefix_gap,
+                            )
+                    else:
+                        new_bi = FakeBiLast.from_fenxing(
+                            left_fx=last_bi.left_fx, right_fx_mid_idx=start_kline_idx,
+                            start_price=last_bi.start_price,
+                            end_price=high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx],
+                            bi_type=fake_type, all_klines=all_klines,
+                            prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+                    if new_bi.is_finished:
+                        last_bi = new_bi
+
+            def _make_fake_last_bi():
+                nonlocal last_bi, fake_last_bi
+                if last_bi.right_fx is None:
+                    return
+                fake_type = BiDirectionType.DOWN if last_bi.is_up() else BiDirectionType.UP
+                origin_kline_index = last_bi.right_fx.high_idx if last_bi.is_up() else last_bi.right_fx.low_idx
+                start_kline_idx = origin_kline_index
+                end_kline_idx = len(all_klines) - 1
+                if start_kline_idx >= end_kline_idx:
+                    return
+
+                local_max_idx, local_min_idx = range_extreme_indices(
+                    high_prices,
+                    low_prices,
+                    start_kline_idx,
+                    end_kline_idx,
+                )
+
+                if fake_type == BiDirectionType.UP and local_max_idx > start_kline_idx:
+                    start_kline_idx = local_max_idx
+                elif fake_type == BiDirectionType.DOWN and local_min_idx > start_kline_idx:
+                    start_kline_idx = local_min_idx
+
+                if start_kline_idx == origin_kline_index:
+                    return
+
+                new_bi = FakeBiLast.from_fenxing(
+                    left_fx=last_bi.right_fx, right_fx_mid_idx=start_kline_idx,
+                    start_price=last_bi.end_price,
+                    end_price=high_prices[start_kline_idx] if fake_type == BiDirectionType.UP else low_prices[
+                        start_kline_idx],
+                    bi_type=fake_type, all_klines=all_klines,
+                    prefix_merged=prefix_merged, prefix_gap=prefix_gap)
+
+                if new_bi.is_finished:
+                    fake_last_bi = new_bi
+
+            _make_fake_last_bi_extend()
+
+            if last_bi.is_finished:
+                bi_list[-1] = last_bi
+
+            if isinstance(last_bi, FakeBiLast):
+                return
+
+            fake_last_bi: Optional[FakeBiLast] = None
+
+            _make_fake_last_bi()
+
+            if fake_last_bi is not None and fake_last_bi.is_finished:
+                bi_list.append(fake_last_bi)
+
+    make_fake_last_bi_v2()
+
+
 def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBiLast]]:
     """
     根据分型列表划分缠论笔
@@ -1421,147 +1575,6 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     #                     bi_list.pop()
     #                 bi_list.append(fake_bi_mr)
 
-    def make_fake_last_bi_v2():
-
-        nonlocal all_klines, bi_list
-        if len(bi_list) < 1:
-            return
-
-        last_bi: BiBase = bi_list[-1]
-        bi_is_up = last_bi.is_up()
-        origin_kline_index = last_bi.right_fx.high_idx if bi_is_up else last_bi.right_fx.low_idx
-        start_kline_idx = origin_kline_index
-        end_kline_idx = len(all_klines) - 1
-
-        if start_kline_idx < end_kline_idx:
-            fake_type = last_bi.bi_type
-            local_max_idx, local_min_idx = range_extreme_indices(
-                high_prices,
-                low_prices,
-                start_kline_idx,
-                end_kline_idx,
-            )
-
-            if bi_is_up and local_max_idx > start_kline_idx and high_prices[local_max_idx] > last_bi.high_price:
-                start_kline_idx = local_max_idx
-            elif not bi_is_up and local_min_idx > start_kline_idx and low_prices[local_min_idx] < last_bi.low_price:
-                start_kline_idx = local_min_idx
-
-            last_bi_extend = False
-            if start_kline_idx != origin_kline_index:
-                last_bi_extend = True
-
-            def _make_fake_last_bi_extend():
-                nonlocal last_bi, start_kline_idx
-                if isinstance(last_bi, FakeBiFront):
-                    if not last_bi_extend:
-                        return
-                    extend_dest_time = all_klines[start_kline_idx].trade_datetime
-                    new_fx = ctx.fenxing_by_time.get(extend_dest_time)
-                    if (
-                        new_fx is not None
-                        and last_bi.right_fx is not None
-                        and new_fx.idx <= last_bi.right_fx.idx
-                    ):
-                        new_fx = None
-                    end_price = float(high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx])
-                    new_bi = endpoint_ops.make_fake_front(
-                        start_idx=last_bi.start_idx,
-                        end_idx=start_kline_idx,
-                        bi_type=last_bi.bi_type,
-                        start_price=last_bi.start_price,
-                        end_price=end_price,
-                        right_fx=new_fx,
-                    )
-                    if new_bi.is_kline_count_enough():
-                        last_bi = new_bi
-                    return
-                extend_dest_time = all_klines[start_kline_idx].trade_datetime
-                new_fx = ctx.fenxing_by_time.get(extend_dest_time)
-                if (
-                    new_fx is not None
-                    and last_bi.right_fx is not None
-                    and new_fx.idx <= last_bi.right_fx.idx
-                ):
-                    new_fx = None
-
-                if last_bi_extend:
-                    if new_fx is not None:
-                        if last_bi.right_fx.fenxing_type != new_fx.fenxing_type:
-                            new_bi = Bi.from_fenxing(last_bi.right_fx, new_fx, all_klines, prefix_merged, prefix_gap)
-                        else:
-                            new_bi = FakeBiLast.from_fenxing(
-                                left_fx=last_bi.left_fx,
-                                right_fx_mid_idx=start_kline_idx,
-                                start_price=last_bi.start_price,
-                                end_price=high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx],
-                                bi_type=fake_type,
-                                all_klines=all_klines,
-                                prefix_merged=prefix_merged,
-                                prefix_gap=prefix_gap,
-                            )
-                    else:
-                        new_bi = FakeBiLast.from_fenxing(
-                            left_fx=last_bi.left_fx, right_fx_mid_idx=start_kline_idx,
-                            start_price=last_bi.start_price,
-                            end_price=high_prices[start_kline_idx] if bi_is_up else low_prices[start_kline_idx],
-                            bi_type=fake_type, all_klines=all_klines,
-                            prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-                    if new_bi.is_finished:
-                        last_bi = new_bi
-
-            def _make_fake_last_bi():
-                nonlocal last_bi, fake_last_bi
-                if last_bi.right_fx is None:
-                    return
-                fake_type = BiDirectionType.DOWN if last_bi.is_up() else BiDirectionType.UP
-                origin_kline_index = last_bi.right_fx.high_idx if last_bi.is_up() else last_bi.right_fx.low_idx
-                start_kline_idx = origin_kline_index
-                end_kline_idx = len(all_klines) - 1
-                if start_kline_idx >= end_kline_idx:
-                    return
-
-                local_max_idx, local_min_idx = range_extreme_indices(
-                    high_prices,
-                    low_prices,
-                    start_kline_idx,
-                    end_kline_idx,
-                )
-
-                if fake_type == BiDirectionType.UP and local_max_idx > start_kline_idx:
-                    start_kline_idx = local_max_idx
-                elif fake_type == BiDirectionType.DOWN and local_min_idx > start_kline_idx:
-                    start_kline_idx = local_min_idx
-
-                if start_kline_idx == origin_kline_index:
-                    return
-
-                new_bi = FakeBiLast.from_fenxing(
-                    left_fx=last_bi.right_fx, right_fx_mid_idx=start_kline_idx,
-                    start_price=last_bi.end_price,
-                    end_price=high_prices[start_kline_idx] if fake_type == BiDirectionType.UP else low_prices[
-                        start_kline_idx],
-                    bi_type=fake_type, all_klines=all_klines,
-                    prefix_merged=prefix_merged, prefix_gap=prefix_gap)
-
-                if new_bi.is_finished:
-                    fake_last_bi = new_bi
-
-            _make_fake_last_bi_extend()
-
-            if last_bi.is_finished:
-                bi_list[-1] = last_bi
-
-            if isinstance(last_bi, FakeBiLast):
-                return
-
-            fake_last_bi: Optional[FakeBiLast] = None
-
-            _make_fake_last_bi()
-
-            if fake_last_bi is not None and fake_last_bi.is_finished:
-                bi_list.append(fake_last_bi)
-
     make_fake_front_bi()
 
     # 最后一笔lm
@@ -1831,7 +1844,16 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
 
     # make_fake_last_bi()
-    make_fake_last_bi_v2()
+    _build_fake_last_bi(
+        bi_list,
+        all_klines,
+        high_prices,
+        low_prices,
+        ctx,
+        endpoint_ops,
+        prefix_merged,
+        prefix_gap,
+    )
 
     def supplement_last_fake_bi_with_reverse_bi():
         nonlocal bi_list
