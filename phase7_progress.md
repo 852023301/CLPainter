@@ -1128,3 +1128,13 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 生产交接文档：`phase7_handoff.md`。
 
 - P4 抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-15 P4 续
+
+- 抽取 `_build_fake_front_bi()` 和 `_repair_initial_fake_front_bi()`。
+- 修复抽取时遗漏的 `make_fake_front_bi()` 调用。
+- p11 全量 dump：成功 38855，失败 0。
+- v5 与 p11 snapshot 完全一致。
+- 测试：`83 passed, 4 skipped`。
+
+- P4 续抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟通过。

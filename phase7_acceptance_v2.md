@@ -1255,3 +1255,42 @@ docker-compose.test.yml
 688611SH 1day stock 200
 159577SZ 1day fund 200
 ```
+
+## 2026-11-15 P4 续：笔首段 fake 构建抽取
+
+将 `generate_bi()` 内部的首段 fake 构建和首段内部极值修复抽成模块级：
+
+```text
+_build_fake_front_bi()
+_repair_initial_fake_front_bi()
+```
+
+验证：
+
+```text
+p11 全量 dump：成功 38855，失败 0
+测试：83 passed, 4 skipped
+v5 与 p11 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```
+
+抽取过程中再次发现并修复了“函数体已搬出但末尾调用遗漏”的回归：
+
+```text
+make_fake_front_bi()
+make_fake_last_bi_v2()
+```
+
+两者现在都在对应模块级函数末尾显式调用。
+
+### P4 续容器同步
+
+抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟：
+
+```text
+159383SZ 1day fund 200
+560630SH 1day fund 200
+563210SH 1day fund 200
+603306SH 1week stock 200
+300327SZ 1day stock 200
+```

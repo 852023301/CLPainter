@@ -1084,58 +1084,16 @@ def _build_fake_last_bi(
     make_fake_last_bi_v2()
 
 
-def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBiLast]]:
-    """
-    根据分型列表划分缠论笔
-
-    Args:
-        fenxing_list: 分型对象列表
-        all_klines: 合并后的K线列表（可选，用于获取时间信息）
-
-    Returns:
-        List[Bi]: Bi 对象列表
-    """
-
-    # 将分型列表中的相邻元素两两组合
-    fenxing_deque = deque((fenxing_list[i], fenxing_list[i + 1]) for i in range(len(fenxing_list) - 1))
-    bi_finish_deque = deque([])
-
-    # 初始化
-    bi_list = []
-
-    # 预计算：合并K线数量和缺口数量的前缀和（O(1) 查询）
-    n_klines = len(all_klines)
-    prefix_merged = [0] * (n_klines + 1)
-    prefix_gap = [0] * (n_klines + 1)
-    for _i in range(n_klines):
-        _kl = all_klines[_i]
-        prefix_merged[_i + 1] = prefix_merged[_i] + (1 if _kl.merged_length == 1 else 0)
-        prefix_gap[_i + 1] = prefix_gap[_i] + (1 if _kl.has_gap else 0)
-
-    # 预计算：high/low 价格数组（用于 O(1) 区间极值查询）
-    high_prices = np.array([kl.merged_high for kl in all_klines])
-    low_prices = np.array([kl.merged_low for kl in all_klines])
-    ctx = BiContext(
-        fenxing_list=fenxing_list,
-        all_klines=all_klines,
-        prefix_merged=prefix_merged,
-        prefix_gap=prefix_gap,
-        high_prices=high_prices,
-        low_prices=low_prices,
-        fenxing_by_time={fx.trade_datetime: fx for fx in fenxing_list},
-    )
-    endpoint_ops = BiEndpointOps(ctx)
-    repair_ops = BiRepairOps(ctx, endpoint_ops)
-
-    if len(fenxing_deque) < 2:
-        return bi_list
-
-    machine = BiStateMachine(ctx, endpoint_ops, repair_ops)
-    machine.run()
-    bi_finish_deque = machine.finish_deque
-    bi_lm = machine.bi_lm
-    bi_mr = machine.bi_mr
-
+def _build_fake_front_bi(
+    bi_finish_deque: deque,
+    all_klines: List[MergedKLine],
+    high_prices: np.ndarray,
+    low_prices: np.ndarray,
+    ctx: BiContext,
+    endpoint_ops: BiEndpointOps,
+    prefix_merged: List[int],
+    prefix_gap: List[int],
+) -> None:
     def make_fake_front_bi():
         nonlocal bi_finish_deque, all_klines
         # fake 第一笔
@@ -1268,6 +1226,17 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         if fake_earliest_bi is not None:
             bi_finish_deque.appendleft(fake_earliest_bi)
 
+    make_fake_front_bi()
+
+
+def _repair_initial_fake_front_bi(
+    bi_list: List[BiBase],
+    fenxing_list: List[FenXing],
+    all_klines: List[MergedKLine],
+    prefix_merged: List[int],
+    prefix_gap: List[int],
+    endpoint_ops: BiEndpointOps,
+) -> None:
     def split_fake_front_bi_by_internal_extreme(permissive: bool = False) -> bool:
         """用首伪笔内部极值替换首笔终点和下一条笔起点。
 
@@ -1447,6 +1416,63 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
         bi_list[0:2] = rebuilt
         return True
 
+    split_fake_front_bi_by_internal_extreme()
+    split_fake_front_bi_by_internal_extreme(permissive=True)
+    split_initial_fake_front_by_internal_extreme()
+
+
+def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> List[Union[Bi, FakeBiLast]]:
+    """
+    根据分型列表划分缠论笔
+
+    Args:
+        fenxing_list: 分型对象列表
+        all_klines: 合并后的K线列表（可选，用于获取时间信息）
+
+    Returns:
+        List[Bi]: Bi 对象列表
+    """
+
+    # 将分型列表中的相邻元素两两组合
+    fenxing_deque = deque((fenxing_list[i], fenxing_list[i + 1]) for i in range(len(fenxing_list) - 1))
+    bi_finish_deque = deque([])
+
+    # 初始化
+    bi_list = []
+
+    # 预计算：合并K线数量和缺口数量的前缀和（O(1) 查询）
+    n_klines = len(all_klines)
+    prefix_merged = [0] * (n_klines + 1)
+    prefix_gap = [0] * (n_klines + 1)
+    for _i in range(n_klines):
+        _kl = all_klines[_i]
+        prefix_merged[_i + 1] = prefix_merged[_i] + (1 if _kl.merged_length == 1 else 0)
+        prefix_gap[_i + 1] = prefix_gap[_i] + (1 if _kl.has_gap else 0)
+
+    # 预计算：high/low 价格数组（用于 O(1) 区间极值查询）
+    high_prices = np.array([kl.merged_high for kl in all_klines])
+    low_prices = np.array([kl.merged_low for kl in all_klines])
+    ctx = BiContext(
+        fenxing_list=fenxing_list,
+        all_klines=all_klines,
+        prefix_merged=prefix_merged,
+        prefix_gap=prefix_gap,
+        high_prices=high_prices,
+        low_prices=low_prices,
+        fenxing_by_time={fx.trade_datetime: fx for fx in fenxing_list},
+    )
+    endpoint_ops = BiEndpointOps(ctx)
+    repair_ops = BiRepairOps(ctx, endpoint_ops)
+
+    if len(fenxing_deque) < 2:
+        return bi_list
+
+    machine = BiStateMachine(ctx, endpoint_ops, repair_ops)
+    machine.run()
+    bi_finish_deque = machine.finish_deque
+    bi_lm = machine.bi_lm
+    bi_mr = machine.bi_mr
+
     def split_bi_by_internal_extreme():
         """用相邻两笔区间内的更极值分型重接两笔端点。"""
         for bi_index in range(0, len(bi_list) - 1):
@@ -1575,7 +1601,16 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
     #                     bi_list.pop()
     #                 bi_list.append(fake_bi_mr)
 
-    make_fake_front_bi()
+    _build_fake_front_bi(
+        bi_finish_deque,
+        all_klines,
+        high_prices,
+        low_prices,
+        ctx,
+        endpoint_ops,
+        prefix_merged,
+        prefix_gap,
+    )
 
     # 最后一笔lm
     if bi_lm.is_finished:
@@ -1829,9 +1864,14 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     bi_list = list(bi_finish_deque)
     prepend_initial_extreme_bi()
-    split_fake_front_bi_by_internal_extreme()
-    split_fake_front_bi_by_internal_extreme(permissive=True)
-    split_initial_fake_front_by_internal_extreme()
+    _repair_initial_fake_front_bi(
+        bi_list,
+        fenxing_list,
+        all_klines,
+        prefix_merged,
+        prefix_gap,
+        endpoint_ops,
+    )
     while split_bi_by_internal_extreme():
         pass
     prepend_opening_up_bi_to_qualifying_top()
