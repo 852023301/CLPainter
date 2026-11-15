@@ -1294,3 +1294,83 @@ make_fake_last_bi_v2()
 603306SH 1week stock 200
 300327SZ 1day stock 200
 ```
+
+## 2026-11-15 风险修复、数据质量测试与性能优化
+
+### 风险 2：生产代码中的 assert
+
+已将 `xianduan.py`、`bi.py` 中影响结构校验的 `assert` 改为显式 `if not ...: raise AssertionError(...)`，避免 `python -O` 跳过校验。
+
+### 风险 3：参考缓存加载失败静默吞掉
+
+`datacube.py` 读取参考线段缓存失败时现在记录 warning：
+
+```text
+读取参考线段缓存失败，退回无首段锚点
+```
+
+### 风险 4：白名单精确日期匹配静默跳过
+
+`phase7_confirmed_splits.py` 在以下情况记录 warning：
+
+- 确认拆分未匹配到线段；
+- 无法构造合法替换；
+- 与前后线段不连续。
+
+### 风险 5：后处理顺序
+
+`postprocess_xian_duan()` 调整为：
+
+```text
+reconcile_first_segments
+-> promote_secondary_fakes
+-> apply_confirmed_splits
+-> search_legal_splits
+```
+
+人工确认拆分现在是权威覆盖，不会再被后续 promote 删除。
+
+### 数据质量测试
+
+`test_data_quality_regressions.py` 已从 4 个 skip 改为真实断言：
+
+- S20/S21：零 OHLC 用收盘价填充，且不参与缺口；
+- S22：空标的源文件不存在时不写空缓存；
+- S23：上市日占位/短数据标的不应中断批次。
+
+测试结果：
+
+```text
+87 passed, 0 skipped
+```
+
+### Profiling 与性能优化
+
+cProfile 发现 `split_bi_by_internal_extreme()` 占 `generate_bi()` 约 92% 时间，主要热点是每个相邻笔对都从头扫描 `fenxing_list`。
+
+已改为：
+
+- 预计算 `fenxing_mid_indices`；
+- 使用 `bisect_right()` 定位窗口；
+- 只扫描当前两笔之间的分型区间。
+
+基准（3 次中位数）：
+
+```text
+600158SH bi: 367.5ms -> 32.5ms
+300327SZ bi: 107.4ms -> 16.8ms
+000001SH bi: 606.0ms -> 49.3ms
+159577SZ bi: 8.78ms -> 4.17ms
+600188SH bi: 24.3ms -> 8.26ms
+603306SH bi: 4.72ms -> 2.92ms
+```
+
+`generate_bi()` 典型提升约 2~12 倍。
+
+### 全量验证
+
+```text
+p12 全量 dump：成功 38855，失败 0
+v5 与 p12 snapshot：SNAPSHOT_IDENTICAL
+sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
+```

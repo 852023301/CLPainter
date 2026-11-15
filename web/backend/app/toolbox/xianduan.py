@@ -257,7 +257,8 @@ class XianDuan(XianDuanBase):
         if self.xianduan_type == XianDuanDirectionType.UP:
             forward_up = True
             # 笔向下
-            assert bi.is_down(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
+            if not bi.is_down():
+                raise AssertionError("判断第二种特征序列是否成立时发生笔方向错误的情况")
 
             for idx in range(start_bi_idx + 2, end_bi_idx + 1, 2):
                 bi = target_bi_list[idx]
@@ -294,7 +295,8 @@ class XianDuan(XianDuanBase):
         else:
             forward_up = False
             # 笔向上
-            assert bi.is_up(), "判断第二种特征序列是否成立时发生笔方向错误的情况"
+            if not bi.is_up():
+                raise AssertionError("判断第二种特征序列是否成立时发生笔方向错误的情况")
             # print(f"{list(range(start_bi_idx + 2, end_bi_idx + 1, 2))=}")
             for idx in range(start_bi_idx + 2, end_bi_idx + 1, 2):
                 bi = target_bi_list[idx]
@@ -3393,7 +3395,8 @@ def generate_xian_duan(tzxl_list: List[TeZhengXuLie], bi_list: List[BiBase]) -> 
 
     ####################### 检查
     # 检查笔上下交替
-    assert np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0), "不满足线段上下交替的要求"
+    if not np.all(np.diff([xd.is_up() for xd in xianduan_list]) != 0):
+        raise AssertionError("不满足线段上下交替的要求")
 
     # 检查线段日期连续性
     for i in range(len(xianduan_list) - 1):

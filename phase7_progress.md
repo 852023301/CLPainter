@@ -1138,3 +1138,15 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 测试：`83 passed, 4 skipped`。
 
 - P4 续抽取后的 `bi.py` 已同步测试容器并平滑重启，API 冒烟通过。
+
+## 2026-11-15 风险修复、数据质量测试与性能优化
+
+- 风险 2：assert 改为显式 AssertionError。
+- 风险 3：参考缓存读取失败记录 warning。
+- 风险 4：确认拆分未匹配/不连续记录 warning。
+- 风险 5：后处理顺序改为 promote -> confirmed -> legal search。
+- 数据质量测试 4 个 skip 改为真实断言，测试 `87 passed, 0 skipped`。
+- cProfile 定位 `split_bi_by_internal_extreme` 热点，使用 bisect 优化。
+- `generate_bi` 典型提升约 2~12 倍。
+- p12 全量 dump：成功 38855，失败 0。
+- v5 与 p12 snapshot 完全一致。

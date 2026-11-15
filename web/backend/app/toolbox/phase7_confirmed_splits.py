@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 
 import pandas as pd
 
@@ -20,6 +21,9 @@ from .xianduan import (
     _find_tzxl_at,
     _make_fake_first,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -192,6 +196,12 @@ def apply_confirmed_splits(
         None,
     )
     if start_index is None or end_index is None or start_index > end_index:
+        logger.warning(
+            "确认拆分未匹配到线段: symbol=%s frequency=%s dates=%s",
+            symbol,
+            frequency,
+            config.dates,
+        )
         return segments
 
     # 如果替换起点落在一段连续 fake 中，从这段 fake 的最左侧开始替换。
@@ -202,6 +212,12 @@ def apply_confirmed_splits(
 
     replacement = _make_split_segments(config, tzxl_list, bi_list)
     if replacement is None:
+        logger.warning(
+            "确认拆分无法构造合法替换: symbol=%s frequency=%s dates=%s",
+            symbol,
+            frequency,
+            config.dates,
+        )
         return segments
 
     previous = segments[start_index - 1] if start_index > 0 else None
@@ -210,10 +226,22 @@ def apply_confirmed_splits(
         previous.end_time != replacement[0].start_time
         or previous.end_bi_idx + 1 != replacement[0].start_bi_idx
     ):
+        logger.warning(
+            "确认拆分与前一阶段不连续: symbol=%s frequency=%s dates=%s",
+            symbol,
+            frequency,
+            config.dates,
+        )
         return segments
     if following is not None and (
         replacement[-1].end_time != following.start_time
         or replacement[-1].end_bi_idx + 1 != following.start_bi_idx
     ):
+        logger.warning(
+            "确认拆分与后一阶段不连续: symbol=%s frequency=%s dates=%s",
+            symbol,
+            frequency,
+            config.dates,
+        )
         return segments
     return list(segments[:start_index]) + replacement + list(segments[end_index + 1 :])

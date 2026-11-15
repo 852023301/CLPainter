@@ -1,4 +1,5 @@
 import importlib
+import logging
 import os
 import pickle
 import re
@@ -52,6 +53,8 @@ from CLPainter.web.backend.app.toolbox.calculate import (
     calculate_rsi_list,
 )
 
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MA_PERIODS = [5, 8, 10, 13, 21, 34, 55, 60, 89, 120, 144, 233, 250]
 INDICATOR_PARAMS = {
@@ -195,6 +198,7 @@ def postprocess_xian_duan(
         tzxl_list,
         bi_list,
     )
+    result = promote_secondary_fakes(result, tzxl_list, bi_list)
     if symbol is not None and frequency is not None:
         result = apply_confirmed_splits(
             result,
@@ -205,7 +209,6 @@ def postprocess_xian_duan(
         )
     if settings.ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH:
         result = search_legal_splits(result, tzxl_list, bi_list)
-    result = promote_secondary_fakes(result, tzxl_list, bi_list)
     for index, segment in enumerate(result):
         segment.idx = index
     return result
@@ -737,7 +740,8 @@ def dump_data_cache_to_pickle(
         try:
             old_cache = _load_pickle_compatible(reference_path)
             reference_xian_duan_list = getattr(old_cache, "xian_duan_list", None)
-        except Exception:
+        except Exception as error:
+            logger.warning("读取参考线段缓存失败，退回无首段锚点: %s: %s", reference_path, error)
             reference_xian_duan_list = None
 
     cache = _DataCache(source_file, reference_xian_duan_list=reference_xian_duan_list)

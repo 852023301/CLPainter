@@ -1,4 +1,5 @@
 import copy
+from bisect import bisect_right
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1435,6 +1436,7 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
     # 将分型列表中的相邻元素两两组合
     fenxing_deque = deque((fenxing_list[i], fenxing_list[i + 1]) for i in range(len(fenxing_list) - 1))
+    fenxing_mid_indices = [fx.mid_idx for fx in fenxing_list]
     bi_finish_deque = deque([])
 
     # 初始化
@@ -1486,11 +1488,10 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
 
             extreme_fx = None
             extreme_value = current_bi.end_price
-            for candidate_fx in fenxing_list:
-                if candidate_fx.mid_idx > next_bi.left_fx.mid_idx:
-                    break
-                if candidate_fx.mid_idx <= current_bi.left_fx.mid_idx:
-                    continue
+            start_fx_idx = bisect_right(fenxing_mid_indices, current_bi.left_fx.mid_idx)
+            end_fx_idx = bisect_right(fenxing_mid_indices, next_bi.left_fx.mid_idx)
+            for fx_idx in range(start_fx_idx, end_fx_idx):
+                candidate_fx = fenxing_list[fx_idx]
                 candidate_value = candidate_fx.low_price if current_bi.is_down() else candidate_fx.high_price
                 if (candidate_value < extreme_value) if current_bi.is_down() else (candidate_value > extreme_value):
                     extreme_value = candidate_value
@@ -2118,7 +2119,8 @@ def generate_bi(fenxing_list: List[FenXing], all_klines: List[MergedKLine]) -> L
             raise RuntimeError("笔连续性检查失败")
 
     # 检查笔上下交替
-    assert np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0), "不满足笔上下交替的要求"
+    if not np.all(np.diff([bi.bi_type == BiDirectionType.UP for bi in bi_list]) != 0):
+        raise AssertionError("不满足笔上下交替的要求")
     ####################### 检查
     for i in range(len(bi_list)):
         bi_list[i].idx = i
