@@ -242,10 +242,10 @@ python web/backend/scripts/compare_structures.py /tmp/old.jsonl /tmp/new.jsonl
 
 ### 2. 生成可视化报告
 
-使用 `web/backend/scripts/phase7_visual_report.py` 生成静态 HTML：
+使用 `web/backend/scripts/phase7_archive/phase7_visual_report.py` 生成静态 HTML：
 
 ```bash
-python web/backend/scripts/phase7_visual_report.py \
+python web/backend/scripts/phase7_archive/phase7_visual_report.py \
   --old-dump-dir <旧curated> \
   --new-dump-dir <新curated> \
   --cases <cases.jsonl> \

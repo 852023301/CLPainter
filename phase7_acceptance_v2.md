@@ -1470,3 +1470,10 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 当前测试缓存：`/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated`。
 - 改名后 snapshot 与 v5 基线一致：`changed: 0`。
 - 当前不再保留本地 v4 回滚缓存。
+
+## 2026-11-15 CLPainter 项目内部整理
+
+- 4 个维护脚本已归档到 `web/backend/scripts/phase7_archive/`。
+- 生成物（可视化报告、分类目录、JSONL、summary、CSV、延迟脚本）已删除。
+- 运行时 `phase7_confirmed_splits.py`、`phase7_legal_splits.py` 及对应测试保留。
+- 文档与 `phase7_v5_freeze.json` 保留。

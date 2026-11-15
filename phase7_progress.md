@@ -1221,3 +1221,20 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 改名后全量 snapshot 与 v5 基线一致：`changed: 0`。
 - 当前测试数据：`dump/curated` 38855，`dump/chart_payload` 38855。
 - 当前不再保留本地 v4 回滚缓存。
+
+## 2026-11-15 CLPainter 项目内部整理
+
+- 保留运行时与测试：
+  `web/backend/app/toolbox/phase7_confirmed_splits.py`、
+  `web/backend/app/toolbox/phase7_legal_splits.py`、
+  `web/backend/tests/test_phase7_confirmed_splits.py`、
+  `web/backend/tests/test_phase7_legal_splits.py`。
+- 归档维护脚本到 `web/backend/scripts/phase7_archive/`：
+  `phase7_classify_changes.py`、`phase7_invariant_audit.py`、
+  `phase7_parallel_compare.py`、`phase7_visual_report.py`。
+- 删除全部可视化报告、分类目录、cases JSONL、summary JSON、CSV 和
+  `run_phase7_after_delay.sh`。
+- 保留文档与冻结清单：`phase7_acceptance_v2.md`、`phase7_handoff.md`、
+  `phase7_v5_freeze.json`、`CODE_CHANGE_STANDARD.md`、`AGENTS.md`、
+  `phase7_progress.md`、`phase7_production_deploy.md`。
+- `phase7_v5_freeze.json` 在删除清单中也出现过，但按保留清单处理，未删除。

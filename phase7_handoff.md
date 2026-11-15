@@ -31,7 +31,7 @@ web/backend/app/main.py
 如需保留审计能力，可同步：
 
 ```text
-web/backend/scripts/phase7_*.py
+web/backend/scripts/phase7_archive/phase7_*.py
 web/backend/tests/
 ```
 
