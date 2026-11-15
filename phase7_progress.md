@@ -1202,3 +1202,11 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 报告目录：`phase7_visual_report_v5_first_only`，约 1.3G。
 - index 链接数：3568。
 - 访问地址：`http://172.17.1.5:15003/phase7_visual_report_v5_first_only/`。
+
+## 2026-11-15 v5 验收通过
+
+- 用户确认 v5 可以验收。
+- 验收范围：v5 全量缓存 + v5 `first_only` 全量报告。
+- v5 状态更新为 `accepted`。
+- 保留 v4 回滚目录：`dump/curated`、`dump/chart_payload`。
+- 生产部署仍为手动执行，按 `phase7_handoff.md` 进行。

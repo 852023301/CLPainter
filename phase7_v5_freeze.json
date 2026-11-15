@@ -35,6 +35,13 @@
     "later_exceeds_changed": "http://172.17.1.5:15003/phase7_visual_report_v5_later_exceeds_changed/",
     "first_only": "http://172.17.1.5:15003/phase7_visual_report_v5_first_only/"
   },
-  "status": "accepted; promoted to test environment",
-  "tests": "87 passed, 0 skipped"
+  "status": "accepted",
+  "tests": "87 passed, 0 skipped",
+  "accepted_at": "2026-11-15",
+  "acceptance_scope": "v5 full cache + v5 first_only full report",
+  "rollback": {
+    "curated": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/curated",
+    "chart_payload": "/mnt/DataDepartmentTest/home/wjl/data_set_dev/dump/chart_payload"
+  },
+  "production_deploy": "pending manual deployment"
 }

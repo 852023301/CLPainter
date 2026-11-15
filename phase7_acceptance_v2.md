@@ -1453,3 +1453,11 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 报告目录：`phase7_visual_report_v5_first_only`。
 - index 与 HTML 文件数均为 3568。
 - 访问地址：`http://172.17.1.5:15003/phase7_visual_report_v5_first_only/`。
+
+## 2026-11-15 v5 验收通过
+
+- 用户确认 v5 可以验收。
+- 验收范围：v5 全量缓存 + v5 `first_only` 全量报告。
+- 冻结状态：`accepted`。
+- 回滚版本：`dump/curated`、`dump/chart_payload`（v4）。
+- 生产部署：待手动执行，依据 `phase7_handoff.md`。
