@@ -1219,7 +1219,7 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 
 ```text
 dump_shadow
-dump_p2 ~ dump_p10
+dump_p2 ~ dump_p12
 instrument_p9.db
 ```
 
@@ -1230,7 +1230,7 @@ instrument_p9.db
 /mnt/DataDepartmentTest/home/wjl/data_set_dev/dump_v5
 ```
 
-释放约 638G 临时空间。
+释放约 780G 临时空间。
 
 非 Phase 7 改动保持不动：
 

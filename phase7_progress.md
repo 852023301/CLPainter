@@ -1123,7 +1123,7 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - p10 全量 dump：成功 38855，失败 0。
 - v5 与 p10 snapshot 完全一致。
 - 测试：`83 passed, 4 skipped`。
-- 删除 `dump_shadow`、`dump_p2~p10`、`instrument_p9.db`，释放约 638G。
+- 删除 `dump_shadow`、`dump_p2~p12`、`instrument_p9.db`、`instrument_p11.db`，释放约 780G。
 - 非 Phase 7 的 docker-compose / deploy / .env 改动保持不动。
 - 生产交接文档：`phase7_handoff.md`。
 
