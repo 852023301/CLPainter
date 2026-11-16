@@ -1498,3 +1498,15 @@ sha256: 565d9de47f23ce94458a92f115f291d7ccad38eccc8580af28c931ceaf4823e1
 - 文档移动到 `docs/phase7/`。
 - 归档脚本移动到 `web/backend/scripts/archive/phase7/`。
 - 全量 dump 38855/0，snapshot changed 0，测试 87 passed。
+
+## 2026-11-16 Docker Compose 生产/测试服务隔离
+
+- 公共配置：`docker-compose.yml`。
+- 生产覆盖：`docker-compose.prod.yml`。
+- 测试覆盖：`docker-compose.test.yml`。
+- 环境文件：`deploy/env/prod.env`、`deploy/env/test.env`。
+- 启动脚本：`deploy/up-prod.sh`、`deploy/up-test.sh`。
+- 生产端口：SSH 36602 / HTTP 15000。
+- 测试端口：SSH 36603 / HTTP 15001。
+
+- 新增 `deploy/build.sh`；新容器使用镜像内代码，不再依赖手工同步。

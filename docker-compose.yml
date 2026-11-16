@@ -1,8 +1,6 @@
-version: "3.8"
 services:
-  CLPainter:
-    container_name: CLPainter
-    image: harbor.techfin.ai/wjl-toolkit/cl_painter:3.0
+  clpainter:
+    image: harbor.techfin.ai/wjl-toolkit/cl_painter:${IMAGE_TAG:?IMAGE_TAG is required}
     build:
       context: .
       dockerfile: "docker/Dockerfile"
@@ -15,17 +13,11 @@ services:
         PRJ_DIR: ${PRJ_DIR}
         ROOT_DIR: ${ROOT_DIR}
         LOG_DIR: ${LOG_DIR}
-    env_file:
-      - .env
-    ports:
-      - "36602:22"
-      - "15000:8001"
     volumes:
       - /DataDepartment:/DataDepartment:ro
       - /DataDepartmentTest:/DataDepartmentTest
       - /mnt/DataDepartmentTest:/mnt/DataDepartmentTest
     restart: always
     privileged: true
-    #    command: ["sh", "-c", "tail -f /dev/null"]
-    command: /usr/sbin/sshd -f /etc/ssh/sshd_config -D
-#    command:  /root/CLPainter/web/backend/run.sh & && /usr/sbin/sshd -f /etc/ssh/sshd_config -D
+    init: true
+    command: /bin/bash -lc "exec ${PRJ_DIR}/docker/entrypoint.sh"

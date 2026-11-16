@@ -7,6 +7,31 @@ cd CLPainter/web/backend/;
 bash run.sh
 ```
 
+## Docker Compose 生产/测试分离
+
+生产与测试使用同一镜像，通过不同的 compose override 和环境文件区分：
+
+```bash
+./deploy/up-test.sh
+./deploy/up-prod.sh
+```
+
+停止：
+
+```bash
+./deploy/down-test.sh
+./deploy/down-prod.sh
+```
+
+端口：
+
+```text
+生产：SSH 36602，HTTP 15000
+测试：SSH 36603，HTTP 15001
+```
+
+详细说明见 `deploy/README.md`。
+
 
 V1.0.0:
 1.支持笔算法 ✅
@@ -95,7 +120,7 @@ v1.8.0:
 v1.9.0:
 1. 支持生产与测试服务分离
 2. 支持观测指标（笔） ✅
-3. 支持迁移到新ceph
+3. 支持迁移到新ceph ✅
 4. 支持去掉datacube单例模式 ✅
 5. 迁移到1.8服务器 ✅
 6. 支持显示版块和概念

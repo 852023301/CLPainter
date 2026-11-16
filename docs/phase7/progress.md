@@ -1264,3 +1264,16 @@ http://172.17.1.5:15003/phase7_visual_report_v3_later_exceeds_changed/
 - 与 v5 基线 snapshot：`changed: 0`。
 - 测试：`87 passed, 0 skipped`。
 - 测试容器已同步新模块名并平滑重启，API 冒烟通过。
+
+## 2026-11-16 Docker Compose 生产/测试服务隔离
+
+- 新增 `docker/entrypoint.sh`，同时启动 gunicorn 与 sshd。
+- `docker-compose.yml` 作为公共配置。
+- `docker-compose.prod.yml`、`docker-compose.test.yml` 分别注入生产/测试环境文件、容器名和端口。
+- 新增 `deploy/up-test.sh`、`deploy/up-prod.sh`、`deploy/down-test.sh`、`deploy/down-prod.sh`。
+- 生产端口：SSH 36602 / HTTP 15000。
+- 测试端口：SSH 36603 / HTTP 15001。
+- `docker compose config` 和 `up --dry-run` 均通过。
+
+- 新增 `deploy/build.sh`，统一构建生产/测试共用镜像。
+- 旧容器 `CLPainter` 代码是手工同步的，迁移到 compose 前需要重建镜像并重建测试容器。

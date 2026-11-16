@@ -1,0 +1,9 @@
+services:
+  clpainter:
+    container_name: ${CONTAINER_NAME}
+    env_file:
+      - .env
+      - deploy/env/test.env
+    ports:
+      - "${SSH_PORT}:22"
+      - "${HTTP_PORT}:8001"

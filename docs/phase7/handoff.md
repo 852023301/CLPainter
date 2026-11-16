@@ -141,17 +141,24 @@ mv /mnt/DataDepartmentTest/home/wjl/data_set/dump/chart_payload \
 
 回滚时恢复代码和缓存目录，并平滑重启 gunicorn。
 
-## 7. 范围说明
+## 7. 生产/测试服务隔离
 
-以下改动不属于 Phase 7 算法改动，本次不处理：
+已通过 docker compose base + override 完成服务级隔离：
 
 ```text
-.env
-README.md
-docker-compose.yml
-deploy/
-docker-compose.prod.yml
-docker-compose.test.yml
+docker-compose.yml          公共配置
+docker-compose.prod.yml     生产覆盖
+docker-compose.test.yml     测试覆盖
+deploy/env/prod.env         生产环境变量
+deploy/env/test.env         测试环境变量
 ```
 
-这些留给后续通过 docker-compose 做生产和测试的服务级隔离。
+构建与启动：
+
+```bash
+./deploy/build.sh
+./deploy/up-test.sh
+./deploy/up-prod.sh
+```
+
+详细说明见 `deploy/README.md`。
