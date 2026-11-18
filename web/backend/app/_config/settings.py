@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 加载 .env 文件（系统环境变量比 .env 文件优先级高）
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -43,10 +43,11 @@ class Settings(BaseSettings):
         "ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH", "0"
     ).lower() in {"1", "true", "yes", "on"}
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore",
+    )
 
 
 def validate_settings(config: Settings) -> None:
