@@ -30,7 +30,7 @@
 ```bash
 cd CLPainter/web/backend
 setsid env PYTHONUNBUFFERED=1 PYTHONPATH="$(cd ../../.. && pwd)" \
-  python -u scripts/dump_stock_caches.py \
+  python -u scripts/cache/dump_stock_caches.py \
   > /tmp/clpainter_dump_full.log 2>&1 < /dev/null &
 ```
 

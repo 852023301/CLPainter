@@ -5,7 +5,7 @@
 
 ## 硬门禁
 
-修改 `web/backend/app/toolbox/` 下的 Python 代码后，任务没有完成。必须用本次修改之后新启动的全量 `web/backend/scripts/dump_stock_caches.py` 跑完，并同时满足下面三条，才允许说“已确认”：
+修改 `web/backend/app/toolbox/` 下的 Python 代码后，任务没有完成。必须用本次修改之后新启动的全量 `web/backend/scripts/cache/dump_stock_caches.py` 跑完，并同时满足下面三条，才允许说“已确认”：
 
 - 进程退出码为 0。
 - 日志中没有 `导出失败`、`Traceback` 或其他未捕获异常。
@@ -19,7 +19,7 @@
 
 ```bash
 cd CLPainter/web/backend
-setsid env PYTHONUNBUFFERED=1 PYTHONPATH="$(cd ../../.. && pwd)" python -u scripts/dump_stock_caches.py > /tmp/clpainter_dump_full.log 2>&1 < /dev/null &
+setsid env PYTHONUNBUFFERED=1 PYTHONPATH="$(cd ../../.. && pwd)" python -u scripts/cache/dump_stock_caches.py > /tmp/clpainter_dump_full.log 2>&1 < /dev/null &
 ```
 
 只改文档、前端模板或注释，不改 Python 计算代码时，不要求跑全量 dump。
@@ -224,9 +224,9 @@ ssh CL "tail -50 /root/CLPainter/web/backend/nohup.out"
 使用：
 
 ```bash
-python web/backend/scripts/snapshot_structures.py --dump-dir <旧curated> --output /tmp/old.jsonl
-python web/backend/scripts/snapshot_structures.py --dump-dir <新curated> --output /tmp/new.jsonl
-python web/backend/scripts/compare_structures.py /tmp/old.jsonl /tmp/new.jsonl
+python web/backend/scripts/validation/snapshot_structures.py --dump-dir <旧curated> --output /tmp/old.jsonl
+python web/backend/scripts/validation/snapshot_structures.py --dump-dir <新curated> --output /tmp/new.jsonl
+python web/backend/scripts/validation/compare_structures.py /tmp/old.jsonl /tmp/new.jsonl
 ```
 
 必须记录：

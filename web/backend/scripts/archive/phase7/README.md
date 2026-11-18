@@ -7,7 +7,7 @@
 - `phase7_parallel_compare.py`：新旧管线并行对比
 - `phase7_visual_report.py`：可视化验收报告
 
-运行方式与归档前一致，脚本内部已将 `BACKEND_DIR` 调整为 `parents[2]`。
+运行方式与归档前一致，脚本内部已将 `BACKEND_DIR` 调整为 `parents[3]`。
 
 - `phase7_first_segment_check.py`：首段 fake/real 检查
 - `phase7_gray_rollout.py`：灰度抽样对比

@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
@@ -39,18 +39,19 @@ run_parallel_scripts() {
 }
 
 cd "${PROJECT_ROOT}"
+export PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
-run_script "meta_info.py"
-run_script "data_from_tdata_1day.py"
+run_script "data_ingestion/meta_info.py"
+run_script "data_ingestion/data_from_tdata_1day.py"
 
 if ! run_parallel_scripts \
-    "from_1day_to_1week.py" \
-    "from_1day_to_1month.py" \
-    "from_1day_to_1quarter.py" \
-    "from_1day_to_1year.py"; then
+    "aggregation/from_1day_to_1week.py" \
+    "aggregation/from_1day_to_1month.py" \
+    "aggregation/from_1day_to_1quarter.py" \
+    "aggregation/from_1day_to_1year.py"; then
     echo "Parallel aggregation failed; skipping cache dump." >&2
     exit 1
 fi
 
-run_script "dump_stock_caches.py"
-run_script "update_cl_state.py"
+run_script "cache/dump_stock_caches.py"
+run_script "state/update_cl_state.py"

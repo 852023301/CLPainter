@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from CLPainter.web.backend.app.db.base import engine
 from CLPainter.web.backend.app.db.models import Instrument
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 if str(BACKEND_DIR.parent.parent) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR.parent.parent))
 

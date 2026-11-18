@@ -96,7 +96,7 @@ ENABLE_XIANDUAN_REPAIR_LOOP=0 \
 ENABLE_XIANDUAN_LOCAL_RESEGMENT=0 \
 ENABLE_XIANDUAN_LEGAL_SPLIT_SEARCH=1 \
 PYTHONPATH=/root/CLPainter/web/backend \
-python web/backend/scripts/dump_stock_caches.py \
+python web/backend/scripts/cache/dump_stock_caches.py \
   --source-dirs /mnt/DataDepartmentTest/home/wjl/data_set/pv_data
 ```
 
