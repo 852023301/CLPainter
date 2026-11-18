@@ -10,7 +10,21 @@
 ./deploy/build.sh
 ```
 
-生产与测试使用同一个镜像 tag，只需要构建一次。
+生产与测试使用同一个镜像 tag，只需要构建一次。镜像版本统一在项目根目录的 `.env` 中配置：
+
+```dotenv
+IMAGE_TAG=3.0
+```
+
+构建脚本只读取公共 `.env` 和 `docker-compose.yml`，不依赖 `prod.env` 或 `test.env`：
+
+```bash
+docker compose -p clpainter-build \
+  --env-file .env \
+  -f docker-compose.yml build
+```
+
+生产和测试启动时仍分别加载 `.env + prod.env`、`.env + test.env`，两个环境文件不再重复定义 `IMAGE_TAG`。
 
 ## 测试环境
 
