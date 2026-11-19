@@ -86,6 +86,14 @@ def _select_columns(data: pd.DataFrame, columns: Iterable[str]) -> pd.DataFrame:
     return data.loc[:, [column for column in columns if column in data.columns]]
 
 
+def _is_missing_ohl_price(value: Any) -> bool:
+    """开高低的零值、空值和非有限值用收盘价填补；不改变收盘价规则。"""
+    if value is None:
+        return True
+    number = float(value)
+    return number == 0.0 or not math.isfinite(number)
+
+
 def _convert_history_to_pv_list(data: pd.DataFrame) -> Optional[list]:
     if data.empty:
         return []
@@ -108,12 +116,10 @@ def _convert_history_to_pv_list(data: pd.DataFrame) -> Optional[list]:
                 continue
             close = previous_close
             if (
-                values["high"] is not None
-                and math.isfinite(float(values["high"]))
+                not _is_missing_ohl_price(values["high"])
                 and float(close) > float(values["high"])
             ) or (
-                values["low"] is not None
-                and math.isfinite(float(values["low"]))
+                not _is_missing_ohl_price(values["low"])
                 and float(close) < float(values["low"])
             ):
                 return None
@@ -122,7 +128,7 @@ def _convert_history_to_pv_list(data: pd.DataFrame) -> Optional[list]:
         filled_values = {}
         for field in ("open", "high", "low"):
             value = values[field]
-            filled_values[field] = float(value) if value is not None and math.isfinite(float(value)) else close
+            filled_values[field] = close if _is_missing_ohl_price(value) else float(value)
 
         result.append([trade_date, filled_values["open"], close, filled_values["low"], filled_values["high"], float(volume)])
         previous_close = close
@@ -245,6 +251,18 @@ def fetch_history_for_security(
     return raw.loc[:, HISTORY_COLUMNS]
 
 
+def _has_history_records(output_path: Path) -> bool:
+    """续跑只跳过可读取的非空历史列表，不将读盘故障当成空行情。"""
+    if not output_path.is_file():
+        return False
+    try:
+        with output_path.open("rb") as file:
+            records = pickle.load(file)
+    except (EOFError, pickle.UnpicklingError):
+        return False
+    return isinstance(records, list) and bool(records)
+
+
 def _iter_history_for_list(
         pro_api: Any,
         securities: pd.DataFrame,
@@ -267,8 +285,7 @@ def _iter_history_for_list(
         if (
                 output_path is not None
                 and not overwrite
-                and output_path.is_file()
-                and output_path.stat().st_size > 0
+                and _has_history_records(output_path)
         ):
             yield ts_code, None
             continue
@@ -286,15 +303,16 @@ def _iter_history_for_list(
             time.sleep(request_interval)
 
 
-def _save_history(history_dir: Path, ts_code: str, data: pd.DataFrame) -> Path:
+def _save_history(history_dir: Path, ts_code: str, data: pd.DataFrame) -> Optional[Path]:
+    """只发布有效的新结果；空结果或转换失败时保留已有文件。"""
+    pv_list = _convert_history_to_pv_list(data)
+    if pv_list is None:
+        raise ValueError(f"{ts_code} 缺失值无法安全填补，已跳过整个标的")
+    if not pv_list:
+        return None
     history_dir.mkdir(parents=True, exist_ok=True)
     output_path = history_dir / f"{ts_code.replace('.', '')}.pkl"
     temporary_path = output_path.with_suffix(".pkl.tmp")
-    pv_list = _convert_history_to_pv_list(data)
-    if pv_list is None:
-        if output_path.is_file():
-            output_path.unlink()
-        raise ValueError(f"{ts_code} 缺失值无法安全填补，已跳过整个标的")
     with temporary_path.open("wb") as file:
         pickle.dump(pv_list, file, protocol=pickle.HIGHEST_PROTOCOL)
     temporary_path.replace(output_path)
@@ -350,12 +368,12 @@ def main() -> None:
                 continue
 
             try:
-                _save_history(history_dir, ts_code, history)
+                saved_path = _save_history(history_dir, ts_code, history)
             except ValueError as error:
                 invalid_count += 1
                 print(f"\n{error}")
                 continue
-            if history.empty:
+            if saved_path is None:
                 empty_count += 1
             else:
                 saved_count += 1
