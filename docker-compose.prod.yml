@@ -4,6 +4,8 @@ services:
     env_file:
       - .env
       - deploy/env/prod.env
+    volumes:
+      - "/mnt/DataDepartmentTest/home/wjl/data_set:/mnt/DataDepartmentTest/home/wjl/data_set:rw"
     ports:
       - "${SSH_PORT}:22"
       - "${HTTP_PORT}:8001"
