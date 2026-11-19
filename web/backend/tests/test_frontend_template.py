@@ -140,6 +140,63 @@ class FrontendTemplateTest(unittest.TestCase):
         ):
             self.assertIn(marker, self.html)
 
+    def test_screener_frequency_options_follow_calendar_order(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify screener frequency ordering")
+        script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const html = fs.readFileSync(process.argv[2], 'utf8');
+const start = html.indexOf('    const renderScreenerField = ');
+const end = html.indexOf('    const renderScreenerFilters = ', start);
+assert(start >= 0 && end > start, 'Screener renderer must exist');
+const document = {
+    createElement(tagName) {
+        return {
+            tagName, dataset: {}, children: [],
+            appendChild(child) { this.children.push(child); },
+            append(...children) { this.children.push(...children); },
+        };
+    },
+};
+const render = new Function('document', html.slice(start, end) + '\nreturn renderScreenerField;')(document);
+const options = Object.freeze([
+    {value: '1day', label: '日K'},
+    {value: '1month', label: '月K'},
+    {value: '1quarter', label: '季K'},
+    {value: '1week', label: '周K'},
+    {value: '1year', label: '年K'},
+]);
+const rendered = item => render(item, 'dimension').children
+    .find(node => node.tagName === 'select').children
+    .map(node => [node.value, node.textContent]);
+assert.deepEqual(rendered({field: 'frequency', options}), [
+    ['', '不限'], ['1day', '日K'], ['1week', '周K'],
+    ['1month', '月K'], ['1quarter', '季K'], ['1year', '年K'],
+]);
+assert.deepEqual(rendered({field: 'frequency', options: [options[4], options[1]]}), [
+    ['', '不限'], ['1month', '月K'], ['1year', '年K'],
+]);
+assert.deepEqual(rendered({field: 'frequency', options: [
+    {value: '1min', label: '1分'}, ...options, {value: '5min', label: '5分'},
+]}).map(option => option[0]), [
+    '', '1day', '1week', '1month', '1quarter', '1year', '1min', '5min',
+]);
+assert.deepEqual(rendered({field: 'scope', options}), [
+    ['', '不限'], ...options.map(option => [option.value, option.label]),
+]);
+assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
+"""
+        completed = subprocess.run(
+            [node, "-", str(TEMPLATE)],
+            input=script,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
     def test_screener_results_are_numbered_and_keep_scroll(self):
         self.assertIn(".screener-result-index", self.html)
         self.assertIn("sequence.textContent = String(index + 1)", self.scripts)

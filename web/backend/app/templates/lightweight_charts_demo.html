@@ -2121,7 +2121,16 @@
         empty.value = '';
         empty.textContent = '不限';
         select.appendChild(empty);
-        (item.options || []).forEach(option => {
+        const options = [...(item.options || [])];
+        if (item.field === 'frequency') {
+            const frequencyOrder = ['1day', '1week', '1month', '1quarter', '1year'];
+            const rank = value => {
+                const index = frequencyOrder.indexOf(value);
+                return index < 0 ? frequencyOrder.length : index;
+            };
+            options.sort((a, b) => rank(a.value) - rank(b.value));
+        }
+        options.forEach(option => {
             const node = document.createElement('option');
             node.value = String(option.value);
             node.textContent = option.label;
