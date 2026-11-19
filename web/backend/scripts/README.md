@@ -46,6 +46,15 @@ bash scripts/pipelines/run_update_pipeline.sh
 任一步骤失败会阻止后续步骤；聚合阶段会等待全部并行任务结束，任一失败都不会导出缓存。
 `data_from_tushare_old.py` 用于补充历史数据，不属于常规日更流水线。
 
+### 缓存重建输入
+
+Q3 按“K 线行情 + 参考 curated 中的旧线段”作为计算输入。普通更新默认读取输出目录中已有缓存作为参考，成功后保存本轮结果。
+如果更换输出位置、向空目录重建，为复现既有结果，应显式提供原参考目录；输出位置仍由 `CACHE_DUMP_DIR` 决定：
+
+```bash
+python3 scripts/cache/dump_stock_caches.py --reference-dir /path/to/reference/dump/curated
+```
+
 ## 单独运行示例
 
 ```bash
