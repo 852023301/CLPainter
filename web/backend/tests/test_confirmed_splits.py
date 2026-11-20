@@ -17,10 +17,7 @@ from CLPainter.web.backend.app.toolbox.confirmed_splits import (
 )
 
 CACHE_ROOT = Path(CACHE_DUMP_DIR)
-pytestmark = pytest.mark.skipif(
-    not CACHE_ROOT.exists(),
-    reason=f"curated 缓存目录不存在: {CACHE_ROOT}",
-)
+pytestmark = pytest.mark.usefixtures("require_curated_data")
 
 
 CASES = (

@@ -125,6 +125,7 @@ def test_all_runtime_rules_have_independent_producer_expectations() -> None:
     assert set(keys) == set(splits.CONFIRMED_SPLITS), "A runtime rule lacks a reviewed producer fixture"
 
 
+@pytest.mark.usefixtures("require_curated_data")
 @pytest.mark.parametrize(
     "case", CASES, ids=[case.symbol + "-" + case.frequency.removeprefix("freq=") for case in CASES],
 )
@@ -136,6 +137,7 @@ def test_confirmed_rule_produces_expected_segments(case: ConfirmedCase) -> None:
     assert input_signature(segments) == before, "Producer mutated the supplied input window"
 
 
+@pytest.mark.usefixtures("require_curated_data")
 @pytest.mark.parametrize(
     "case", CASES, ids=[case.symbol + "-" + case.frequency.removeprefix("freq=") for case in CASES],
 )

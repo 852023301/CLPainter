@@ -21,12 +21,7 @@ DATA_ROOT = Path(settings.DATA_DIR)
 CACHE_ROOT = Path(CACHE_DUMP_DIR)
 
 
-@pytest.fixture(scope="module", autouse=True)
-def require_test_data():
-    """数据质量回归必须使用真实测试数据，缺失时明确失败而不是 skip。"""
-    missing = [str(path) for path in (DATA_ROOT, CACHE_ROOT) if not path.exists()]
-    if missing:
-        pytest.fail(f"数据质量回归缺少测试数据目录: {', '.join(missing)}")
+pytestmark = pytest.mark.usefixtures("require_raw_data", "require_curated_data")
 
 
 def _source_path(case) -> Path:

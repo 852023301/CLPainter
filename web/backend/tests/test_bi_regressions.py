@@ -14,10 +14,7 @@ from CLPainter.web.backend.app.toolbox.datacube import (
 from CLPainter.web.backend.tests.regression_cases import BI_CASES, PIVOT_CASES
 
 CACHE_ROOT = Path(CACHE_DUMP_DIR)
-pytestmark = pytest.mark.skipif(
-    not CACHE_ROOT.exists(),
-    reason=f"curated 缓存目录不存在: {CACHE_ROOT}",
-)
+pytestmark = pytest.mark.usefixtures("require_curated_data")
 
 
 def _load_cache(case):
