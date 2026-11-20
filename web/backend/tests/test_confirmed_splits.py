@@ -1,7 +1,7 @@
 """Phase 7 人工确认拆分的回归测试。
 
-这些用例直接读取测试环境 curated 缓存，并调用实际后处理函数，
-确保人工确认的拆分不会被后续改动悄悄回退。
+这些用例检查已处理 curated 结果的稳定性，不独立证明拆分生产者执行。
+未拆分输入到预期输出的生产者测试见 test_confirmed_split_producers.py。
 """
 
 from pathlib import Path
