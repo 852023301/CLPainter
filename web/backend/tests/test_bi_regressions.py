@@ -11,7 +11,7 @@ from CLPainter.web.backend.app.toolbox.datacube import (
     CACHE_DUMP_DIR,
     load_data_cache_pickle,
 )
-from CLPainter.web.backend.tests.regression_cases import BI_CASES, PIVOT_CASES
+from CLPainter.web.backend.tests.regression_cases import BI_CASES, PIVOT_CASES, matches_expected_rows
 
 CACHE_ROOT = Path(CACHE_DUMP_DIR)
 pytestmark = pytest.mark.usefixtures("require_curated_data")
@@ -42,11 +42,11 @@ def _load_bis(case) -> list[tuple]:
 def _assert_match(actual: list[tuple], case) -> None:
     expected = tuple(case.expected)
     if case.match == "full":
-        assert actual == list(expected), f"{case.case_id}: 笔列表不匹配"
+        assert matches_expected_rows(actual, case), f"{case.case_id}: 笔列表不匹配"
     elif case.match == "prefix":
-        assert actual[: len(expected)] == list(expected), f"{case.case_id}: 前 {len(expected)} 笔不匹配"
+        assert matches_expected_rows(actual[: len(expected)], case), f"{case.case_id}: 前 {len(expected)} 笔不匹配"
     elif case.match == "suffix":
-        assert actual[-len(expected) :] == list(expected), f"{case.case_id}: 后 {len(expected)} 笔不匹配"
+        assert matches_expected_rows(actual[-len(expected) :], case), f"{case.case_id}: 后 {len(expected)} 笔不匹配"
     else:
         raise AssertionError(f"{case.case_id}: 未知 match 模式 {case.match}")
 

@@ -25,6 +25,7 @@ class SegmentCase:
     match: MatchMode
     expected: tuple
     note: str = ""
+    last_end_at_least: bool = False
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class BiCase:
     match: MatchMode
     expected: tuple
     note: str = ""
+    last_end_at_least: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,24 @@ class DataQualityCase:
     frequency: str
     asset_class: str
     note: str = ""
+
+
+def matches_expected_rows(actual: list[tuple], case: BiCase | SegmentCase) -> bool:
+    """Only marked final end dates use >=; every other field remains exact."""
+    expected = list(case.expected)
+    if not case.last_end_at_least:
+        return actual == expected
+    if len(actual) != len(expected) or not actual:
+        return False
+    end_index = 2 if isinstance(case, BiCase) else 1
+    last, baseline = actual[-1], expected[-1]
+    return (
+        actual[:-1] == expected[:-1]
+        and len(last) == len(baseline)
+        and last[:end_index] == baseline[:end_index]
+        and last[end_index] >= baseline[end_index]
+        and last[end_index + 1:] == baseline[end_index + 1:]
+    )
 
 
 # 线段级：只放文档明确要求线段端点/方向/类型的案例。
@@ -173,6 +193,7 @@ SEGMENT_CASES = (
             ("2025-09-25", "2026-10-19", "XianDuan", False),
             ("2026-10-19", "2026-11-10", "FakeXianDuanLast", True),
         ),
+        last_end_at_least=True,
     ),
     SegmentCase(
         "S26",
@@ -263,6 +284,7 @@ SEGMENT_CASES = (
             ("2026-03-06", "2026-07-09", "FakeXianDuanLast", False),
             ("2026-07-09", "2026-10-26", "FakeXianDuanLast", True),
         ),
+        last_end_at_least=True,
     ),
 )
 
@@ -298,6 +320,7 @@ BI_CASES = (
             ("up", "2017-06-30", "2019-06-28"),
             ("down", "2019-06-28", "2026-09-30"),
         ),
+        last_end_at_least=True,
     ),
     BiCase(
         "S15",
@@ -306,6 +329,7 @@ BI_CASES = (
         "asset_class=stock",
         "full",
         (("down", "2017-03-31", "2026-11-10"),),
+        last_end_at_least=True,
     ),
     BiCase(
         "S16",

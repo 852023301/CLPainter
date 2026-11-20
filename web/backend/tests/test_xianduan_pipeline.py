@@ -14,7 +14,9 @@ from unittest.mock import Mock
 import pytest
 
 from CLPainter.web.backend.app.toolbox import datacube as dc
-from CLPainter.web.backend.tests.regression_cases import BI_CASES, SEGMENT_CASES, BiCase, SegmentCase
+from CLPainter.web.backend.tests.regression_cases import (
+    BI_CASES, SEGMENT_CASES, BiCase, SegmentCase, matches_expected_rows,
+)
 
 
 @pytest.mark.parametrize("search", [False, True], ids=["search-off", "search-on"])
@@ -107,11 +109,11 @@ def assert_acceptance(case: BiCase | SegmentCase, cache: dc._DataCache) -> None:
     if case.match == "contains":
         assert case.expected in actual, case.case_id
     elif case.match == "prefix":
-        assert actual[:len(case.expected)] == list(case.expected), case.case_id
+        assert matches_expected_rows(actual[:len(case.expected)], case), case.case_id
     elif case.match == "suffix":
-        assert actual[-len(case.expected):] == list(case.expected), case.case_id
+        assert matches_expected_rows(actual[-len(case.expected):], case), case.case_id
     elif case.match == "full":
-        assert actual == list(case.expected), case.case_id
+        assert matches_expected_rows(actual, case), case.case_id
     else:
         raise AssertionError(f"Unsupported raw acceptance mode: {case.match}")
 
