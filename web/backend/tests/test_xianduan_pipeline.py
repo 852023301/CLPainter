@@ -106,7 +106,9 @@ def assert_acceptance(case: BiCase | SegmentCase, cache: dc._DataCache) -> None:
         actual = [row[:3] for row in bi_rows(cache)]
     else:
         actual = [row[:4] for row in segment_rows(cache)]
-    if case.match == "contains":
+    if case.match == "contains_range":
+        assert matches_expected_rows(actual, case), case.case_id
+    elif case.match == "contains":
         assert case.expected in actual, case.case_id
     elif case.match == "prefix":
         assert matches_expected_rows(actual[:len(case.expected)], case), case.case_id

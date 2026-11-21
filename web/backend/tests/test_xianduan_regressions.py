@@ -39,6 +39,9 @@ def _load_segments(case) -> list[tuple]:
 
 def _assert_match(actual: list[tuple], case) -> None:
     expected = case.expected
+    if case.match == "contains_range":
+        assert matches_expected_rows(actual, case), f"{case.case_id}: 没有同方向线段完整覆盖区间 {expected}"
+        return
     if case.match == "contains":
         assert expected in actual, f"{case.case_id}: 未找到期望线段 {expected}"
         return

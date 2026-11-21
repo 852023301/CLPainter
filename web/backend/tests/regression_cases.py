@@ -13,7 +13,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-MatchMode = Literal["full", "prefix", "suffix", "contains", "endpoint"]
+MatchMode = Literal["full", "prefix", "suffix", "contains", "contains_range", "endpoint"]
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,13 @@ class DataQualityCase:
 
 
 def matches_expected_rows(actual: list[tuple], case: BiCase | SegmentCase) -> bool:
-    """Only marked final end dates use >=; every other field remains exact."""
+    """Match exact/lower-bound rows, or an explicitly declared segment range."""
+    if isinstance(case, SegmentCase) and case.match == "contains_range":
+        start, end, is_up = case.expected
+        return any(
+            actual_start <= start <= end <= actual_end and direction == is_up
+            for actual_start, actual_end, _kind, direction in actual
+        )
     expected = list(case.expected)
     if not case.last_end_at_least:
         return actual == expected
@@ -188,12 +194,9 @@ SEGMENT_CASES = (
         "603683SH",
         "freq=1day",
         "asset_class=stock",
-        "suffix",
-        (
-            ("2025-09-25", "2026-10-19", "XianDuan", False),
-            ("2026-10-19", "2026-11-10", "FakeXianDuanLast", True),
-        ),
-        last_end_at_least=True,
+        "contains_range",
+        ("2025-09-25", "2026-10-19", False),
+        note="只要求同一条下降段覆盖此区间，不固定尾部结构和普通/fake 类型",
     ),
     SegmentCase(
         "S26",

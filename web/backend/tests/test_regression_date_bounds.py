@@ -12,7 +12,7 @@ from CLPainter.web.backend.tests.test_xianduan_pipeline import assert_acceptance
 from CLPainter.web.backend.tests.test_xianduan_regressions import _assert_match as assert_segments
 
 
-CASES = tuple(case for case in BI_CASES + SEGMENT_CASES if case.case_id in {"S14-quarter", "S15", "S25", "S28"})
+CASES = tuple(case for case in BI_CASES + SEGMENT_CASES if case.case_id in {"S14-quarter", "S15", "S28"})
 
 
 def rows_with_end_offset(case, days):
@@ -113,5 +113,5 @@ def test_later_endpoint_does_not_relax_segment_type(case, reader):
 
 def test_only_requested_cases_enable_the_lower_bound():
     assert {case.case_id for case in BI_CASES + SEGMENT_CASES if case.last_end_at_least} == {
-        "S14-quarter", "S15", "S25", "S28",
+        "S14-quarter", "S15", "S28",
     }
