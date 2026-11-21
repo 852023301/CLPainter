@@ -197,6 +197,19 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
 
+    def test_screener_preset_actions_are_bold_and_creation_is_collapsed(self):
+        style = re.search(r"\.screener-preset-actions button\s*\{([^}]+)\}", self.html)
+        self.assertIsNotNone(style)
+        weight = re.search(r"font-weight:\s*(\d+)", style.group(1))
+        self.assertIsNotNone(weight)
+        self.assertGreaterEqual(int(weight.group(1)), 600)
+        self.assertIn("color: #333", style.group(1))
+        self.assertRegex(self.html, r'<div[^>]*id="screenerPresetCreatePanel"[^>]*\bhidden')
+        self.assertRegex(self.html, r'id="screenerPresetNew"[^>]*aria-expanded="false"')
+        self.assertIn(".screener-preset-create[hidden]", self.html)
+        self.assertNotIn('id="screenerHistoryPrev"', self.html)
+        self.assertNotIn('id="screenerHistoryNext"', self.html)
+
     def test_saved_screener_presets_behavior(self):
         node = shutil.which("node")
         if node is None:
