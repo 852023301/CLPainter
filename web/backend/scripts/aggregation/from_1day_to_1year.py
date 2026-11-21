@@ -88,13 +88,6 @@ def transform_and_save_symbol(source_path: Path, output_path: Path) -> bool:
     return True
 
 
-def clean_stale_files(output_dir: Path, generated_files: set) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for path in output_dir.glob("*.pkl"):
-        if path.is_file() and path.name not in generated_files:
-            path.unlink()
-
-
 def convert_asset_class(asset_class: str, source_root: Path, output_root: Path) -> set:
     source_dir = source_root / SOURCE_FREQUENCY / MARKET_DIR / ASSET_CLASS_DIRS[asset_class]
     output_dir = output_root / TARGET_FREQUENCY / MARKET_DIR / ASSET_CLASS_DIRS[asset_class]
@@ -112,7 +105,6 @@ def convert_asset_class(asset_class: str, source_root: Path, output_root: Path) 
         future.result()
         generated_files.add(futures[future])
 
-    clean_stale_files(output_dir, generated_files)
     return generated_files
 
 

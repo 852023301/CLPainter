@@ -1,15 +1,23 @@
 """从 info 表同步当前有效标的元数据到 SQLite。"""
 
+import argparse
 import datetime
-from pathlib import Path
+import os
 import sys
+from pathlib import Path
 
-from ddp import MysqlConnection
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
+from CLPainter.web.backend.app._config.settings import settings
+from CLPainter.web.backend.app.data_lifecycle import (
+    CODE,
+    managed_roots,
+    resolve_processing_date,
+    write_metadata_report,
+)
 from CLPainter.web.backend.app.db.base import engine
 from CLPainter.web.backend.app.db.models import Instrument
+from ddp import MysqlConnection
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 if str(BACKEND_DIR.parent.parent) not in sys.path:
@@ -49,9 +57,9 @@ def chart_code(source_code: str) -> str:
     return source_code.replace(".", "")
 
 
-def query_active_info(config: dict) -> list[Instrument]:
+def query_active_info(config: dict, as_of: datetime.date | None = None) -> list[Instrument]:
     """按原脚本的日期条件读取当前有效标的。"""
-    today = datetime.date.today()
+    today = as_of or resolve_processing_date(os.getenv("CLPAINTER_AS_OF"))
     with MysqlConnection() as sql:
         frame = sql.query_pandas(
             f"SELECT {config['code_column']} AS source_code, "
@@ -83,59 +91,108 @@ def query_active_info(config: dict) -> list[Instrument]:
     return instruments
 
 
-def sync_asset_class(config: dict) -> tuple[int, int]:
-    """用当前 info 表结果整体替换同一资产类型的元数据。"""
-    instruments = query_active_info(config)
-    instruments_by_identity = {
-        (instrument.market, instrument.asset_class, instrument.code): instrument
-        for instrument in instruments
-    }
-    active_codes = {instrument.code for instrument in instruments}
+def _validate_instruments(
+    config: dict, instruments: list[Instrument], previous_count: int, max_drop_ratio: float
+) -> None:
+    if not 0 <= max_drop_ratio <= 1:
+        raise ValueError("max_drop_ratio must be between zero and one")
+    codes = [item.code for item in instruments]
+    if (
+        not codes
+        or len(codes) != len(set(codes))
+        or any(
+            not isinstance(code, str) or code.lower() in {"none", "nan", "nat"} or not CODE.fullmatch(code)
+            for code in codes
+        )
+    ):
+        raise ValueError("元数据为空、重复或代码无效，拒绝同步及后续清理")
+    if any(item.market != MARKET or item.asset_class != config["asset_class"] for item in instruments):
+        raise ValueError("上游元数据返回了错误的市场或资产范围")
+    if previous_count and len(codes) < previous_count * (1 - max_drop_ratio):
+        raise ValueError("元数据数量骤降超过安全阈值，请人工核对上游后再同步")
 
-    with Session(engine) as session:
-        stale_instruments = session.scalars(
+
+def _sync_instruments(session: Session, config: dict, instruments: list[Instrument]) -> tuple[int, int]:
+    incoming = {item.code: item for item in instruments}
+    current = {
+        item.code: item
+        for item in session.scalars(
             select(Instrument).where(
                 Instrument.market == MARKET,
                 Instrument.asset_class == config["asset_class"],
-                Instrument.code.not_in(active_codes),
             )
-        ).all()
-        stale_count = len(stale_instruments)
-        for instrument in stale_instruments:
-            session.delete(instrument)
+        )
+    }
+    stale_count = 0
+    for code, item in current.items():
+        if code not in incoming:
+            session.delete(item)
+            stale_count += 1
+    for code, item in incoming.items():
+        existing = current.get(code)
+        if existing is None:
+            session.add(item)
+        else:
+            for field in ("name", "display_name", "price_precision", "list_date", "delist_date"):
+                setattr(existing, field, getattr(item, field))
+    return stale_count, len(incoming)
 
-        existing_map = {
-            (instrument.market, instrument.asset_class, instrument.code): instrument
-            for instrument in session.scalars(
-                select(Instrument).where(
+
+def sync_asset_class(config: dict, as_of: datetime.date | None = None, max_drop_ratio: float = 0.2) -> tuple[int, int]:
+    """兼容单类同步调用；同样先验证，不允许空名单清空元数据。"""
+    managed_roots(settings)
+    instruments = query_active_info(config, as_of)
+    with Session(engine) as session:
+        previous = session.scalar(
+            select(func.count())
+            .select_from(Instrument)
+            .where(
+                Instrument.market == MARKET,
+                Instrument.asset_class == config["asset_class"],
+            )
+        )
+        _validate_instruments(config, instruments, previous, max_drop_ratio)
+        result = _sync_instruments(session, config, instruments)
+        session.commit()
+    return result
+
+
+def main(argv=None) -> None:
+    parser = argparse.ArgumentParser(description="校验并原子同步完整元数据，供统一清理使用")
+    parser.add_argument("--as-of", default=os.getenv("CLPAINTER_AS_OF"), help="本批处理交易日 YYYY-MM-DD")
+    parser.add_argument(
+        "--report", type=Path, default=os.getenv("CLPAINTER_METADATA_REPORT"), help="完整元数据批次清单"
+    )
+    parser.add_argument("--max-drop-ratio", type=float, default=0.2, help="允许的元数据数量下降比例，默认 0.2")
+    args = parser.parse_args(argv)
+    if not 0 <= args.max_drop_ratio <= 1:
+        parser.error("--max-drop-ratio 必须在 0 与 1 之间")
+    managed_roots(settings)
+    as_of = resolve_processing_date(args.as_of)
+    # 所有上游查询都完成之后再开始数据库事务，避免部分范围已清空、其他范围却失败。
+    prepared = [(label, config, query_active_info(config, as_of)) for label, config in ASSET_CLASS_CONFIG.items()]
+    with Session(engine) as session:
+        for _, config, instruments in prepared:
+            previous = session.scalar(
+                select(func.count())
+                .select_from(Instrument)
+                .where(
                     Instrument.market == MARKET,
                     Instrument.asset_class == config["asset_class"],
                 )
-            ).all()
-        }
-        for identity, instrument in instruments_by_identity.items():
-            existing = existing_map.get(identity)
-            if existing is None:
-                session.add(instrument)
-                existing_map[identity] = instrument
-                continue
-            existing.name = instrument.name
-            existing.display_name = instrument.display_name
-            existing.price_precision = instrument.price_precision
-            existing.list_date = instrument.list_date
-            existing.delist_date = instrument.delist_date
+            )
+            _validate_instruments(config, instruments, previous, args.max_drop_ratio)
+        results = [
+            (label, config, _sync_instruments(session, config, instruments)) for label, config, instruments in prepared
+        ]
         session.commit()
-
-    return stale_count, len(instruments)
-
-
-def main() -> None:
-    for label, config in ASSET_CLASS_CONFIG.items():
-        stale_count, active_count = sync_asset_class(config)
-        print(
-            f"{label}: 当前有效 {active_count}，清理失效 {stale_count}，"
-            f"asset_class={config['asset_class']}"
+    if args.report:
+        write_metadata_report(
+            args.report, settings, engine, as_of, [(MARKET, config["asset_class"]) for _, config, _ in prepared]
         )
+    print(f"元数据处理日期: {as_of}")
+    for label, config, (stale_count, active_count) in results:
+        print(f"{label}: 当前有效 {active_count}，清理失效 {stale_count}，asset_class={config['asset_class']}")
 
 
 if __name__ == "__main__":

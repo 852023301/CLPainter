@@ -1,5 +1,6 @@
 # 只需要未复权（除权）数据
 from bisect import bisect_left, bisect_right
+import os
 from tdata import fetch_data
 from ddp import MysqlConnection
 import numpy as np
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from CLPainter.web.backend.app._config.settings import settings
 from CLPainter.web.backend.app.db.base import engine
 from CLPainter.web.backend.app.db.models import Instrument
+from CLPainter.web.backend.app.data_lifecycle import batch_date_from_report, require_processing_data_date, resolve_processing_date
 
 START_DATE = "2009-01-01"
 END_DATE = None
@@ -43,9 +45,9 @@ def to_source_code(chart_code):
     return chart_code
 
 
-def load_instrument_info(asset_class):
+def load_instrument_info(asset_class, as_of: datetime.date | None = None):
     """从 Instrument 读取当前有效标的的上市日期与精度。"""
-    today = datetime.date.today()
+    today = as_of or datetime.date.today()
     with Session(engine) as session:
         instruments = session.scalars(
             select(Instrument).where(
@@ -194,8 +196,6 @@ def transform_and_save_symbol(symbol_idx, symbol, dates, field_arrays,
         original_start_date.strftime("%Y-%m-%d") if hasattr(original_start_date, "strftime") else original_start_date,
     )
     if not final_list and not old_list:
-        if output_path.is_file():
-            output_path.unlink()
         print(f"{symbol} 处理后无有效数据，不保存")
         return False
     save_pv_list(output_path, old_list, final_list, symbol)
@@ -273,17 +273,8 @@ def write_index_data(code, index_data, start_date, dsc_path):
     output_path = dsc_path / f"{code.replace('.', '')}.pkl"
     old_list = load_old_pv_list(code, "index", start_date)
     if not final_list and not old_list:
-        if output_path.is_file():
-            output_path.unlink()
         raise ValueError(f"{code} 指数处理后无有效数据，不保存")
     save_pv_list(output_path, old_list, final_list, code)
-
-
-def clean_stale_files(dsc_path, generated_files):
-    """删除本轮没有生成的历史数据文件。"""
-    for path in dsc_path.iterdir():
-        if path.is_file() and path.name not in generated_files:
-            path.unlink()
 
 
 def change_data_type_and_save(columns, dates, field_arrays, info_dict,
@@ -341,35 +332,42 @@ def change_data_type_and_save(columns, dates, field_arrays, info_dict,
     return file_names
 
 
-if __name__ == "__main__":
+def main() -> None:
+    global END_DATE
+    metadata_report = os.getenv("CLPAINTER_METADATA_REPORT")
+    processing_date = batch_date_from_report(Path(metadata_report) if metadata_report else None, settings, engine)
+    if processing_date is None and os.getenv("CLPAINTER_AS_OF"):
+        processing_date = resolve_processing_date(os.environ["CLPAINTER_AS_OF"])
+    END_DATE = processing_date.isoformat() if processing_date else END_DATE
     #########################################
     # 个股
-    generated_files = set()
-    stock_info_dict = load_instrument_info("stock")
+    stock_info_dict = load_instrument_info("stock", processing_date)
 
 
     d = fetch_data(DR_FIELDS, start_date=START_DATE, end_date=END_DATE)
 
     first_key = list(d.keys())[0]
     dates = pd.DatetimeIndex(d[first_key].index).strftime("%Y-%m-%d").tolist()
+    require_processing_data_date(dates, processing_date)
     columns = [column for column in d[first_key].columns.tolist() if column in stock_info_dict]
     stock_field_arrays = []
     for column in DR_FIELDS:
         stock_field_arrays.append(d.pop(column)[columns].to_numpy().T.copy())
     del d
 
-    generated_files.update(change_data_type_and_save(columns, dates, stock_field_arrays, stock_info_dict,
+    change_data_type_and_save(columns, dates, stock_field_arrays, stock_info_dict,
                                                      dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR),
-                                                     skip_missing_old_file=True))
+                                                     skip_missing_old_file=True)
     del stock_field_arrays
 
     #########################################
     #  指数
-    index_info_dict = load_instrument_info("index")
+    index_info_dict = load_instrument_info("index", processing_date)
 
     file_names = set()
     dsc_path = Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR)
     index_data_by_code = query_index_data(START_DATE, END_DATE)
+    require_processing_data_date((frame.index.max() for frame in index_data_by_code.values() if not frame.empty), processing_date)
     dsc_path.mkdir(parents=True, exist_ok=True)
     index_dsc_path = Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["index"])
     index_dsc_path.mkdir(parents=True, exist_ok=True)
@@ -402,27 +400,29 @@ if __name__ == "__main__":
                 continue
             file_names.add(futures[future])
     print(f"index: 数据源 {len(index_data_by_code)}，无元数据跳过 {skipped_count}，已保存 {len(file_names)}，保存失败跳过 {len(futures) - len(file_names)}")
-    clean_stale_files(index_dsc_path, file_names)
 
-    generated_files.update(file_names)
     del index_data_by_code
 
     #########################################
     # etf
-    etf_info_dict = load_instrument_info("fund")
+    etf_info_dict = load_instrument_info("fund", processing_date)
 
     cols = [f"etf_{column}_dr" for column in FIELDS]
     d = fetch_data(cols,start_date=START_DATE,end_date=END_DATE)
     dates = pd.DatetimeIndex(d[cols[0]].index).strftime("%Y-%m-%d").tolist()
+    require_processing_data_date(dates, processing_date)
     columns = [column for column in d[cols[0]].columns.tolist() if column in etf_info_dict]
     etf_field_arrays = []
     for column in cols:
         etf_field_arrays.append(d.pop(column)[columns].to_numpy().T.copy())
     del d
 
-    generated_files.update(change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
+    change_data_type_and_save(columns, dates, etf_field_arrays, etf_info_dict,
                                                      dsc_path=Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIRS["etf"]),
-                                                     asset_class="etf", skip_missing_old_file=True))
+                                                     asset_class="etf", skip_missing_old_file=True)
     del etf_field_arrays
 
-    clean_stale_files(Path(settings.DATA_DIR, "freq=1day", MARKET_DIR, ASSET_CLASS_DIR), generated_files)
+
+
+if __name__ == "__main__":
+    main()

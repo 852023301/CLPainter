@@ -28,6 +28,7 @@ SCRIPT_PATHS = (
     "validation/check_xianduan_invariants.py",
     "validation/snapshot_structures.py",
     "validation/compare_structures.py",
+    "maintenance/cleanup_stale_data.py",
     "maintenance/_mkdir.py",
     "maintenance/stop_project.py",
     "pipelines/run_update_pipeline.sh",
@@ -75,6 +76,7 @@ def test_stop_script_still_targets_this_project():
     "validation/check_xianduan_invariants.py",
     "validation/snapshot_structures.py",
     "validation/compare_structures.py",
+    "maintenance/cleanup_stale_data.py",
     "maintenance/stop_project.py",
 ))
 def test_safe_cli_help_from_another_working_directory(relative, tmp_path):
@@ -91,13 +93,21 @@ def test_safe_cli_help_from_another_working_directory(relative, tmp_path):
 
 
 @pytest.mark.parametrize("failure", (
-    "", "data_ingestion/meta_info.py", "data_ingestion/update_instrument_classification.py",
+    "", "data_ingestion/meta_info.py", "maintenance/cleanup_stale_data.py", "data_ingestion/update_instrument_classification.py",
     "data_ingestion/data_from_tdata_1day.py",
     "aggregation/from_1day_to_1quarter.py", "cache/dump_stock_caches.py", "state/update_cl_state.py",
 ))
 @pytest.mark.parametrize("classification_override", (False, True))
 def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classification_override):
     log = tmp_path / "calls.jsonl"
+    workspace = tmp_path / "isolated-workspace"
+    fixture_scripts = workspace / "CLPainter/web/backend/scripts"
+    for relative in SCRIPT_PATHS:
+        target = fixture_scripts / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# isolated pipeline fixture\n", encoding="utf-8")
+    fixture_pipeline = fixture_scripts / "pipelines/run_update_pipeline.sh"
+    fixture_pipeline.write_text((SCRIPTS_DIR / "pipelines/run_update_pipeline.sh").read_text(encoding="utf-8"), encoding="utf-8")
     interpreter = tmp_path / "fake-python"
     interpreter.write_text(
         "#!" + sys.executable + "\n"
@@ -106,7 +116,7 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
         "script = Path(sys.argv[1])\n"
         "assert script.is_file(), script\n"
         "relative = str(script.relative_to(Path(os.environ['TEST_SCRIPTS_DIR'])))\n"
-        "record = {'interpreter': sys.argv[0], 'script': relative, 'cwd': os.getcwd(), 'pythonpath': os.environ.get('PYTHONPATH', ''), 'args': sys.argv[2:], 'pipeline_start': os.environ.get('CLPAINTER_PIPELINE_STARTED_AT') }\n"
+        "record = {'interpreter': sys.argv[0], 'script': relative, 'cwd': os.getcwd(), 'pythonpath': os.environ.get('PYTHONPATH', ''), 'args': sys.argv[2:], 'pipeline_start': os.environ.get('CLPAINTER_PIPELINE_STARTED_AT'), 'metadata_report': os.environ.get('CLPAINTER_METADATA_REPORT') }\n"
         "with Path(os.environ['TEST_CALL_LOG']).open('a') as output:\n"
         "    output.write(json.dumps(record) + '\\n')\n"
         "sys.exit(7 if relative == os.environ.get('TEST_FAIL_SCRIPT') else 0)\n",
@@ -115,15 +125,17 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
     interpreter.chmod(0o755)
     env = os.environ.copy()
     env.update(PYTHON_BIN=str(interpreter), PYTHONPATH="/preserved-search-path",
-               TEST_SCRIPTS_DIR=str(SCRIPTS_DIR), TEST_CALL_LOG=str(log), TEST_FAIL_SCRIPT=failure)
+               TEST_SCRIPTS_DIR=str(fixture_scripts), TEST_CALL_LOG=str(log), TEST_FAIL_SCRIPT=failure)
     alternate = tmp_path / "classification-python"
     alternate.write_text(interpreter.read_text(encoding="utf-8"), encoding="utf-8")
     alternate.chmod(0o755)
+    env.pop("CLPAINTER_METADATA_REPORT", None)
+    env["TMPDIR"] = str(tmp_path)
     env.pop("CLPAINTER_CLASSIFICATION_PYTHON", None)
     if classification_override:
         env["CLPAINTER_CLASSIFICATION_PYTHON"] = str(alternate)
     result = subprocess.run(
-        ["bash", str(SCRIPTS_DIR / "pipelines/run_update_pipeline.sh")], cwd=tmp_path,
+        ["bash", str(fixture_pipeline)], cwd=tmp_path,
         env=env, capture_output=True, text=True, timeout=30,
     )
     assert log.exists(), result.stderr
@@ -137,25 +149,28 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
         is_classification = record["script"] == "data_ingestion/update_instrument_classification.py"
         expected_interpreter = alternate if classification_override and is_classification else interpreter
         assert record["interpreter"] == str(expected_interpreter)
-        assert record["cwd"] == str(PROJECT_DIR.parent)
-        assert record["pythonpath"].split(os.pathsep)[0] == str(PROJECT_DIR.parent)
+        assert record["cwd"] == str(workspace)
+        assert record["pythonpath"].split(os.pathsep)[0] == str(workspace)
         assert "/preserved-search-path" in record["pythonpath"].split(os.pathsep)
-    if failure == "data_ingestion/meta_info.py":
-        assert calls == [failure]
-    elif failure == "data_ingestion/update_instrument_classification.py":
-        assert calls == ["data_ingestion/meta_info.py", failure]
-    elif failure == "data_ingestion/data_from_tdata_1day.py":
-        assert calls == ["data_ingestion/meta_info.py", "data_ingestion/update_instrument_classification.py", failure]
+    prefix = ["data_ingestion/meta_info.py", "maintenance/cleanup_stale_data.py",
+              "data_ingestion/update_instrument_classification.py", "data_ingestion/data_from_tdata_1day.py"]
+    if failure in prefix:
+        assert calls == prefix[:prefix.index(failure) + 1]
     else:
-        assert calls[1] == "data_ingestion/update_instrument_classification.py"
-        assert calls[2] == "data_ingestion/data_from_tdata_1day.py"
-        assert set(calls[3:7]) == AGGREGATION_PATHS
+        assert calls[:4] == prefix
+        assert set(calls[4:8]) == AGGREGATION_PATHS
         if failure.startswith("aggregation/"):
-            assert len(calls) == 7
+            assert len(calls) == 8
         elif failure == "cache/dump_stock_caches.py":
-            assert calls[7:] == [failure]
+            assert calls[8:] == [failure]
         else:
-            assert calls[7:] == ["cache/dump_stock_caches.py", "state/update_cl_state.py"]
+            assert calls[8:] == ["cache/dump_stock_caches.py", "state/update_cl_state.py"]
+    assert all(record["metadata_report"] for record in records)
+    assert len({record["metadata_report"] for record in records}) == 1
+    assert not Path(records[0]["metadata_report"]).parent.exists()
+    for record in records:
+        if record["script"] == "maintenance/cleanup_stale_data.py":
+            assert record["args"] == ["--apply"]
     if calls[-1] == "state/update_cl_state.py":
         assert records[-1]["args"] == ["--archive-screener"]
     assert (result.returncode == 0) == (not failure), result.stderr
