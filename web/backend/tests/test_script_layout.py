@@ -116,7 +116,7 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
         "script = Path(sys.argv[1])\n"
         "assert script.is_file(), script\n"
         "relative = str(script.relative_to(Path(os.environ['TEST_SCRIPTS_DIR'])))\n"
-        "record = {'interpreter': sys.argv[0], 'script': relative, 'cwd': os.getcwd(), 'pythonpath': os.environ.get('PYTHONPATH', ''), 'args': sys.argv[2:], 'pipeline_start': os.environ.get('CLPAINTER_PIPELINE_STARTED_AT'), 'metadata_report': os.environ.get('CLPAINTER_METADATA_REPORT') }\n"
+        "record = {'interpreter': sys.argv[0], 'script': relative, 'cwd': os.getcwd(), 'pythonpath': os.environ.get('PYTHONPATH', ''), 'args': sys.argv[2:], 'pipeline_start': os.environ.get('CLPAINTER_PIPELINE_STARTED_AT') }\n"
         "with Path(os.environ['TEST_CALL_LOG']).open('a') as output:\n"
         "    output.write(json.dumps(record) + '\\n')\n"
         "sys.exit(7 if relative == os.environ.get('TEST_FAIL_SCRIPT') else 0)\n",
@@ -129,8 +129,6 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
     alternate = tmp_path / "classification-python"
     alternate.write_text(interpreter.read_text(encoding="utf-8"), encoding="utf-8")
     alternate.chmod(0o755)
-    env.pop("CLPAINTER_METADATA_REPORT", None)
-    env["TMPDIR"] = str(tmp_path)
     env.pop("CLPAINTER_CLASSIFICATION_PYTHON", None)
     if classification_override:
         env["CLPAINTER_CLASSIFICATION_PYTHON"] = str(alternate)
@@ -165,9 +163,6 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
             assert calls[8:] == [failure]
         else:
             assert calls[8:] == ["cache/dump_stock_caches.py", "state/update_cl_state.py"]
-    assert all(record["metadata_report"] for record in records)
-    assert len({record["metadata_report"] for record in records}) == 1
-    assert not Path(records[0]["metadata_report"]).parent.exists()
     for record in records:
         if record["script"] == "maintenance/cleanup_stale_data.py":
             assert record["args"] == ["--apply"]

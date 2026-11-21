@@ -1,54 +1,105 @@
-"""Preview, quarantine or restore unregistered runtime data; never delete it."""
+"""Preview or quarantine runtime files absent from current instrument metadata."""
 
 import argparse
 import json
-import os
+import re
 import sys
+import uuid
+from datetime import datetime
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 if str(BACKEND_DIR.parent.parent.parent) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR.parent.parent.parent))
 
+SCOPES = {("cn", "stock"), ("cn", "fund"), ("cn", "index")}
+
+
+def cleanup_files(config, identities: set[tuple[str, str, str]], *, apply: bool = False) -> dict:
+    """Only unregistered identities are stale; a missing source is not a reason to delete a valid cache."""
+    if not SCOPES <= {identity[:2] for identity in identities}:
+        raise ValueError("元数据范围不完整或为空，拒绝清理")
+    data_root = Path(config.DATA_DIR).parent.resolve()
+    roots = {
+        "source": Path(config.DATA_DIR),
+        "curated": Path(config.CACHE_DUMP_DIR),
+        "chart_payload": Path(config.CACHE_DUMP_DIR).parent / "chart_payload",
+    }
+    if data_root == Path("/") or any(path.is_symlink() for path in roots.values()):
+        raise ValueError("不允许使用根目录或符号链接作为清理根")
+    roots = {name: path.resolve() for name, path in roots.items()}
+    if any(data_root not in path.parents for path in roots.values()):
+        raise ValueError("清理目录必须位于同一数据根下")
+    quarantine = data_root / "quarantine"
+    protected = [*roots.values(), Path(config.OLD_DATA_DIR).resolve(), quarantine]
+    if quarantine.is_symlink() or any(
+        a == b or a in b.parents or b in a.parents for i, a in enumerate(protected) for b in protected[i + 1 :]
+    ):
+        raise ValueError("清理、历史数据和隔离目录不能重叠")
+    candidates = []
+    for name, directory in roots.items():
+        suffix = ".chart.pkl" if name == "chart_payload" else ".pkl"
+        for path in sorted(directory.glob("freq=*/market=*/asset_class=*/*")):
+            relative = path.relative_to(directory)
+            if path.is_symlink() or any((directory / parent).is_symlink() for parent in relative.parents):
+                continue
+            if not path.is_file() or not path.name.endswith(suffix):
+                continue
+            code = path.name[: -len(suffix)]
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", code):
+                continue
+            scope = (path.parent.parent.name.removeprefix("market="), path.parent.name.removeprefix("asset_class="))
+            if scope in SCOPES and (*scope, code) not in identities:
+                candidates.append((name, relative, path))
+    result = {
+        "mode": "quarantine" if apply else "dry-run",
+        "count": len(candidates),
+        "files": [str(path) for _, _, path in candidates],
+    }
+    if not apply or not candidates:
+        return result
+    batch = quarantine / (datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
+    batch.mkdir(parents=True, mode=0o700)
+    log = batch / "moves.jsonl"
+    try:
+        with log.open("x", encoding="utf-8") as stream:
+            for name, relative, source in candidates:
+                destination = batch / name / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists():
+                    raise FileExistsError(destination)
+                # Write the original and destination paths before moving; partial failures remain auditable.
+                stream.write(
+                    json.dumps({"source": str(source), "destination": str(destination)}, ensure_ascii=False) + "\n"
+                )
+                stream.flush()
+                source.rename(destination)
+    except OSError:
+        print(f"隔离中止，已移动的文件和操作日志保留在 {batch}", file=sys.stderr)
+        raise
+    return {**result, "log": str(log)}
+
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="统一预览、隔离与恢复源数据和派生缓存")
-    action = parser.add_mutually_exclusive_group()
-    action.add_argument("--apply", action="store_true", help="将确认失效的文件移入隔离目录，不物理删除")
-    action.add_argument("--restore", type=Path, help="按隔离 manifest.json 恢复，不覆盖现存文件")
-    parser.add_argument("--metadata-report", type=Path, default=os.getenv("CLPAINTER_METADATA_REPORT"))
-    parser.add_argument("--max-orphan-ratio", type=float, default=0.2, help="单范围允许的隔离比例，默认 0.2")
+    parser = argparse.ArgumentParser(description="按当前元数据统一预览或隔离失效的源数据与缓存")
+    parser.add_argument("--apply", action="store_true", help="显式移动到隔离目录；默认只预览")
     args = parser.parse_args(argv)
-    if not args.restore and not args.metadata_report:
-        parser.error("清理必须提供完整元数据清单 --metadata-report")
     from CLPainter.web.backend.app._config.settings import settings
-    from CLPainter.web.backend.app.data_lifecycle import (
-        apply_cleanup,
-        plan_cleanup,
-        restore_cleanup,
-    )
     from CLPainter.web.backend.app.db.base import engine
+    from CLPainter.web.backend.app.db.models import Instrument
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
 
     try:
-        if args.restore:
-            result = {"mode": "restore", **restore_cleanup(args.restore, settings)}
-        else:
-            plan = plan_cleanup(settings, engine, args.metadata_report, max_orphan_ratio=args.max_orphan_ratio)
-            if args.apply:
-                manifest = apply_cleanup(plan, settings, engine)
-                result = {
-                    "mode": "quarantine",
-                    "as_of": plan["as_of"],
-                    "moved": len(plan["files"]),
-                    "manifest": str(manifest) if manifest else None,
-                    "skipped": plan["skipped"],
-                }
-            else:
-                result = {"mode": "dry-run", "count": len(plan["files"]), "plan": plan}
-    except (ValueError, KeyError, OSError) as error:
-        print(f"统一清理拒绝执行: {error}", file=sys.stderr)
+        with Session(engine) as session:
+            identities = {
+                tuple(row)
+                for row in session.execute(select(Instrument.market, Instrument.asset_class, Instrument.code))
+            }
+        print(json.dumps(cleanup_files(settings, identities, apply=args.apply), ensure_ascii=False, indent=2))
+    except (ValueError, OSError) as error:
+        print(f"清理未完成: {error}", file=sys.stderr)
         return 1
-    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 

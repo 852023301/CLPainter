@@ -35,12 +35,12 @@ bash scripts/pipelines/run_update_pipeline.sh
 ```
 
 流水线自动定位工作区根目录并补充 `PYTHONPATH`，支持用 `PYTHON_BIN` 指定解释器。
-执行顺序为：
+执行顺序保持为：
 
-1. `data_ingestion/meta_info.py`：按本批交易日验证并原子同步完整元数据，生成清单。
-2. `maintenance/cleanup_stale_data.py --apply`：统一隔离清单范围外的源数据和派生缓存，不物理删除。
-3. `data_ingestion/update_instrument_classification.py`：更新有效标的分类，独立解释器规则不变。
-4. `data_ingestion/data_from_tdata_1day.py`：使用同一批次日期更新日线。
+1. `data_ingestion/meta_info.py`：同步有效标的元数据。
+2. `maintenance/cleanup_stale_data.py --apply`：统一隔离无元数据的源数据和派生缓存。
+3. `data_ingestion/update_instrument_classification.py`：以 `instrument` 为范围，更新当前有效申万行业、全部概念与地域，每标的一行且不保存时间字段。
+4. `data_ingestion/data_from_tdata_1day.py`：更新日线。
 5. 并行执行 `aggregation/` 中的四个周期转换脚本。
 6. `cache/dump_stock_caches.py`：导出缓存。
 7. `state/update_cl_state.py --archive-screener`：更新状态并归档到期方案。
@@ -76,7 +76,7 @@ python3 scripts/maintenance/stop_project.py --list-only
 
 ## 安全执行注意事项
 
-- `data_ingestion/meta_info.py` 与 `maintenance/cleanup_stale_data.py` 支持安全的 `--help`；元数据脚本不带 `--help` 会写库，清理脚本默认预览，只有显式 `--apply` 才隔离文件。`data_from_tdata_1day.py` 和四个聚合脚本不支持 `--help`，不要用来做无副作用探针。
+- `data_ingestion/meta_info.py`、`data_from_tdata_1day.py` 以及四个聚合脚本没有 `--help` 参数；直接运行会进入真实更新流程，不能用它们做无副作用的 CLI 冒烟。
 - `maintenance/_mkdir.py` 在执行时会创建数据目录，并递归设置权限；不要把它作为普通导入模块或测试探针。
 - `maintenance/stop_project.py` 不带 `--list-only` 会停止匹配的项目进程。
 - 不要仅为了验证分类而执行完整流水线或真实采集、全量导出、状态写库。
@@ -94,4 +94,4 @@ python3 scripts/maintenance/stop_project.py --list-only
 
 ## 统一失效清理
 
-失效文件的集合清理已集中到 `maintenance/cleanup_stale_data.py`，不再由日线采集和各聚合脚本分别删除。详见项目 `docs/unified-data-cleanup.md`。默认处理最近一个盘后完整交易日；次日补跑沿用该日期，可通过 `CLPAINTER_AS_OF=YYYY-MM-DD` 显式指定确认的交易日。清单和取数截止日期相同；空名单、数量骤降、范围/指纹变化都会阻止清理。
+`python scripts/maintenance/cleanup_stale_data.py` 默认只预览，`--apply` 才移动到隔离目录并保存 moves.jsonl。元数据同步和取数行为保持原样，无需元数据报告或额外日期参数。详见项目 `docs/unified-data-cleanup.md`。

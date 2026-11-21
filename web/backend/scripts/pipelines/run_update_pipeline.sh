@@ -43,21 +43,6 @@ run_parallel_scripts() {
 cd "${PROJECT_ROOT}"
 export PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
-METADATA_CONTEXT_DIR=""
-if [[ -z "${CLPAINTER_METADATA_REPORT:-}" ]]; then
-    METADATA_CONTEXT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/clpainter-metadata.XXXXXXXX")"
-    export CLPAINTER_METADATA_REPORT="${METADATA_CONTEXT_DIR}/metadata.json"
-fi
-cleanup_metadata_context() {
-    local exit_status=$?
-    if [[ -n "${METADATA_CONTEXT_DIR}" ]]; then
-        rm -f -- "${METADATA_CONTEXT_DIR}/metadata.json" || true
-        rmdir -- "${METADATA_CONTEXT_DIR}" 2>/dev/null || true
-    fi
-    return "${exit_status}"
-}
-trap cleanup_metadata_context EXIT
-
 run_script "data_ingestion/meta_info.py"
 run_script "maintenance/cleanup_stale_data.py" --apply
 CLASSIFICATION_PYTHON="${CLPAINTER_CLASSIFICATION_PYTHON:-${PYTHON_BIN}}"
