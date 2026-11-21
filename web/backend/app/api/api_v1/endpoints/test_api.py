@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session
 
 from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
 from ....db.base import engine
-from ....db.models import ClStateSnapshot, Instrument, StockScreenerPreset, WatchlistBoard, WatchlistItem
+from ....db.models import ClStateSnapshot, Instrument, StockScreenerPreset, StockScreenerRun, WatchlistBoard, WatchlistItem
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
+from ....screener.history import FREQUENCIES, chart_url, list_runs, run_detail
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -478,9 +479,91 @@ def update_stock_screener_preset(preset_id: int, payload: StockScreenerPresetWri
 @router.delete("/stock_screener/presets/{preset_id}", status_code=204)
 def delete_stock_screener_preset(preset_id: int) -> Response:
     with Session(engine) as session:
+        if session.scalar(select(StockScreenerRun.id).where(StockScreenerRun.preset_id == preset_id).limit(1)) is not None:
+            raise HTTPException(status_code=409, detail="方案已有历史结果，不能直接删除；可继续修改方案条件")
         session.delete(_get_screener_preset(session, preset_id))
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError as error:
+            session.rollback()
+            raise HTTPException(status_code=409, detail="方案已生成历史结果，不能直接删除") from error
     return Response(status_code=204)
+
+
+@router.get("/stock_screener/runs")
+def stock_screener_runs(
+    preset_id: int = Query(0, ge=0),
+    frequency: str = "",
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    with Session(engine) as session:
+        try:
+            return list_runs(session, preset_id=preset_id, frequency=frequency, limit=limit, offset=offset)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.get("/stock_screener/runs/{run_id}")
+def stock_screener_run_detail(run_id: int) -> dict:
+    with Session(engine) as session:
+        detail = run_detail(session, run_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="历史版本不存在")
+        return detail
+
+
+@router.get("/stock_screener/history", response_class=HTMLResponse)
+def stock_screener_history(
+    request: Request,
+    preset_id: int = Query(0, ge=0),
+    frequency: str = "",
+    run_id: int = Query(0, ge=0),
+    view: str = "results",
+    offset: int = Query(0, ge=0),
+):
+    if view not in {"results", "added", "removed", "retained"}:
+        raise HTTPException(status_code=400, detail="不支持的结果视图")
+    with Session(engine) as session:
+        try:
+            listing = list_runs(session, preset_id=preset_id, frequency=frequency, limit=50, offset=offset)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        selected_id = run_id or (listing["runs"][0]["id"] if listing["runs"] else 0)
+        detail = run_detail(session, selected_id) if selected_id else None
+        if run_id and (
+            detail is None
+            or (preset_id and detail["preset_id"] != preset_id)
+            or (frequency and detail["frequency"] != frequency)
+        ):
+            raise HTTPException(status_code=404, detail="历史版本不存在或不符合当前筛选")
+        presets = [
+            {"id": item.id, "name": item.name}
+            for item in session.scalars(select(StockScreenerPreset).order_by(StockScreenerPreset.id))
+        ]
+
+    def history_link(**updates):
+        values = {"preset_id": preset_id, "frequency": frequency, "run_id": selected_id, "view": view, "offset": offset}
+        values.update(updates)
+        return "/api/v1/test_api/stock_screener/history?" + urlencode(values)
+
+    rows = [{**item, "chart_url": chart_url(item, detail["frequency"])} for item in detail[view]] if detail else []
+    template = templates.env.get_template("screener_history.html")
+    return HTMLResponse(
+        template.render(
+            presets=presets,
+            preset_id=preset_id,
+            frequency=frequency,
+            frequencies=FREQUENCIES,
+            listing=listing,
+            detail=detail,
+            rows=rows,
+            view=view,
+            offset=offset,
+            history_link=history_link,
+        ),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/stock_screener/options")

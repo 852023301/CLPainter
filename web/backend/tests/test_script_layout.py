@@ -106,7 +106,7 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
         "script = Path(sys.argv[1])\n"
         "assert script.is_file(), script\n"
         "relative = str(script.relative_to(Path(os.environ['TEST_SCRIPTS_DIR'])))\n"
-        "record = {'interpreter': sys.argv[0], 'script': relative, 'cwd': os.getcwd(), 'pythonpath': os.environ.get('PYTHONPATH', '')}\n"
+        "record = {'interpreter': sys.argv[0], 'script': relative, 'cwd': os.getcwd(), 'pythonpath': os.environ.get('PYTHONPATH', ''), 'args': sys.argv[2:], 'pipeline_start': os.environ.get('CLPAINTER_PIPELINE_STARTED_AT') }\n"
         "with Path(os.environ['TEST_CALL_LOG']).open('a') as output:\n"
         "    output.write(json.dumps(record) + '\\n')\n"
         "sys.exit(7 if relative == os.environ.get('TEST_FAIL_SCRIPT') else 0)\n",
@@ -130,6 +130,9 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
     records = [json.loads(line) for line in log.read_text().splitlines()]
     calls = [record["script"] for record in records]
     assert calls[0] == "data_ingestion/meta_info.py"
+    from datetime import datetime
+    assert datetime.fromisoformat(records[0]["pipeline_start"]).tzinfo is not None
+    assert all(record["pipeline_start"] == records[0]["pipeline_start"] for record in records)
     for record in records:
         is_classification = record["script"] == "data_ingestion/update_instrument_classification.py"
         expected_interpreter = alternate if classification_override and is_classification else interpreter
@@ -153,4 +156,6 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
             assert calls[7:] == [failure]
         else:
             assert calls[7:] == ["cache/dump_stock_caches.py", "state/update_cl_state.py"]
+    if calls[-1] == "state/update_cl_state.py":
+        assert records[-1]["args"] == ["--archive-screener"]
     assert (result.returncode == 0) == (not failure), result.stderr

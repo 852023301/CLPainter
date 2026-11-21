@@ -5,12 +5,14 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+export CLPAINTER_PIPELINE_STARTED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
 
 run_script() {
     local script_name="$1"
+    shift
 
     echo "[start] ${script_name}"
-    "${PYTHON_BIN}" "${SCRIPT_DIR}/${script_name}"
+    "${PYTHON_BIN}" "${SCRIPT_DIR}/${script_name}" "$@"
     echo "[done] ${script_name}"
 }
 
@@ -59,4 +61,4 @@ if ! run_parallel_scripts \
 fi
 
 run_script "cache/dump_stock_caches.py"
-run_script "state/update_cl_state.py"
+run_script "state/update_cl_state.py" --archive-screener

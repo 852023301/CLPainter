@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>选股历史结果 · CLPainter</title>
+    <link rel="icon" href="/static/favicon.svg">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font: 14px/1.5 "Microsoft YaHei", "PingFang SC", sans-serif; color: #222; background: #f3f3f3; }
+        a { color: #b92525; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        button, select { font: inherit; }
+        header, main { max-width: 1320px; margin: auto; padding: 16px; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        h1 { font-size: 20px; margin: 0; } h2 { font-size: 18px; margin: 0 0 8px; }
+        form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+        select, button { padding: 6px 10px; border: 1px solid #d9d9d9; border-radius: 4px; background: white; max-width: 300px; }
+        button { cursor: pointer; color: white; background: #e64545; border-color: #e64545; }
+        .layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+        aside, article { background: white; border: 1px solid #e4e4e4; border-radius: 4px; overflow: hidden; }
+        aside h2 { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; margin: 0; }
+        .version { display: block; padding: 10px 12px; border-bottom: 1px solid #eee; color: #333; }
+        .version[aria-current="page"] { border-left: 3px solid #e64545; background: #fff2f2; }
+        .version small, .muted { color: #777; } .version small { display: block; overflow-wrap: anywhere; }
+        .page-nav { display: flex; justify-content: space-between; padding: 12px; }
+        article { padding: 16px; } .summary { margin: 0 0 16px; color: #666; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .tabs a { padding: 6px 10px; border: 1px solid #ddd; color: #444; border-radius: 4px; }
+        .tabs a[aria-current="page"] { border-color: #e64545; color: #c62828; background: #fff2f2; }
+        .notice { padding: 10px 12px; background: #f7f8fa; color: #666; margin-bottom: 16px; }
+        .table-scroll { overflow: auto; } table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
+        th, td { padding: 10px 8px; border-bottom: 1px solid #eee; } th { color: #666; font-size: 12px; }
+        .empty { padding: 24px 8px; color: #777; } .new { color: #c62828; font-size: 12px; }
+        @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } aside { max-height: 280px; overflow: auto; } header { align-items: start; } }
+    </style>
+</head>
+<body>
+<header><h1>选股历史结果</h1><a href="/api/v1/test_api/lightweight_charts_demo?symbol=000001SH&amp;asset_class=index">返回图表</a></header>
+<main>
+    <form method="get" action="/api/v1/test_api/stock_screener/history">
+        <label for="presetFilter">方案</label>
+        <select id="presetFilter" name="preset_id"><option value="0">全部方案</option>
+            {% for preset in presets %}<option value="{{ preset.id }}"{% if preset.id == preset_id %} selected{% endif %}>{{ preset.name }}</option>{% endfor %}
+        </select>
+        <label for="frequencyFilter">周期</label>
+        <select id="frequencyFilter" name="frequency"><option value="">全部周期</option>
+            {% for value, label in frequencies.items() %}<option value="{{ value }}"{% if value == frequency %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select><button type="submit">筛选</button><span class="muted">共 {{ listing.total }} 个成功版本</span>
+    </form>
+    <div class="layout">
+        <aside aria-label="历史版本列表"><h2>已保存版本</h2>
+            {% for item in listing.runs %}
+            <a class="version" href="{{ history_link(run_id=item.id, view='results') }}"{% if detail and item.id == detail.id %} aria-current="page"{% endif %}>
+                <strong>{{ item.version_date }}</strong> · {{ frequencies.get(item.frequency, item.frequency) }} · {{ item.count }} 个
+                <small>{{ item.preset_name }}</small>
+            </a>
+            {% else %}<div class="empty">暂无归档结果</div>{% endfor %}
+            <nav class="page-nav" aria-label="历史分页">
+                {% if offset > 0 %}<a href="{{ history_link(offset=[offset-50, 0]|max, run_id=0) }}">上一页</a>{% endif %}
+                {% if offset + 50 < listing.total %}<a href="{{ history_link(offset=offset+50, run_id=0) }}">下一页</a>{% endif %}
+            </nav>
+        </aside>
+        <article>
+            {% if detail %}
+            <h2>{{ detail.preset_name }}</h2>
+            <p class="summary">版本 {{ detail.version_date }} · {{ frequencies.get(detail.frequency, detail.frequency) }} · 本期 {{ detail.count }} 个标的</p>
+            {% if detail.comparison_available %}
+            <div class="notice">对比版本：{{ detail.previous_version }} → {{ detail.version_date }}。对比对象为上一次成功留档，可能存在缺期。历史不保存筛选条件，差异仅表示名单变化。</div>
+            {% else %}<div class="notice">首次版本，没有可用的历史对比基准。</div>{% endif %}
+            <nav class="tabs" aria-label="结果分类">
+                <a href="{{ history_link(view='results') }}"{% if view == 'results' %} aria-current="page"{% endif %}>本期 {{ detail.count }}</a>
+                {% if detail.comparison_available %}
+                {% for kind, label in [('added', '新增'), ('removed', '移出'), ('retained', '保留')] %}
+                <a href="{{ history_link(view=kind) }}"{% if view == kind %} aria-current="page"{% endif %}>{{ label }} {{ detail[kind]|length }}</a>
+                {% endfor %}{% endif %}
+            </nav>
+            {% if rows %}<div class="table-scroll"><table>
+                <thead><tr><th scope="col">序号</th><th scope="col">代码</th><th scope="col">名称</th><th scope="col">市场</th><th scope="col">种类</th></tr></thead>
+                <tbody>{% for item in rows %}<tr><td>{{ loop.index }}</td><td><a href="{{ item.chart_url }}" target="_blank" rel="noopener" title="打开当前图表">{{ item.code }}</a></td><td>{{ item.display_name }}</td><td>{{ item.market }}</td><td>{{ item.asset_class }}</td></tr>{% endfor %}</tbody>
+            </table></div>{% else %}<p class="empty">{% if view == 'results' %}本期没有命中标的。{% else %}该分类没有标的。{% endif %}</p>{% endif %}
+            {% else %}<h2>暂无归档结果</h2><p class="empty">数据完整更新后，到期方案会自动留档。首次运行前请先完成数据库迁移。</p>{% endif %}
+        </article>
+    </div>
+</main>
+</body>
+</html>
