@@ -408,6 +408,7 @@ async function boot(frequency, storageSeed) {
     context.globalThis = context;
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
     vm.createContext(context);
+    vm.runInContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(templatePath), '../static/js/screener-history.js'), 'utf8'), context);
     scripts.forEach((source, index) => {
         try {
             vm.runInContext(prepareScript(source, frequency), context, {filename: `template-${index}.js`});

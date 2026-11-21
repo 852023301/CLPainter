@@ -9,7 +9,7 @@ from functools import lru_cache
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -522,6 +522,7 @@ def stock_screener_history(
     run_id: int = Query(0, ge=0),
     view: str = "results",
     offset: int = Query(0, ge=0),
+    standalone: int = Query(0, ge=0, le=1),
 ):
     if view not in {"results", "added", "removed", "retained"}:
         raise HTTPException(status_code=400, detail="不支持的结果视图")
@@ -543,8 +544,30 @@ def stock_screener_history(
             for item in session.scalars(select(StockScreenerPreset).order_by(StockScreenerPreset.id))
         ]
 
+    if not standalone:
+        candidates = (detail[view] or detail["results"]) if detail else []
+        item = candidates[0] if candidates else {"code": "000001SH", "market": "cn", "asset_class": "index"}
+        chart_frequency = detail["frequency"] if detail else (frequency or "1day")
+        context = {
+            "screener_mode": "history",
+            "history_preset": preset_id,
+            "history_frequency": frequency,
+            "history_run_id": selected_id,
+            "history_view": view,
+            "history_offset": offset,
+            "history_scroll": 0,
+        }
+        return RedirectResponse(chart_url(item, chart_frequency) + "&" + urlencode(context), status_code=303)
+
     def history_link(**updates):
-        values = {"preset_id": preset_id, "frequency": frequency, "run_id": selected_id, "view": view, "offset": offset}
+        values = {
+            "preset_id": preset_id,
+            "frequency": frequency,
+            "run_id": selected_id,
+            "view": view,
+            "offset": offset,
+            "standalone": 1,
+        }
         values.update(updates)
         return "/api/v1/test_api/stock_screener/history?" + urlencode(values)
 
@@ -737,9 +760,7 @@ async def lightweight_charts_demo(
             classification = instrument_classification_payload(session, instrument)
         instrument_name_version = hashlib.sha256(instrument_display_name.encode("utf-8")).hexdigest()[:16]
         instrument_updated_at = (
-            instrument.updated_at.isoformat()
-            if instrument is not None and instrument.updated_at is not None
-            else ""
+            instrument.updated_at.isoformat() if instrument is not None and instrument.updated_at is not None else ""
         )
     except ValueError as error:
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
@@ -755,6 +776,7 @@ async def lightweight_charts_demo(
                 _TEMPLATE_PATH,
                 _TEMPLATE_PATH.with_name("_instrument_classification.html"),
                 _TEMPLATE_PATH.parent.parent / "static/css/instrument-classification.css",
+                _TEMPLATE_PATH.parent.parent / "static/js/screener-history.js",
             )
         )
         html_content = await run_in_threadpool(
@@ -771,6 +793,42 @@ async def lightweight_charts_demo(
             template_version,
         )
     except Exception as error:
+        if (
+            request.query_params.get("screener_mode") == "history"
+            and isinstance(error, (FileNotFoundError, ValueError))
+            and "template_version" in locals()
+        ):
+            logger.warning("历史工作台图表暂不可用: symbol=%s frequency=%s error=%s", symbol, frequency, type(error).__name__)
+            empty = {
+                name: "[]"
+                for name in (
+                    "candle_data",
+                    "change_data",
+                    "bi_data",
+                    "xd_data",
+                    "zhongshu_data",
+                    "zhongshu_in_xianduan_data",
+                    "xianduan_zhongshu_data",
+                    "xianduan_zhongshu_another_data",
+                    "volume_data",
+                )
+            }
+            empty.update(precision=2, chart_error="该标的暂无可用图表数据，请在历史名单中选择其他标的")
+            return HTMLResponse(
+                _render_lightweight_charts_page(
+                    empty,
+                    symbol,
+                    frequency_key,
+                    frequency_versions,
+                    market_key,
+                    asset_class_key,
+                    instrument_display_name,
+                    instrument_id,
+                    classification_json,
+                    template_version,
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=500)
 
@@ -832,26 +890,48 @@ def _build_lightweight_charts_page(
     symbol: str,
     frequency: str,
     cache_version: str,
-            frequency_versions: tuple[int, ...],
-            market: str,
-            asset_class: str,
-            display_name: str,
-            instrument_id: int | None,
-            classification_json: str,
-            template_version: str,
+    frequency_versions: tuple[int, ...],
+    market: str,
+    asset_class: str,
+    display_name: str,
+    instrument_id: int | None,
+    classification_json: str,
+    template_version: str,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency, market, asset_class)
-    payload = {
-        key: value
-        for key, value in payload.items()
-        if key not in _LAZY_MODULES.values()
-    }
+    return _render_lightweight_charts_page(
+        payload,
+        symbol,
+        frequency,
+        frequency_versions,
+        market,
+        asset_class,
+        display_name,
+        instrument_id,
+        classification_json,
+        template_version,
+    )
+
+
+def _render_lightweight_charts_page(
+    payload: dict,
+    symbol: str,
+    frequency: str,
+    frequency_versions: tuple[int, ...],
+    market: str,
+    asset_class: str,
+    display_name: str,
+    instrument_id: int | None,
+    classification_json: str,
+    template_version: str,
+) -> str:
+    payload = {key: value for key, value in payload.items() if key not in _LAZY_MODULES.values()}
     payload.setdefault("ma_data", "[]")
     payload.setdefault("gaps_data", "[]")
     payload.setdefault("boll_data", "[]")
     payload.setdefault("rsi_data", "[]")
-    payload.setdefault("macd_data", "{\"lines\":[],\"stats\":[],\"markers\":[]}")
+    payload.setdefault("macd_data", '{"lines":[],"stats":[],"markers":[]}')
     payload.setdefault("change_data", "[]")
     payload["frequency"] = frequency
     payload["symbol"] = symbol

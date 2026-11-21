@@ -39,6 +39,7 @@
 <header><h1>选股历史结果</h1><a href="/api/v1/test_api/lightweight_charts_demo?symbol=000001SH&amp;asset_class=index">返回图表</a></header>
 <main>
     <form method="get" action="/api/v1/test_api/stock_screener/history">
+        <input type="hidden" name="standalone" value="1">
         <label for="presetFilter">方案</label>
         <select id="presetFilter" name="preset_id"><option value="0">全部方案</option>
             {% for preset in presets %}<option value="{{ preset.id }}"{% if preset.id == preset_id %} selected{% endif %}>{{ preset.name }}</option>{% endfor %}

@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/static/css/instrument-classification.css?v={{ classification_assets_version }}">
     <title>Lightweight Charts Demo</title>
     <script src="/static/js/lightweight-charts.standalone.production.js"></script>
+    <script src="/static/js/screener-history.js?v={{ classification_assets_version }}"></script>
     <style>
         html,
         body {
@@ -991,6 +992,24 @@
             overflow: hidden;
         }
 
+        .screener-tab-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 10px; }
+        .screener-tab-panel[hidden] { display: none; }
+        .screener-mode-tabs, .screener-history-views { display: flex; flex-shrink: 0; gap: 4px; }
+        .screener-mode-tabs button, .screener-history-views button { flex: 1; padding: 6px 4px; border: 1px solid #ddd; border-radius: 4px; background: white; color: #555; font-size: 12px; cursor: pointer; }
+        .screener-mode-tabs button[aria-selected="true"], .screener-history-views button[aria-pressed="true"] { color: #c62828; border-color: #e64545; background: #fff2f2; font-weight: 600; }
+        .screener-history-controls { display: flex; flex-shrink: 0; flex-direction: column; gap: 8px; }
+        .screener-history-filter-row { display: flex; align-items: end; gap: 8px; }
+        .screener-history-filter-row .screener-field { flex: 1; min-width: 0; }
+        .screener-history-pagination { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: #777; }
+        .screener-history-pagination button, #screenerHistoryRefresh { padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; color: #555; }
+        .screener-history-controls button:disabled, .screener-history-views button:disabled { opacity: .45; cursor: not-allowed; }
+        .screener-history-note { margin: 0; flex-shrink: 0; font-size: 12px; color: #666; line-height: 1.5; overflow-wrap: anywhere; }
+        .screener-history-status[data-error="true"] { color: #c62828; }
+        .screener-result.active { background: #fff2f2; box-shadow: inset 3px 0 #e64545; }
+        a.screener-result { text-decoration: none; color: #333; }
+        .screener-preset-heading { display: flex; align-items: center; justify-content: space-between; }
+        .screener-presets #screenerHistoryLink { border: 0; padding: 0; background: transparent; color: #c62828; font-size: 12px; cursor: pointer; }
+
         .screener-presets {
             flex-shrink: 0;
             padding-bottom: 8px;
@@ -1214,6 +1233,12 @@
         }
 
         @media (max-width: 860px) {
+            .screener-panel[data-mode="history"],
+            .app-shell.screener-collapsed .screener-panel[data-mode="history"] {
+                height: min(760px, 90vh);
+                min-height: 560px;
+            }
+
             body {
                 overflow: auto;
             }
@@ -1409,8 +1434,13 @@
             <button type="button" id="screenerCollapse" class="screener-icon-button" title="收起选股" aria-label="收起选股">»</button>
         </div>
         <div class="screener-body">
+            <div class="screener-mode-tabs" role="tablist" aria-label="选股查看模式">
+                <button type="button" id="screenerRealtimeTab" role="tab" aria-selected="true" aria-controls="screenerRealtimePanel">实时选股</button>
+                <button type="button" id="screenerHistoryTab" role="tab" aria-selected="false" aria-controls="screenerHistoryPanel">历史结果</button>
+            </div>
+            <div id="screenerRealtimePanel" class="screener-tab-panel" role="tabpanel" aria-labelledby="screenerRealtimeTab">
             <section class="screener-presets screener-field" aria-label="选股方案管理">
-                <label for="screenerPresetSelect">选股方案 · <a id="screenerHistoryLink" href="/api/v1/test_api/stock_screener/history" target="_blank" rel="noopener">历史结果</a></label>
+                <div class="screener-preset-heading"><label for="screenerPresetSelect">选股方案</label><button type="button" id="screenerHistoryLink">历史结果</button></div>
                 <select id="screenerPresetSelect" disabled><option value="">选择已保存方案</option></select>
                 <div class="screener-preset-row screener-preset-actions">
                     <button type="button" id="screenerPresetApply" disabled>应用</button>
@@ -1433,6 +1463,22 @@
             <div id="screenerResults" class="screener-results">
                 <div class="screener-empty">选择条件后点击确认</div>
             </div>
+            </div>
+            <section id="screenerHistoryPanel" class="screener-tab-panel" role="tabpanel" aria-labelledby="screenerHistoryTab" hidden>
+                <div class="screener-history-controls">
+                    <div class="screener-field"><label for="screenerHistoryPreset">历史方案</label><select id="screenerHistoryPreset"><option value="0">全部方案</option></select></div>
+                    <div class="screener-history-filter-row"><div class="screener-field"><label for="screenerHistoryFrequency">历史周期</label><select id="screenerHistoryFrequency"></select></div><button type="button" id="screenerHistoryRefresh">刷新</button></div>
+                    <div class="screener-field"><label for="screenerHistoryVersion">已保存版本</label><select id="screenerHistoryVersion"><option value="0">尚未加载历史版本</option></select></div>
+                    <nav class="screener-history-pagination" aria-label="版本分页"><button type="button" id="screenerHistoryPrev" disabled>上一页</button><span id="screenerHistoryPage"></span><button type="button" id="screenerHistoryNext" disabled>下一页</button></nav>
+                </div>
+                <p id="screenerHistoryChartHint" class="screener-history-note">名单为所选历史版本，图表为最新完整行情，不按版本日期截断。</p>
+                <p id="screenerHistorySummary" class="screener-history-note"></p>
+                <nav class="screener-history-views" aria-label="历史结果分类">
+                    <button type="button" id="screenerHistoryViewResults" aria-pressed="true">本期</button><button type="button" id="screenerHistoryViewAdded" aria-pressed="false" disabled>新增</button><button type="button" id="screenerHistoryViewRemoved" aria-pressed="false" disabled>移出</button><button type="button" id="screenerHistoryViewRetained" aria-pressed="false" disabled>保留</button>
+                </nav>
+                <p id="screenerHistoryStatus" class="screener-history-note screener-history-status" role="status" aria-live="polite"></p>
+                <div id="screenerHistoryResults" class="screener-results"></div>
+            </section>
         </div>
         <button type="button" id="screenerExpand" class="screener-rail" title="展开选股" aria-label="展开选股">选股</button>
         <div id="screenerResizer" class="screener-resizer" role="separator" aria-orientation="vertical" aria-label="调整选股栏宽度" title="拖动调整宽度"></div>
@@ -2581,6 +2627,20 @@
     screenerPresetUpdate.addEventListener('click', () => saveScreenerPreset(true));
     screenerPresetDelete.addEventListener('click', deleteScreenerPreset);
     screenerPresetRetry.addEventListener('click', loadScreenerPresets);
+    try {
+        new window.ScreenerHistory({
+            request: requestScreener,
+            getPresetId: () => Number(screenerPresetSelect.value) || 0,
+            getChartContext: () => ({symbol: currentSymbol, market: currentMarket.replace('market=', ''), asset_class: currentAssetClass.replace('asset_class=', ''), frequency: currentFrequency.replace('freq=', '')}),
+        });
+    } catch (error) {
+        console.error('历史组件加载失败:', error);
+        const tab = document.getElementById('screenerHistoryTab');
+        tab.disabled = true;
+        tab.title = '历史组件加载失败，请刷新';
+        document.getElementById('screenerRealtimePanel').hidden = false;
+        document.getElementById('screenerHistoryPanel').hidden = true;
+    }
     loadScreenerPresets();
     loadScreenerOptions();
 
@@ -2594,6 +2654,7 @@
     });
 
     // 从后端传入的数据
+    const chartError = {{ chart_error | default("", true) | tojson }};
     const candleData = {{ candle_data | safe }};
     const changeData = {{ change_data | safe }};
     const changeLookup = {};
@@ -2627,7 +2688,10 @@
 
 
     if (!candleData || !Array.isArray(candleData) || candleData.length === 0) {
-        document.getElementById('chart').innerHTML = '<p style="color:red;text-align:center;padding-top:250px;">数据加载失败</p>';
+        const message = document.createElement('p');
+        message.style.cssText = 'color:#c62828;text-align:center;padding-top:160px;';
+        message.textContent = chartError || '数据加载失败';
+        document.getElementById('chart').appendChild(message);
     } else {
         const chartContainer = document.getElementById('chart');
         const tooltip = document.getElementById('ohlcTooltip');

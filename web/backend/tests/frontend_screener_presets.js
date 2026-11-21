@@ -6,7 +6,7 @@ const html = fs.readFileSync(process.argv[2], 'utf8');
 const ids = ['screenerPanel', 'screenerFilters', 'screenerRun', 'screenerReset', 'screenerResults',
     'screenerCollapse', 'screenerExpand', 'screenerResizer', 'screenerPresetSelect', 'screenerPresetName',
     'screenerPresetSave', 'screenerPresetApply', 'screenerPresetUpdate', 'screenerPresetDelete',
-    'screenerPresetStatus', 'screenerPresetRetry'];
+    'screenerPresetStatus', 'screenerPresetRetry', 'screenerRealtimeTab', 'screenerHistoryTab', 'screenerRealtimePanel', 'screenerHistoryPanel', 'screenerHistoryLink', 'screenerHistoryPreset', 'screenerHistoryFrequency', 'screenerHistoryVersion', 'screenerHistoryRefresh', 'screenerHistoryPrev', 'screenerHistoryNext', 'screenerHistoryPage', 'screenerHistoryStatus', 'screenerHistoryChartHint', 'screenerHistorySummary', 'screenerHistoryResults', 'screenerHistoryViewResults', 'screenerHistoryViewAdded', 'screenerHistoryViewRemoved', 'screenerHistoryViewRetained'];
 ids.forEach(id => assert(html.includes('id="' + id + '"'), 'Missing preset UI: ' + id));
 const start = html.indexOf('    const screenerPanel = ');
 const end = html.indexOf("    document.querySelectorAll('#frequencyTabs", start);
@@ -88,7 +88,7 @@ function makeServer() {
 async function boot(server, storage = new Map()) {
     const elements = Object.fromEntries(ids.map(id => [id, new Element(id === 'screenerPresetSelect' ? 'select' : 'div')]));
     const document = {getElementById: id => elements[id], createElement: tag => new Element(tag)};
-    const context = {document, console, appShell: new Element(), window: {innerWidth: 1200},
+    const context = {document, console, URLSearchParams, appShell: new Element(), window: {innerWidth: 1200, location: {search: '', pathname: '/api/v1/test_api/lightweight_charts_demo', assign() {}}, history: {replaceState() {}}},
         requestAnimationFrame: callback => callback(), fetch: server.fetch, confirm: () => true,
         localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)),
             removeItem: key => storage.delete(key)},
@@ -97,7 +97,9 @@ async function boot(server, storage = new Map()) {
         lsGetBool: (key, fallback) => storage.has(key) ? storage.get(key) === '1' : fallback,
         lsSetBool: (key, value) => storage.set(key, value ? '1' : '0'), syncChartWidth() {},
     };
-    vm.createContext(context); vm.runInContext(source, context); await flush();
+    vm.createContext(context);
+    vm.runInContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[2]), '../static/js/screener-history.js'), 'utf8'), context);
+    vm.runInContext(source, context); await flush();
     return {elements, context, storage, field: key => elements.screenerFilters.querySelectorAll('select').find(select => select.dataset.field === key)};
 }
 async function choose(page, id) {

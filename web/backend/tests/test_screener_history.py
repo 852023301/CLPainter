@@ -226,14 +226,16 @@ def test_history_page_displays_frozen_results_and_escapes_names(history_http):
         ]
         identifier = latest.id
         session.commit()
-    response = client.get("/api/v1/test_api/stock_screener/history", params={"run_id": identifier})
+    response = client.get("/api/v1/test_api/stock_screener/history", params={"run_id": identifier, "standalone": 1})
     assert response.status_code == 200, response.text
     assert "2026-11-20" in response.text and "2026-11-13" in response.text
     assert "新增" in response.text and "移出" in response.text and "本期" in response.text
     assert "&lt;script&gt;" in response.text and "&lt;img" in response.text
     assert "<script>alert(1)</script>" not in response.text and "<img src=x" not in response.text
     assert "symbol=CCC" in response.text
-    removed = client.get("/api/v1/test_api/stock_screener/history", params={"run_id": identifier, "view": "removed"})
+    removed = client.get(
+        "/api/v1/test_api/stock_screener/history", params={"run_id": identifier, "view": "removed", "standalone": 1}
+    )
     assert removed.status_code == 200 and "symbol=AAA" in removed.text
     assert client.get("/api/v1/test_api/stock_screener/history", params={"run_id": 99999}).status_code == 404
 
@@ -257,7 +259,7 @@ def test_history_empty_page_is_readable(history_db, monkeypatch):
     app = FastAPI()
     app.include_router(routes.router, prefix="/api/v1/test_api")
     with TestClient(app) as client:
-        response = client.get("/api/v1/test_api/stock_screener/history")
+        response = client.get("/api/v1/test_api/stock_screener/history", params={"standalone": 1})
         assert response.status_code == 200 and "暂无归档结果" in response.text
 
 
@@ -346,7 +348,131 @@ def test_history_page_pagination_controls(history_http):
             for i in range(49)
         )
         session.commit()
-    first = client.get("/api/v1/test_api/stock_screener/history")
-    second = client.get("/api/v1/test_api/stock_screener/history", params={"offset": 50})
+    first = client.get("/api/v1/test_api/stock_screener/history", params={"standalone": 1})
+    second = client.get("/api/v1/test_api/stock_screener/history", params={"offset": 50, "standalone": 1})
     assert first.status_code == second.status_code == 200
     assert "下一页" in first.text and "上一页" in second.text
+
+
+def test_legacy_history_opens_shared_latest_chart_workspace(history_http):
+    from urllib.parse import parse_qs, urlparse
+
+    client, engine = history_http
+    with Session(engine) as session:
+        latest = session.scalar(select(models.StockScreenerRun).order_by(models.StockScreenerRun.version_date.desc()))
+        identifier = latest.id
+    response = client.get(
+        "/api/v1/test_api/stock_screener/history",
+        params={
+            "preset_id": 1,
+            "frequency": "1day",
+            "run_id": identifier,
+            "view": "removed",
+            "offset": 0,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    location = urlparse(response.headers["location"])
+    params = parse_qs(location.query, keep_blank_values=True)
+    assert location.path == "/api/v1/test_api/lightweight_charts_demo"
+    assert params["symbol"] == ["AAA"] and params["frequency"] == ["1day"]
+    assert params["screener_mode"] == ["history"]
+    assert params["history_run_id"] == [str(identifier)]
+    assert params["history_preset"] == ["1"] and params["history_view"] == ["removed"]
+    assert not ({"as_of", "end_date", "version_date"} & params.keys())
+
+
+def test_empty_history_still_opens_workspace(history_db, monkeypatch):
+    from CLPainter.web.backend.app.api.api_v1.endpoints import test_api as routes
+
+    monkeypatch.setattr(routes, "engine", history_db)
+    app = FastAPI()
+    app.include_router(routes.router, prefix="/api/v1/test_api")
+    with TestClient(app) as client:
+        response = client.get("/api/v1/test_api/stock_screener/history", follow_redirects=False)
+    assert response.status_code == 303
+    assert "screener_mode=history" in response.headers["location"]
+    assert "asset_class=index" in response.headers["location"]
+
+
+def test_history_workspace_keeps_latest_bars_and_missing_chart_does_not_hide_history(history_http, monkeypatch):
+    import json
+    import re
+
+    from CLPainter.web.backend.app.api.api_v1.endpoints import test_api as routes
+
+    client, _ = history_http
+    template = Path(__file__).resolve().parents[1] / "app/templates/lightweight_charts_demo.html"
+    monkeypatch.setattr(routes, "_TEMPLATE_PATH", template)
+    monkeypatch.setattr(
+        routes, "get_chart_payload_versions", lambda *args: (1,) * len(routes.SUPPORTED_CHART_FREQUENCIES)
+    )
+    payload = {
+        name: "[]"
+        for name in [
+            "change_data",
+            "bi_data",
+            "xd_data",
+            "zhongshu_data",
+            "zhongshu_in_xianduan_data",
+            "xianduan_zhongshu_data",
+            "xianduan_zhongshu_another_data",
+            "volume_data",
+        ]
+    }
+    payload.update(
+        precision=2,
+        candle_data=json.dumps(
+            [
+                {"time": "2026-11-13", "open": 1, "high": 2, "low": 1, "close": 2},
+                {"time": "2026-11-20", "open": 2, "high": 3, "low": 2, "close": 3},
+            ]
+        ),
+    )
+    monkeypatch.setattr(routes, "load_chart_payload", lambda *args: payload)
+    routes._build_lightweight_charts_page.cache_clear()
+    url = "/api/v1/test_api/lightweight_charts_demo?symbol=AAA&frequency=1day&market=cn&asset_class=stock&screener_mode=history&history_run_id=1"
+    response = client.get(url)
+    assert response.status_code == 200, response.text
+    assert '"2026-11-20"' in response.text and '"2026-11-13"' in response.text
+    assert 'id="screenerHistoryPanel"' in response.text
+
+    def missing(*args):
+        raise FileNotFoundError("missing chart")
+
+    monkeypatch.setattr(routes, "load_chart_payload", missing)
+    routes._build_lightweight_charts_page.cache_clear()
+    response = client.get(url)
+    assert response.status_code == 200, response.text
+    assert 'id="screenerHistoryPanel"' in response.text
+    error = re.search(r"const chartError = (.*);", response.text)
+    assert error and "该标的暂无可用图表数据" in json.loads(error.group(1))
+    routes._build_lightweight_charts_page.cache_clear()
+
+
+@pytest.mark.parametrize("module", ["ma", "boll", "rsi", "macd"])
+def test_history_context_never_truncates_latest_indicator_modules(history_http, monkeypatch, module):
+    import json
+
+    from CLPainter.web.backend.app.api.api_v1.endpoints import test_api as routes
+
+    client, _ = history_http
+    values = [{"time": "2026-11-13", "value": 1}, {"time": "2026-11-20", "value": 2}]
+    data = {"stats": values, "lines": []} if module == "macd" else [{"key": module, "values": values}]
+    monkeypatch.setattr(routes, "load_chart_payload", lambda *args: {module + "_data": json.dumps(data)})
+    response = client.get(
+        "/api/v1/test_api/lightweight_charts_module",
+        params={
+            "symbol": "AAA",
+            "frequency": "1day",
+            "market": "cn",
+            "asset_class": "stock",
+            "module": module,
+            "screener_mode": "history",
+            "history_run_id": 1,
+        },
+    )
+    assert response.status_code == 200
+    stored = json.loads(response.json()["data"])
+    assert "2026-11-20" in json.dumps(stored) and "2026-11-13" in json.dumps(stored)

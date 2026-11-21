@@ -207,6 +207,16 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
 
+    def test_history_workspace_behavior(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify the history workspace")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_history_workspace.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
     def test_screener_results_are_numbered_and_keep_scroll(self):
         self.assertIn(".screener-result-index", self.html)
         self.assertIn("sequence.textContent = String(index + 1)", self.scripts)
@@ -284,7 +294,6 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         self.assertIn("周期 ${periods}", self.scripts)
         self.assertIn("涨跌 ${signedText", self.scripts)
         self.assertIn("幅度 ${signedText", self.scripts)
-
 
     def test_classification_component_shows_all_labels_without_controls(self):
         component = (TEMPLATE.parent / "_instrument_classification.html").read_text(encoding="utf-8")
