@@ -1,11 +1,9 @@
-"""Preview or quarantine runtime files absent from current instrument metadata."""
+"""Preview or delete runtime files absent from current instrument metadata."""
 
 import argparse
 import json
 import re
 import sys
-import uuid
-from datetime import datetime
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -30,12 +28,9 @@ def cleanup_files(config, identities: set[tuple[str, str, str]], *, apply: bool 
     roots = {name: path.resolve() for name, path in roots.items()}
     if any(data_root not in path.parents for path in roots.values()):
         raise ValueError("清理目录必须位于同一数据根下")
-    quarantine = data_root / "quarantine"
-    protected = [*roots.values(), Path(config.OLD_DATA_DIR).resolve(), quarantine]
-    if quarantine.is_symlink() or any(
-        a == b or a in b.parents or b in a.parents for i, a in enumerate(protected) for b in protected[i + 1 :]
-    ):
-        raise ValueError("清理、历史数据和隔离目录不能重叠")
+    protected = [*roots.values(), Path(config.OLD_DATA_DIR).resolve()]
+    if any(a == b or a in b.parents or b in a.parents for i, a in enumerate(protected) for b in protected[i + 1 :]):
+        raise ValueError("清理目录和历史数据目录不能重叠")
     candidates = []
     for name, directory in roots.items():
         suffix = ".chart.pkl" if name == "chart_payload" else ".pkl"
@@ -50,39 +45,21 @@ def cleanup_files(config, identities: set[tuple[str, str, str]], *, apply: bool 
                 continue
             scope = (path.parent.parent.name.removeprefix("market="), path.parent.name.removeprefix("asset_class="))
             if scope in SCOPES and (*scope, code) not in identities:
-                candidates.append((name, relative, path))
+                candidates.append(path)
     result = {
-        "mode": "quarantine" if apply else "dry-run",
+        "mode": "delete" if apply else "dry-run",
         "count": len(candidates),
-        "files": [str(path) for _, _, path in candidates],
+        "files": [str(path) for path in candidates],
     }
-    if not apply or not candidates:
-        return result
-    batch = quarantine / (datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:8])
-    batch.mkdir(parents=True, mode=0o700)
-    log = batch / "moves.jsonl"
-    try:
-        with log.open("x", encoding="utf-8") as stream:
-            for name, relative, source in candidates:
-                destination = batch / name / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if destination.exists():
-                    raise FileExistsError(destination)
-                # Write the original and destination paths before moving; partial failures remain auditable.
-                stream.write(
-                    json.dumps({"source": str(source), "destination": str(destination)}, ensure_ascii=False) + "\n"
-                )
-                stream.flush()
-                source.rename(destination)
-    except OSError:
-        print(f"隔离中止，已移动的文件和操作日志保留在 {batch}", file=sys.stderr)
-        raise
-    return {**result, "log": str(log)}
+    if apply:
+        for path in candidates:
+            path.unlink()
+    return result
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="按当前元数据统一预览或隔离失效的源数据与缓存")
-    parser.add_argument("--apply", action="store_true", help="显式移动到隔离目录；默认只预览")
+    parser = argparse.ArgumentParser(description="按当前元数据统一预览或删除失效的源数据与缓存")
+    parser.add_argument("--apply", action="store_true", help="直接删除失效文件，不可恢复；默认只预览")
     args = parser.parse_args(argv)
     from CLPainter.web.backend.app._config.settings import settings
     from CLPainter.web.backend.app.db.base import engine

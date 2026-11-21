@@ -39,23 +39,24 @@ def data(tmp_path):
 
 def test_preview_is_read_only_and_checks_all_three_directories(data):
     module, config, identities, root, kept, stale = data
+    before = set(root.rglob("*"))
     result = module.cleanup_files(config, identities)
     assert result["mode"] == "dry-run" and result["count"] == 45
     assert set(result["files"]) == {str(path) for path in stale}
     assert all(path.exists() for path in kept + stale)
-    assert not (root / "quarantine").exists()
+    assert set(root.rglob("*")) == before
 
 
-def test_apply_moves_only_orphans_and_logs_the_original_paths(data):
+def test_apply_deletes_only_orphans_without_creating_backups_or_logs(data):
     module, config, identities, root, kept, stale = data
-    content = {str(path): path.read_bytes() for path in kept + stale}
+    before = set(root.rglob("*"))
+    content = {path: path.read_bytes() for path in kept}
     result = module.cleanup_files(config, identities, apply=True)
-    assert result["count"] == 45 and all(not path.exists() for path in stale)
-    assert all(path.read_bytes() == content[str(path)] for path in kept)
-    assert root / "quarantine" in Path(result["log"]).parents
-    entries = [json.loads(line) for line in Path(result["log"]).read_text(encoding="utf-8").splitlines()]
-    assert {entry["source"] for entry in entries} == {str(path) for path in stale}
-    assert all(Path(entry["destination"]).read_bytes() == content[entry["source"]] for entry in entries)
+    assert result["mode"] == "delete" and result["count"] == 45
+    assert set(result["files"]) == {str(path) for path in stale}
+    assert all(not path.exists() for path in stale)
+    assert all(path.read_bytes() == content[path] for path in kept)
+    assert set(root.rglob("*")) == before - set(stale)
     assert module.cleanup_files(config, identities, apply=True)["count"] == 0
 
 
@@ -99,11 +100,12 @@ def test_identity_includes_market_and_asset_class(data):
 @pytest.mark.parametrize("present_scopes", [set(), {("cn", "stock")}, {("cn", "stock"), ("cn", "index")}])
 def test_empty_or_incomplete_metadata_refuses_cleanup(data, present_scopes):
     module, config, identities, root, kept, stale = data
+    before = set(root.rglob("*"))
     incomplete = {identity for identity in identities if identity[:2] in present_scopes}
     with pytest.raises(ValueError):
         module.cleanup_files(config, incomplete, apply=True)
     assert all(path.exists() for path in kept + stale)
-    assert not (root / "quarantine").exists()
+    assert set(root.rglob("*")) == before
 
 
 @pytest.mark.parametrize("invalid_path", ["outside", "source_overlap", "history_overlap", "symlink"])
@@ -119,10 +121,11 @@ def test_managed_paths_must_stay_inside_the_data_root_without_overlap(data, tmp_
         alias = root / "linked-curated"
         alias.symlink_to(config.CACHE_DUMP_DIR, target_is_directory=True)
         config.CACHE_DUMP_DIR = str(alias)
+    before = set(root.rglob("*"))
     with pytest.raises(ValueError):
         module.cleanup_files(config, identities, apply=True)
     assert all(path.exists() for path in kept + stale)
-    assert not (root / "quarantine").exists()
+    assert set(root.rglob("*")) == before
 
 
 @pytest.mark.parametrize("apply", [False, True])
@@ -145,7 +148,7 @@ def test_cli_reads_instrument_without_a_metadata_report(data, monkeypatch, capsy
         monkeypatch.setattr(importlib.import_module("CLPainter.web.backend.app.db.base"), "engine", engine)
         assert module.main(["--apply"] if apply else []) == 0
         result = json.loads(capsys.readouterr().out)
-        assert result["mode"] == ("quarantine" if apply else "dry-run") and result["count"] == 45
+        assert result["mode"] == ("delete" if apply else "dry-run") and result["count"] == 45
         assert all(path.exists() for path in kept)
         assert all(path.exists() != apply for path in stale)
         with Session(engine) as session:
@@ -154,22 +157,22 @@ def test_cli_reads_instrument_without_a_metadata_report(data, monkeypatch, capsy
         engine.dispose()
 
 
-def test_interrupted_move_keeps_an_auditable_log_and_never_deletes_files(data, monkeypatch):
-    module, config, identities, root, kept, stale = data
-    rename = Path.rename
+def test_delete_stops_at_first_error_and_keeps_remaining_files(data, monkeypatch):
+    module, config, identities, root, kept, _stale = data
+    before = set(root.rglob("*"))
+    unlink = Path.unlink
     attempted = []
 
-    def fail_second_move(source, destination):
-        attempted.append(source)
+    def fail_second_delete(path):
+        attempted.append(path)
         if len(attempted) == 2:
-            raise OSError("simulated move failure")
-        return rename(source, destination)
+            raise PermissionError("simulated delete failure")
+        return unlink(path)
 
-    monkeypatch.setattr(Path, "rename", fail_second_move)
-    with pytest.raises(OSError, match="simulated move failure"):
+    monkeypatch.setattr(Path, "unlink", fail_second_delete)
+    with pytest.raises(PermissionError, match="simulated delete failure"):
         module.cleanup_files(config, identities, apply=True)
-    log = next((root / "quarantine").glob("*/moves.jsonl"))
-    entries = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
-    assert [entry["source"] for entry in entries] == [str(path) for path in attempted]
+    assert len(attempted) == 2
+    assert not attempted[0].exists() and attempted[1].exists()
     assert all(path.exists() for path in kept)
-    assert len(stale) == sum(path.exists() for path in stale) + sum(Path(e["destination"]).exists() for e in entries)
+    assert set(root.rglob("*")) == before - {attempted[0]}

@@ -38,7 +38,7 @@ bash scripts/pipelines/run_update_pipeline.sh
 执行顺序保持为：
 
 1. `data_ingestion/meta_info.py`：同步有效标的元数据。
-2. `maintenance/cleanup_stale_data.py --apply`：统一隔离无元数据的源数据和派生缓存。
+2. `maintenance/cleanup_stale_data.py --apply`：统一删除无元数据的源数据和派生缓存。
 3. `data_ingestion/update_instrument_classification.py`：以 `instrument` 为范围，更新当前有效申万行业、全部概念与地域，每标的一行且不保存时间字段。
 4. `data_ingestion/data_from_tdata_1day.py`：更新日线。
 5. 并行执行 `aggregation/` 中的四个周期转换脚本。
@@ -94,4 +94,4 @@ python3 scripts/maintenance/stop_project.py --list-only
 
 ## 统一失效清理
 
-`python scripts/maintenance/cleanup_stale_data.py` 默认只预览，`--apply` 才移动到隔离目录并保存 moves.jsonl。元数据同步和取数行为保持原样，无需元数据报告或额外日期参数。详见项目 `docs/unified-data-cleanup.md`。
+`python scripts/maintenance/cleanup_stale_data.py` 默认只预览，`--apply` 才直接删除失效文件，不搬移、不备份，删除后不可恢复。元数据同步和取数行为保持原样，无需元数据报告或额外日期参数。详见项目 `docs/unified-data-cleanup.md`。
