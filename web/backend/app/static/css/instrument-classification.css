@@ -1,0 +1,111 @@
+.instrument-classification {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    min-width: 0;
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border: 1px solid #e4e4e4;
+    border-radius: 4px;
+    background: #fff;
+    color: #444;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.instrument-classification .classification-line,
+.instrument-classification .classification-concept-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.instrument-classification .classification-label {
+    flex: none;
+    color: #666;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.instrument-classification .classification-industry,
+.instrument-classification .classification-values,
+.instrument-classification .classification-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.instrument-classification .classification-industry li + li::before {
+    margin: 0 6px 0 2px;
+    color: #777;
+    content: "›";
+}
+
+.instrument-classification .classification-tag {
+    box-sizing: border-box;
+    max-width: 100%;
+    padding: 1px 6px;
+    border: 1px solid #e5e7eb;
+    border-radius: 3px;
+    background: #f7f8fa;
+    overflow-wrap: anywhere;
+}
+
+.instrument-classification .classification-missing,
+.instrument-classification .classification-empty {
+    color: #666;
+}
+
+.instrument-classification .classification-concepts,
+.instrument-classification .classification-concept-state {
+    flex-basis: 100%;
+    min-width: 0;
+}
+
+.instrument-classification .classification-concepts {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.instrument-classification .classification-concept-heading {
+    flex: none;
+}
+
+.instrument-classification .classification-tags {
+    flex: 1;
+}
+
+.instrument-classification .classification-count {
+    flex: none;
+    padding: 0 6px;
+    border-radius: 3px;
+    background: #f0f0f0;
+    color: #555;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+    .instrument-classification {
+        gap: 6px 12px;
+        padding: 8px;
+    }
+
+    .instrument-classification .classification-line {
+        flex-basis: 100%;
+        align-items: flex-start;
+    }
+
+    .instrument-classification .classification-concepts {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

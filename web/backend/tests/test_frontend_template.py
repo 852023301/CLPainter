@@ -286,5 +286,33 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         self.assertIn("幅度 ${signedText", self.scripts)
 
 
+    def test_classification_component_shows_all_labels_without_controls(self):
+        component = (TEMPLATE.parent / "_instrument_classification.html").read_text(encoding="utf-8")
+        for marker in (
+            'id="instrumentClassification"', 'id="classificationConceptTags"',
+            'aria-label="当前标的全部概念标签"', 'role="list"',
+            'classification-concept-heading', '概念数据缺失', '无有效概念',
+        ):
+            self.assertIn(marker, component)
+        for removed in ("<details", "<summary", "展开全部", "收起", "classification-preview", "[:5]"):
+            self.assertNotIn(removed, component)
+        self.assertNotIn("| safe", component)
+        self.assertNotIn("<script", component)
+
+    def test_classification_labels_flow_with_the_existing_workspace_scroll(self):
+        css = (TEMPLATE.parent.parent / "static/css/instrument-classification.css").read_text(encoding="utf-8")
+        scroll = self.html.index('<div class="workspace-scroll">')
+        component = self.html.index('{% include "_instrument_classification.html" %}')
+        chart = self.html.index('<div id="chart">')
+        self.assertLess(scroll, component)
+        self.assertLess(component, chart)
+        self.assertIn("flex-wrap: wrap", css)
+        self.assertIn("overflow-wrap: anywhere", css)
+        self.assertNotIn("position: absolute", css)
+        self.assertNotIn("max-height:", css)
+        self.assertNotIn("overflow: auto", css)
+        self.assertIn("max-width: 600px", css)
+
+
 if __name__ == "__main__":
     unittest.main()

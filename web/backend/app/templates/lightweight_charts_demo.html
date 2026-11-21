@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/css/instrument-classification.css?v={{ classification_assets_version }}">
     <title>Lightweight Charts Demo</title>
     <script src="/static/js/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -1379,6 +1380,7 @@
     </div>
 
     <div class="workspace-scroll">
+    {% include "_instrument_classification.html" %}
     <div id="chart">
         <div class="ohlc-tooltip" id="ohlcTooltip"></div>
     </div>

@@ -1,0 +1,62 @@
+{% set info = classification | default({"status": "missing", "instrument_id": none}, true) %}
+{% macro tag_title(tag) -%}
+代码：{{ tag.code }}{% for path in tag.paths | default([], true) %}
+{{ path.class_name }} › {{ path.sub_class_name }} › {{ path.concept_name | default(tag.name, true) }}{% endfor %}
+{%- endmacro %}
+<section id="instrumentClassification" class="instrument-classification" aria-label="标的分类" data-state="{{ info.status }}" data-instrument-id="{{ info.instrument_id if info.instrument_id is not none else '' }}">
+    {% if info.status == 'ready' %}
+    <div class="classification-line">
+        <span class="classification-label">申万行业</span>
+        <ol class="classification-industry" role="list" aria-label="申万三级行业">
+            {% for item in info.industries %}
+            <li>
+                {% if item.name %}
+                <span title="{{ item.name }} · {{ item.code or '未提供代码' }}">{{ item.name.removeprefix('申万') }}</span>
+                {% else %}
+                <span class="classification-missing">{{ ['一级暂无', '二级暂无', '三级暂无'][loop.index0] }}</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+    </div>
+    <div class="classification-line">
+        <span class="classification-label">地域</span>
+        {% if info.regions is none %}
+        <span class="classification-missing">地域数据缺失</span>
+        {% elif not info.regions %}
+        <span class="classification-empty">无有效地域标签</span>
+        {% else %}
+        <ul class="classification-values" role="list" aria-label="地域标签">
+            {% for tag in info.regions %}
+            <li class="classification-tag" data-region-code="{{ tag.code }}" title="{{ tag_title(tag) }}">{{ tag.name }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% if info.concepts is none %}
+    <div class="classification-line classification-concept-state"><span class="classification-label">概念标签</span><span class="classification-missing">概念数据缺失</span></div>
+    {% elif not info.concepts %}
+    <div class="classification-line classification-concept-state"><span class="classification-label">概念标签</span><span class="classification-empty">无有效概念</span></div>
+    {% else %}
+    <div id="classificationConcepts" class="classification-concepts">
+        <div class="classification-concept-heading" title="包含地域、指数样本等标签；悬停标签查看代码及分类路径">
+            <span class="classification-label">概念标签</span>
+            <span class="classification-count">{{ info.concepts | length }}</span>
+        </div>
+        <ul id="classificationConceptTags" class="classification-tags" role="list" aria-label="当前标的全部概念标签">
+            {% for tag in info.concepts %}
+            <li class="classification-tag" data-concept-code="{{ tag.code }}" title="{{ tag_title(tag) }}">{{ tag.name }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% elif info.status == 'unsupported' %}
+    <span class="classification-label">标的分类</span><span class="classification-empty">当前市场或资产类型暂不提供股票行业、概念和地域分类</span>
+    {% elif info.status == 'unregistered' %}
+    <span class="classification-label">标的分类</span><span class="classification-empty">该标的未登记，暂无分类信息</span>
+    {% elif info.status == 'unavailable' %}
+    <span class="classification-label">标的分类</span><span class="classification-missing">分类表尚未初始化</span>
+    {% else %}
+    <span class="classification-label">标的分类</span><span class="classification-empty">分类信息尚未采集</span>
+    {% endif %}
+</section>

@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
+from ....classification_view import instrument_classification_payload
 from ....db.base import engine
 from ....db.models import ClStateSnapshot, Instrument, StockScreenerPreset, StockScreenerRun, WatchlistBoard, WatchlistItem
 from ...._config.logging_config import setup_logger
@@ -733,6 +734,7 @@ async def lightweight_charts_demo(
             )
             instrument_display_name = instrument.display_name if instrument is not None else symbol
             instrument_id = instrument.id if instrument is not None else None
+            classification = instrument_classification_payload(session, instrument)
         instrument_name_version = hashlib.sha256(instrument_display_name.encode("utf-8")).hexdigest()[:16]
         instrument_updated_at = (
             instrument.updated_at.isoformat()
@@ -742,9 +744,19 @@ async def lightweight_charts_demo(
     except ValueError as error:
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
 
+    classification_json = json.dumps(classification, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    classification_version = hashlib.sha256(classification_json.encode("utf-8")).hexdigest()[:16]
     cache_version = "-".join(map(str, frequency_versions))
 
     try:
+        template_version = "-".join(
+            str(path.stat().st_mtime_ns)
+            for path in (
+                _TEMPLATE_PATH,
+                _TEMPLATE_PATH.with_name("_instrument_classification.html"),
+                _TEMPLATE_PATH.parent.parent / "static/css/instrument-classification.css",
+            )
+        )
         html_content = await run_in_threadpool(
             _build_lightweight_charts_page,
             symbol,
@@ -755,15 +767,16 @@ async def lightweight_charts_demo(
             asset_class_key,
             instrument_display_name,
             instrument_id,
+            classification_json,
+            template_version,
         )
     except Exception as error:
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
         return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=500)
 
-    template_version = str(_TEMPLATE_PATH.stat().st_mtime_ns)
     etag = (
         f'W/"{symbol}-{frequency_key}-{market_key}-{asset_class_key}-'
-        f'{instrument_name_version}-{instrument_updated_at}-{template_version}-{cache_version}"'
+        f'{instrument_name_version}-{instrument_updated_at}-{classification_version}-{template_version}-{cache_version}"'
     )
     common_headers = {"ETag": etag, "Cache-Control": "private, no-cache", "Vary": "Accept-Encoding"}
     if request.headers.get("if-none-match") == etag:
@@ -824,6 +837,8 @@ def _build_lightweight_charts_page(
             asset_class: str,
             display_name: str,
             instrument_id: int | None,
+            classification_json: str,
+            template_version: str,
 ) -> str:
     """按缓存版本读取图表payload并渲染完整HTML。"""
     payload = load_chart_payload(symbol, frequency, market, asset_class)
@@ -852,6 +867,8 @@ def _build_lightweight_charts_page(
     ]
     payload["instrument_display_name"] = display_name
     payload["instrument_id"] = instrument_id
+    payload["classification"] = json.loads(classification_json)
+    payload["classification_assets_version"] = template_version
     template = templates.env.get_template("lightweight_charts_demo.html")
     return template.render(**payload)
 
