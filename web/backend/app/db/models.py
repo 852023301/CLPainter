@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from CLPainter.web.backend.app.db.base import Base
@@ -88,6 +88,34 @@ class WatchlistItem(Base):
         nullable=False,
         server_default=func.current_timestamp(),
     )
+
+
+class StockScreenerPreset(Base):
+    """实例内共享的选股条件方案，不保存查询结果。"""
+
+    __tablename__ = "stock_screener_preset"
+    __table_args__ = (UniqueConstraint("name", name="uq_stock_screener_preset_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    filters: Mapped[dict[str, str | int | None]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.current_timestamp())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp(),
+    )
+
+
+class StockScreenerRun(Base):
+    """一个方案一期的成功结果；失败和运行元数据不入表。"""
+
+    __tablename__ = "stock_screener_run"
+    __table_args__ = (UniqueConstraint("preset_id", "frequency", "version_date", name="uq_stock_screener_run_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    preset_id: Mapped[int] = mapped_column(ForeignKey("stock_screener_preset.id", ondelete="RESTRICT"), nullable=False)
+    frequency: Mapped[str] = mapped_column(String(16), nullable=False)
+    version_date: Mapped[date] = mapped_column(Date, nullable=False)
+    results: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
 
 
 class ClStateSnapshot(Base):
@@ -207,3 +235,21 @@ class ClStateSnapshot(Base):
             2: "below",
             3: "above",
         }.get(self.relative_previous_pivot_position)
+
+
+class InstrumentClassification(Base):
+    """One current classification per instrument; no history or timestamp fields."""
+
+    __tablename__ = "instrument_classification"
+
+    instrument_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("instrument.id", ondelete="CASCADE"), primary_key=True,
+    )
+    sw_l1_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sw_l1_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sw_l2_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sw_l2_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sw_l3_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sw_l3_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    concepts: Mapped[list[dict] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    regions: Mapped[list[dict] | None] = mapped_column(JSON(none_as_null=True), nullable=True)

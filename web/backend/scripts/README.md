@@ -7,7 +7,7 @@
 
 | 目录 | 用途 | 脚本 |
 | --- | --- | --- |
-| `data_ingestion/` | 标的元数据与行情采集 | `meta_info.py`、`data_from_tdata_1day.py`、`data_from_tushare_old.py` |
+| `data_ingestion/` | 标的元数据与行情采集 | `meta_info.py`、`update_instrument_classification.py`、`data_from_tdata_1day.py`、`data_from_tushare_old.py` |
 | `aggregation/` | 日线聚合为周/月/季/年线 | `from_1day_to_1week.py`、`from_1day_to_1month.py`、`from_1day_to_1quarter.py`、`from_1day_to_1year.py` |
 | `cache/` | 完整计算缓存与图表 payload 导出 | `dump_stock_caches.py` |
 | `state/` | 从缓存更新缠论状态快照 | `update_cl_state.py` |
@@ -38,10 +38,11 @@ bash scripts/pipelines/run_update_pipeline.sh
 执行顺序保持为：
 
 1. `data_ingestion/meta_info.py`：同步有效标的元数据。
-2. `data_ingestion/data_from_tdata_1day.py`：更新日线。
-3. 并行执行 `aggregation/` 中的四个周期转换脚本。
-4. `cache/dump_stock_caches.py`：导出缓存。
-5. `state/update_cl_state.py`：更新状态快照。
+2. `data_ingestion/update_instrument_classification.py`：以 `instrument` 为范围，更新当前有效申万行业、全部概念与地域，每标的一行且不保存时间字段。
+3. `data_ingestion/data_from_tdata_1day.py`：更新日线。
+4. 并行执行 `aggregation/` 中的四个周期转换脚本。
+5. `cache/dump_stock_caches.py`：导出缓存。
+6. `state/update_cl_state.py`：更新状态快照。
 
 任一步骤失败会阻止后续步骤；聚合阶段会等待全部并行任务结束，任一失败都不会导出缓存。
 `data_from_tushare_old.py` 用于补充历史数据，不属于常规日更流水线。
@@ -59,6 +60,7 @@ python3 scripts/cache/dump_stock_caches.py --reference-dir /path/to/reference/du
 
 ```bash
 # 下列 --help 命令只查看参数，不执行导出或状态写库。
+python3 scripts/data_ingestion/update_instrument_classification.py --help
 python3 scripts/cache/dump_stock_caches.py --help
 python3 scripts/state/update_cl_state.py --help
 python3 scripts/validation/check_xianduan_invariants.py --help
@@ -82,3 +84,9 @@ python3 scripts/maintenance/stop_project.py --list-only
 
 原 `scripts/<文件名>` 改为上表中的 `scripts/<功能目录>/<文件名>`。
 项目内流水线、开发规范和生产交接命令已同步更新；仓库外的 cron、Airflow、IDE 运行配置或手工命令需要同步到新路径。
+
+## 最新分类采集
+
+部署新流水线前先执行 `python -m alembic upgrade head` 创建 `instrument_classification` 表。使用 `python scripts/data_ingestion/update_instrument_classification.py --dry-run` 可只读验证；不带该参数才写入实例数据库。详情见项目 `docs/instrument-classification.md`。
+
+分类步骤可用 `CLPAINTER_CLASSIFICATION_PYTHON` 指定独立解释器；未指定时，若项目 `.venv-classification/bin/python` 存在则仅该步骤使用它，否则沿用 `PYTHON_BIN`。这用于隔离 tdata 概念读取与 pandas 3 的兼容性问题，不改变其他步骤的运行环境。

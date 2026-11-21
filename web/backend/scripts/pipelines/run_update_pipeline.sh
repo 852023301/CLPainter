@@ -42,6 +42,11 @@ cd "${PROJECT_ROOT}"
 export PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
 run_script "data_ingestion/meta_info.py"
+CLASSIFICATION_PYTHON="${CLPAINTER_CLASSIFICATION_PYTHON:-${PYTHON_BIN}}"
+if [[ -z "${CLPAINTER_CLASSIFICATION_PYTHON:-}" && -x "${PROJECT_ROOT}/CLPainter/.venv-classification/bin/python" ]]; then
+    CLASSIFICATION_PYTHON="${PROJECT_ROOT}/CLPainter/.venv-classification/bin/python"
+fi
+PYTHON_BIN="${CLASSIFICATION_PYTHON}" run_script "data_ingestion/update_instrument_classification.py"
 run_script "data_ingestion/data_from_tdata_1day.py"
 
 if ! run_parallel_scripts \
