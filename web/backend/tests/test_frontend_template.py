@@ -197,6 +197,16 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
 
+    def test_saved_screener_presets_behavior(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify saved screener presets")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_screener_presets.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
     def test_screener_results_are_numbered_and_keep_scroll(self):
         self.assertIn(".screener-result-index", self.html)
         self.assertIn("sequence.textContent = String(index + 1)", self.scripts)

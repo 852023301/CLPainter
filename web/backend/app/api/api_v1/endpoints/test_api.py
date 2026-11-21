@@ -12,13 +12,14 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..endpoints import SUPPORTED_CHART_FREQUENCIES, get_chart_payload_versions, load_chart_payload
 from ....db.base import engine
-from ....db.models import ClStateSnapshot, Instrument, WatchlistBoard, WatchlistItem
+from ....db.models import ClStateSnapshot, Instrument, StockScreenerPreset, WatchlistBoard, WatchlistItem
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 
@@ -113,6 +114,47 @@ class StockScreenerQuery(BaseModel):
     third_point_type: int | None = None
     quasi_third_point_type: int | None = None
     second_third_combined_type: int | None = None
+
+
+class StockScreenerPresetFilters(StockScreenerQuery):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    market: str | None = Field(default=None, max_length=16)
+    asset_class: str | None = Field(default=None, max_length=32)
+    frequency: str | None = Field(default=None, max_length=16)
+    scope: str | None = Field(default=None, max_length=16)
+
+    @model_validator(mode="after")
+    def validate_supported_values(self) -> "StockScreenerPresetFilters":
+        allowed_fields = {
+            "market": _SCREENER_MARKET_LABELS,
+            "asset_class": _SCREENER_ASSET_CLASS_LABELS,
+            "frequency": _SIMPLE_FREQUENCIES,
+            "scope": _SCREENER_SCOPE_LABELS,
+            **_SCREENER_STATE_LIMITS,
+        }
+        for field, allowed in allowed_fields.items():
+            value = getattr(self, field)
+            if value is not None and value not in allowed:
+                raise ValueError(f"{field} 的取值无效")
+        return self
+
+
+class StockScreenerPresetWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    name: str = Field(min_length=1, max_length=64)
+    filters: StockScreenerPresetFilters
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            if any(ord(character) < 32 for character in value):
+                raise ValueError("方案名称不能包含控制字符")
+            return value.strip()
+        return value
+
 
 template_dir = f"{settings.APP_DIR}/templates"
 templates = Jinja2Templates(directory=template_dir)
@@ -378,6 +420,67 @@ async def remove_watchlist_item(board_id: int, instrument_id: int):
         if not deleted_count:
             raise HTTPException(status_code=404, detail="标的不在板块中")
         session.commit()
+
+
+def _serialize_screener_preset(preset: StockScreenerPreset) -> dict:
+    return {
+        "id": preset.id,
+        "name": preset.name,
+        "filters": preset.filters,
+        "created_at": preset.created_at,
+        "updated_at": preset.updated_at,
+    }
+
+
+def _get_screener_preset(session: Session, preset_id: int) -> StockScreenerPreset:
+    preset = session.get(StockScreenerPreset, preset_id)
+    if preset is None:
+        raise HTTPException(status_code=404, detail="选股方案不存在，请刷新方案列表")
+    return preset
+
+
+def _commit_screener_preset(session: Session, preset: StockScreenerPreset) -> dict:
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="方案名称已存在，请换一个名称") from error
+    session.refresh(preset)
+    return _serialize_screener_preset(preset)
+
+
+@router.get("/stock_screener/presets")
+def list_stock_screener_presets() -> dict:
+    """列出本服务实例共享的选股方案。"""
+    with Session(engine) as session:
+        presets = session.scalars(select(StockScreenerPreset).order_by(StockScreenerPreset.id)).all()
+        return {"presets": [_serialize_screener_preset(preset) for preset in presets]}
+
+
+@router.post("/stock_screener/presets", status_code=201)
+def create_stock_screener_preset(payload: StockScreenerPresetWrite) -> dict:
+    """只保存条件；缺省值规范化为 null，明确表示不限。"""
+    with Session(engine) as session:
+        preset = StockScreenerPreset(name=payload.name, filters=payload.filters.model_dump())
+        session.add(preset)
+        return _commit_screener_preset(session, preset)
+
+
+@router.put("/stock_screener/presets/{preset_id}")
+def update_stock_screener_preset(preset_id: int, payload: StockScreenerPresetWrite) -> dict:
+    with Session(engine) as session:
+        preset = _get_screener_preset(session, preset_id)
+        preset.name = payload.name
+        preset.filters = payload.filters.model_dump()
+        return _commit_screener_preset(session, preset)
+
+
+@router.delete("/stock_screener/presets/{preset_id}", status_code=204)
+def delete_stock_screener_preset(preset_id: int) -> Response:
+    with Session(engine) as session:
+        session.delete(_get_screener_preset(session, preset_id))
+        session.commit()
+    return Response(status_code=204)
 
 
 @router.get("/stock_screener/options")

@@ -990,6 +990,54 @@
             overflow: hidden;
         }
 
+        .screener-presets {
+            flex-shrink: 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e6e6e6;
+        }
+
+        .screener-preset-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .screener-preset-row input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .screener-preset-row button,
+        .screener-preset-retry {
+            padding: 5px 8px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            background: #fff;
+            color: #555;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .screener-preset-actions button {
+            flex: 1;
+        }
+
+        .screener-presets button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .screener-preset-status {
+            margin: 0;
+            color: #666;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+
+        .screener-preset-status[data-error="true"] {
+            color: #c62828;
+        }
+
         .screener-filters {
             display: flex;
             flex-direction: column;
@@ -1009,7 +1057,8 @@
             font-size: 12px;
         }
 
-        .screener-field select {
+        .screener-field select,
+        .screener-presets input {
             width: 100%;
             box-sizing: border-box;
             padding: 6px 8px;
@@ -1358,6 +1407,22 @@
             <button type="button" id="screenerCollapse" class="screener-icon-button" title="收起选股" aria-label="收起选股">»</button>
         </div>
         <div class="screener-body">
+            <section class="screener-presets screener-field" aria-label="选股方案管理">
+                <label for="screenerPresetSelect">选股方案</label>
+                <select id="screenerPresetSelect" disabled><option value="">选择已保存方案</option></select>
+                <div class="screener-preset-row screener-preset-actions">
+                    <button type="button" id="screenerPresetApply" disabled>应用</button>
+                    <button type="button" id="screenerPresetUpdate" disabled>更新</button>
+                    <button type="button" id="screenerPresetDelete" disabled>删除</button>
+                </div>
+                <label for="screenerPresetName">方案名称</label>
+                <div class="screener-preset-row">
+                    <input type="text" id="screenerPresetName" maxlength="64" placeholder="输入方案名称" disabled>
+                    <button type="button" id="screenerPresetSave" disabled>保存为新方案</button>
+                </div>
+                <p id="screenerPresetStatus" class="screener-preset-status" role="status" aria-live="polite">方案加载中...</p>
+                <button type="button" id="screenerPresetRetry" class="screener-preset-retry" hidden>重试加载方案</button>
+            </section>
             <div id="screenerFilters" class="screener-filters"></div>
             <div class="screener-actions">
                 <button type="button" id="screenerRun" class="screener-run">确认</button>
@@ -2046,6 +2111,19 @@
     const screenerCollapse = document.getElementById('screenerCollapse');
     const screenerExpand = document.getElementById('screenerExpand');
     const screenerResizer = document.getElementById('screenerResizer');
+    const screenerPresetSelect = document.getElementById('screenerPresetSelect');
+    const screenerPresetName = document.getElementById('screenerPresetName');
+    const screenerPresetSave = document.getElementById('screenerPresetSave');
+    const screenerPresetApply = document.getElementById('screenerPresetApply');
+    const screenerPresetUpdate = document.getElementById('screenerPresetUpdate');
+    const screenerPresetDelete = document.getElementById('screenerPresetDelete');
+    const screenerPresetStatus = document.getElementById('screenerPresetStatus');
+    const screenerPresetRetry = document.getElementById('screenerPresetRetry');
+    let screenerPresets = [];
+    let screenerPresetsLoaded = false;
+    let screenerOptionsReady = false;
+    let screenerPresetBusy = false;
+    let screenerQueryBusy = false;
     let screenerResize = null;
     const SCREENER_STATE_KEY = 'screener:state';
     // 点击结果跳转前记录滚动位置，目标页渲染选股结果后一次性恢复
@@ -2102,7 +2180,9 @@
         if (!response.ok) {
             let detail = `请求失败: ${response.status}`;
             try {
-                detail = (await response.json()).detail || detail;
+                const received = (await response.json()).detail;
+                if (typeof received === 'string') detail = received;
+                else if (Array.isArray(received)) detail = received.map(item => item.msg).filter(Boolean).join('；') || detail;
             } catch (_) {}
             throw new Error(detail);
         }
@@ -2176,12 +2256,16 @@
             if (!resultsRendered && screenerState?.results) {
                 renderScreenerResults(screenerState.results, {restoreScroll: true});
             }
+            screenerOptionsReady = true;
         } catch (error) {
+            screenerOptionsReady = false;
             screenerFilters.textContent = '';
             const message = document.createElement('div');
             message.className = 'screener-empty';
             message.textContent = `选股选项加载失败: ${error.message}`;
             screenerFilters.appendChild(message);
+        } finally {
+            syncScreenerPresetControls();
         }
     };
 
@@ -2246,14 +2330,150 @@
         if (restoreScroll) queueScreenerScrollRestore();
     };
 
-    const runScreener = async () => {
-        const filters = {};
-        screenerFilters.querySelectorAll('select').forEach(select => {
-            if (!select.value) return;
-            filters[select.dataset.field] = select.dataset.kind === 'state'
-                ? Number(select.value)
-                : select.value;
+    // null 明确表示不限，不能因缺字段在刷新时被默认值覆盖；0 是有效状态。
+    const collectScreenerFilters = () => Object.fromEntries(
+        [...screenerFilters.querySelectorAll('select')].map(select => [
+            select.dataset.field,
+            select.value === '' ? null : select.dataset.kind === 'state' ? Number(select.value) : select.value,
+        ])
+    );
+    const selectedScreenerPreset = () => screenerPresets.find(
+        preset => String(preset.id) === screenerPresetSelect.value
+    );
+    const showScreenerPresetStatus = (message, error = false) => {
+        screenerPresetStatus.textContent = message;
+        screenerPresetStatus.dataset.error = String(error);
+    };
+    const syncScreenerPresetControls = () => {
+        const busy = screenerPresetBusy || screenerQueryBusy;
+        const selected = Boolean(selectedScreenerPreset());
+        const writable = !busy && screenerPresetsLoaded && screenerOptionsReady;
+        screenerPresetSelect.disabled = busy || !screenerPresetsLoaded;
+        screenerPresetName.disabled = busy || !screenerPresetsLoaded;
+        screenerPresetSave.disabled = !writable;
+        screenerPresetApply.disabled = !writable || !selected;
+        screenerPresetUpdate.disabled = !writable || !selected;
+        screenerPresetDelete.disabled = busy || !screenerPresetsLoaded || !selected;
+        screenerPresetRetry.disabled = busy;
+        screenerRun.disabled = busy || !screenerOptionsReady;
+        screenerReset.disabled = busy || !screenerOptionsReady;
+    };
+    const renderScreenerPresets = (selectedId = '') => {
+        screenerPresetSelect.textContent = '';
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '选择已保存方案';
+        screenerPresetSelect.appendChild(empty);
+        screenerPresets.forEach(preset => {
+            const option = document.createElement('option');
+            option.value = String(preset.id);
+            option.textContent = preset.name;
+            screenerPresetSelect.appendChild(option);
         });
+        screenerPresetSelect.value = String(selectedId);
+        screenerPresetName.value = selectedScreenerPreset()?.name || '';
+    };
+    const loadScreenerPresets = async () => {
+        if (screenerPresetBusy || screenerQueryBusy) return;
+        screenerPresetBusy = true;
+        syncScreenerPresetControls();
+        showScreenerPresetStatus('方案加载中...');
+        try {
+            const payload = await requestScreener('/api/v1/test_api/stock_screener/presets');
+            screenerPresets = payload.presets || [];
+            screenerPresetsLoaded = true;
+            screenerPresetRetry.hidden = true;
+            renderScreenerPresets(screenerPresetSelect.value);
+            showScreenerPresetStatus(screenerPresets.length ? '选择方案后点击应用' : '暂无方案，可保存当前筛选条件');
+        } catch (error) {
+            screenerPresetsLoaded = false;
+            screenerPresetRetry.hidden = false;
+            showScreenerPresetStatus('方案加载失败：' + error.message, true);
+        } finally {
+            screenerPresetBusy = false;
+            syncScreenerPresetControls();
+        }
+    };
+    const saveScreenerPreset = async (update) => {
+        if (screenerPresetBusy || screenerQueryBusy || !screenerOptionsReady || !screenerPresetsLoaded) return;
+        const selected = selectedScreenerPreset();
+        if (update && !selected) return;
+        const name = screenerPresetName.value.trim();
+        if (!name || name.length > 64) {
+            showScreenerPresetStatus('请输入 1–64 字的方案名称', true);
+            return;
+        }
+        if (update && !confirm('确定用当前条件更新方案“' + selected.name + '”？')) return;
+        const filters = collectScreenerFilters();
+        screenerPresetBusy = true;
+        syncScreenerPresetControls();
+        showScreenerPresetStatus(update ? '方案更新中...' : '方案保存中...');
+        try {
+            const url = '/api/v1/test_api/stock_screener/presets' + (update ? '/' + selected.id : '');
+            const saved = await requestScreener(url, {
+                method: update ? 'PUT' : 'POST', body: JSON.stringify({name, filters}),
+            });
+            if (update) screenerPresets = screenerPresets.map(item => item.id === saved.id ? saved : item);
+            else screenerPresets.push(saved);
+            renderScreenerPresets(saved.id);
+            showScreenerPresetStatus('方案“' + saved.name + '”已保存');
+        } catch (error) {
+            screenerPresetRetry.hidden = false;
+            showScreenerPresetStatus('保存失败：' + error.message, true);
+        } finally {
+            screenerPresetBusy = false;
+            syncScreenerPresetControls();
+        }
+    };
+    const applyScreenerPreset = () => {
+        if (screenerPresetBusy || screenerQueryBusy || !screenerOptionsReady) return;
+        const preset = selectedScreenerPreset();
+        if (!preset) return;
+        const selects = [...screenerFilters.querySelectorAll('select')];
+        for (const [field, value] of Object.entries(preset.filters)) {
+            if (value == null) continue;
+            const select = selects.find(item => item.dataset.field === field);
+            if (!select || ![...select.options].some(option => option.value === String(value))) {
+                showScreenerPresetStatus('方案中的条件“' + field + '”当前不可用，未应用', true);
+                return;
+            }
+        }
+        selects.forEach(select => {
+            const value = preset.filters[select.dataset.field];
+            select.value = value == null ? '' : String(value);
+        });
+        pendingScreenerScroll = null;
+        localStorage.removeItem(SCREENER_SCROLL_KEY);
+        localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);
+        saveScreenerState({filters: collectScreenerFilters(), results: null});
+        renderScreenerPlaceholder();
+        showScreenerPresetStatus('已应用“' + preset.name + '”，点击确认查询最新结果');
+    };
+    const deleteScreenerPreset = async () => {
+        if (screenerPresetBusy || screenerQueryBusy || !screenerPresetsLoaded) return;
+        const preset = selectedScreenerPreset();
+        if (!preset || !confirm('确定删除方案“' + preset.name + '”？此操作不会删除自选或行情数据。')) return;
+        screenerPresetBusy = true;
+        syncScreenerPresetControls();
+        try {
+            await requestScreener('/api/v1/test_api/stock_screener/presets/' + preset.id, {method: 'DELETE'});
+            screenerPresets = screenerPresets.filter(item => item.id !== preset.id);
+            renderScreenerPresets();
+            showScreenerPresetStatus('方案已删除，当前筛选条件保持不变');
+        } catch (error) {
+            screenerPresetRetry.hidden = false;
+            showScreenerPresetStatus('删除失败：' + error.message, true);
+        } finally {
+            screenerPresetBusy = false;
+            syncScreenerPresetControls();
+        }
+    };
+
+    const runScreener = async () => {
+        if (screenerPresetBusy || screenerQueryBusy || !screenerOptionsReady) return;
+        const filters = collectScreenerFilters();
+        screenerQueryBusy = true;
+        syncScreenerPresetControls();
         screenerRun.disabled = true;
         screenerReset.disabled = true;
         screenerRun.textContent = '查询中...';
@@ -2276,10 +2496,17 @@
             screenerRun.disabled = false;
             screenerReset.disabled = false;
             screenerRun.textContent = '确认';
+            screenerQueryBusy = false;
+            syncScreenerPresetControls();
         }
     };
 
     const resetScreener = () => {
+        if (screenerPresetBusy || screenerQueryBusy) return;
+        screenerPresetSelect.value = '';
+        screenerPresetName.value = '';
+        showScreenerPresetStatus('已重置当前条件，已保存方案不变');
+        syncScreenerPresetControls();
         pendingScreenerScroll = null;
         localStorage.removeItem(SCREENER_SCROLL_KEY);
         localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);
@@ -2342,6 +2569,17 @@
     };
     screenerResizer.addEventListener('pointerup', finishScreenerResize);
     screenerResizer.addEventListener('pointercancel', finishScreenerResize);
+    screenerPresetSelect.addEventListener('change', () => {
+        screenerPresetName.value = selectedScreenerPreset()?.name || '';
+        showScreenerPresetStatus('选择方案后点击应用；更新会覆盖所选方案');
+        syncScreenerPresetControls();
+    });
+    screenerPresetSave.addEventListener('click', () => saveScreenerPreset(false));
+    screenerPresetApply.addEventListener('click', applyScreenerPreset);
+    screenerPresetUpdate.addEventListener('click', () => saveScreenerPreset(true));
+    screenerPresetDelete.addEventListener('click', deleteScreenerPreset);
+    screenerPresetRetry.addEventListener('click', loadScreenerPresets);
+    loadScreenerPresets();
     loadScreenerOptions();
 
     document.querySelectorAll('#frequencyTabs .frequency-tab').forEach(button => {
