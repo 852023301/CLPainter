@@ -4,12 +4,14 @@ import json
 import logging
 import pickle
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from functools import lru_cache
+from html import escape
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -24,6 +26,7 @@ from ....db.models import ClStateSnapshot, Instrument, StockScreenerPreset, Stoc
 from ...._config.logging_config import setup_logger
 from ...._config.settings import settings
 from ....screener.history import FREQUENCIES, chart_url, list_runs, run_detail
+from ....screener.freshness import screener_data_version, screener_read_snapshot
 
 setup_logger()
 logger = logging.getLogger(__name__)
@@ -659,8 +662,16 @@ async def stock_screener_options():
     return {"dimensions": dimensions, "states": states}
 
 
+@router.get("/stock_screener/version")
+def stock_screener_version():
+    """Return a read-only version of the realtime screener dataset."""
+    with screener_read_snapshot(engine) as session:
+        version = screener_data_version(session)
+    return JSONResponse({"data_version": version}, headers={"Cache-Control": "no-store"})
+
+
 @router.post("/stock_screener/query")
-async def stock_screener_query(payload: StockScreenerQuery):
+def stock_screener_query(payload: StockScreenerQuery):
     """按状态组合查询标的。"""
     conditions = []
     if payload.market:
@@ -686,8 +697,9 @@ async def stock_screener_query(payload: StockScreenerQuery):
         .where(*conditions)
         .order_by(Instrument.code, ClStateSnapshot.frequency)
     )
-    with Session(engine) as session:
+    with screener_read_snapshot(engine) as session:
         rows = session.execute(statement).all()
+        data_version = screener_data_version(session)
 
     grouped = {}
     for instrument, frequency in rows:
@@ -724,7 +736,13 @@ async def stock_screener_query(payload: StockScreenerQuery):
             "url": f"/api/v1/test_api/lightweight_charts_demo?{query}",
         })
     results.sort(key=lambda item: (item["code"], item["asset_class"]))
-    return {"count": len(results), "results": results}
+    return JSONResponse(
+        {
+            "count": len(results), "results": results, "data_version": data_version,
+            "queried_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/lightweight_charts_demo", response_class=HTMLResponse)
@@ -747,6 +765,22 @@ async def lightweight_charts_demo(
         market_key = _normalize_directory_value(market, "market=", "市场")
         asset_class_key = _normalize_directory_value(asset_class, "asset_class=", "资产类别")
         frequency_versions = get_chart_payload_versions(symbol, market_key, asset_class_key)
+    except ValueError as error:
+        return HTMLResponse(
+            content=f"<h1>错误</h1><p>{escape(str(error))}</p>",
+            status_code=400,
+            headers={"Cache-Control": "no-store"},
+        )
+    except Exception:
+        logger.error("读取Lightweight Charts缓存版本失败", exc_info=True)
+        return HTMLResponse(
+            content="<h1>错误</h1><p>图表暂时不可用，请稍后重试。</p>",
+            status_code=500,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    # 内部 ValueError 不能作为参数错误回显；保留诊断到服务端日志。
+    try:
         with Session(engine) as session:
             instrument = session.scalar(
                 select(Instrument).where(
@@ -762,19 +796,16 @@ async def lightweight_charts_demo(
         instrument_updated_at = (
             instrument.updated_at.isoformat() if instrument is not None and instrument.updated_at is not None else ""
         )
-    except ValueError as error:
-        return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=400)
+        classification_json = json.dumps(classification, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        classification_version = hashlib.sha256(classification_json.encode("utf-8")).hexdigest()[:16]
+        cache_version = "-".join(map(str, frequency_versions))
 
-    classification_json = json.dumps(classification, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    classification_version = hashlib.sha256(classification_json.encode("utf-8")).hexdigest()[:16]
-    cache_version = "-".join(map(str, frequency_versions))
-
-    try:
         template_version = "-".join(
             str(path.stat().st_mtime_ns)
             for path in (
                 _TEMPLATE_PATH,
                 _TEMPLATE_PATH.with_name("_instrument_classification.html"),
+                _TEMPLATE_PATH.with_name("_chart_workspace.js"),
                 _TEMPLATE_PATH.parent.parent / "static/css/instrument-classification.css",
                 _TEMPLATE_PATH.parent.parent / "static/js/screener-history.js",
             )
@@ -830,7 +861,11 @@ async def lightweight_charts_demo(
                 headers={"Cache-Control": "no-store"},
             )
         logger.error(f"读取Lightweight Charts数据失败: {error}", exc_info=True)
-        return HTMLResponse(content=f"<h1>错误</h1><p>{str(error)}</p>", status_code=500)
+        return HTMLResponse(
+            content="<h1>错误</h1><p>图表暂时不可用，请稍后重试。</p>",
+            status_code=500,
+            headers={"Cache-Control": "no-store"},
+        )
 
     etag = (
         f'W/"{symbol}-{frequency_key}-{market_key}-{asset_class_key}-'
