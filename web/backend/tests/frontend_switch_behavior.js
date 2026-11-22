@@ -4,7 +4,8 @@ const fs = require('fs');
 const vm = require('vm');
 
 const templatePath = process.argv[2];
-const html = fs.readFileSync(templatePath, 'utf8');
+const {readTemplate} = require('./frontend_storage_harness.js');
+const html = readTemplate(templatePath);
 
 function stripJinja(source) {
     let output = '';
@@ -39,10 +40,10 @@ function stripJinja(source) {
     return output;
 }
 
-function prepareScript(source, frequency) {
+function prepareScript(source, frequency, settings = {}) {
     let script = stripJinja(source);
     const replacements = [
-        ['const candleData = null;', "const candleData = [{time:'2024-01-02',open:10,high:11,low:9,close:10},{time:'2024-01-03',open:10,high:12,low:9,close:11}];"],
+        ['const candleData = null;', 'const candleData = ' + JSON.stringify(settings.candles ?? [{time:'2024-01-02',open:10,high:11,low:9,close:10},{time:'2024-01-03',open:10,high:12,low:9,close:11}]) + ';'],
         ['const changeData = null;', 'const changeData = [];'],
         ['const biData = null;', 'const biData = [];'],
         ['const xdData = null;', 'const xdData = [];'],
@@ -58,16 +59,27 @@ function prepareScript(source, frequency) {
         ['let rsiData = null;', 'let rsiData = [];'],
         ['const indicatorParams = null;', 'const indicatorParams = {ma:{periods:[5,10]},boll:{n:26,k:2},rsi:{periods:[6,12,24]},macd:{short:12,long:26,mid:9}};'],
         ['const currentPrecision = null;', 'const currentPrecision = 2;'],
-        ['const currentSymbol = null;', "const currentSymbol = 'AAA';"],
+        ['const currentSymbol = null;', 'const currentSymbol = ' + JSON.stringify(settings.symbol || 'AAA') + ';'],
         ['const currentFrequency = null;', `const currentFrequency = ${JSON.stringify(frequency)};`],
-        ['const currentMarket = null;', "const currentMarket = 'market=cn';"],
-        ['const currentAssetClass = null;', "const currentAssetClass = 'asset_class=stock';"],
+        ['const currentMarket = null;', 'const currentMarket = ' + JSON.stringify(settings.market || 'market=cn') + ';'],
+        ['const currentAssetClass = null;', 'const currentAssetClass = ' + JSON.stringify(settings.assetClass || 'asset_class=stock') + ';'],
         ['window.currentInstrumentId = null;', 'window.currentInstrumentId = 1;'],
     ];
-    if (script.includes('const candleData = null;')) {
+    if (script.includes('const candleData = null;') || (settings.workspaceData && script.includes('const candleData ='))) {
         replacements.forEach(([from, to]) => {
-            if (!script.includes(from)) throw new Error('找不到数据占位: ' + from);
-            script = script.replace(from, to);
+            if (script.includes(from)) script = script.replace(from, to);
+            else if (settings.workspaceData) {
+                const needle = from.slice(0, from.lastIndexOf('null;'));
+                const start = script.indexOf(needle);
+                if (start < 0) throw new Error('Missing trusted backend data declaration: ' + from);
+                let end = script.indexOf(';', start);
+                while (end >= 0) {
+                    try { new vm.Script(script.slice(start, end + 1)); break; }
+                    catch (error) { if (!(error instanceof SyntaxError)) throw error; end = script.indexOf(';', end + 1); }
+                }
+                if (end < 0) throw new Error('Incomplete backend data declaration: ' + from);
+                script = script.slice(0, start) + to + script.slice(end + 1);
+            } else throw new Error('找不到数据占位: ' + from);
         });
     }
     return script;
@@ -108,7 +120,46 @@ class ElementNode {
         if (name === 'id') this.id = String(value);
         if (name === 'class') this.className = String(value);
         if (name === 'type') this.type = String(value);
+        if (name === 'hidden') this.hidden = true;
+        if (name === 'disabled') this.disabled = true;
+        if (name === 'style') String(value).split(';').forEach(item => {
+            const at = item.indexOf(':');
+            if (at < 0) return;
+            const property = item.slice(0, at).trim().replace(/-([a-z])/g, (_value, letter) => letter.toUpperCase());
+            this.style[property] = item.slice(at + 1).trim();
+        });
     }
+
+    get firstChild() { return this.children[0] || null; }
+    get offsetWidth() { return 120; }
+    get offsetHeight() { return 48; }
+    get options() { return this.children.filter(child => child.tagName === 'OPTION'); }
+    get htmlFor() { return this.getAttribute('for') || ''; }
+    set htmlFor(value) { this.attributes['for'] = String(value); }
+    get href() { return this.getAttribute('href') || ''; }
+    set href(value) { this.attributes.href = String(value); }
+    get tabIndex() {
+        const explicit = this.getAttribute('tabindex');
+        if (explicit !== null) return Number(explicit);
+        return ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(this.tagName) || (this.tagName === 'A' && this.href) ? 0 : -1;
+    }
+    set tabIndex(value) { this.attributes.tabindex = String(value); }
+    focus() {
+        if (this.disabled) return;
+        for (let parent = this; parent; parent = parent.parentNode) if (parent.hidden || parent.style?.display === 'none') return;
+        const document = this.ownerDocument, previous = document?.activeElement;
+        this.focused = true;
+        if (!document || previous === this) return;
+        document.activeElement = this;
+        if (previous) {
+            previous.dispatch('blur', {relatedTarget: this});
+            previous.dispatch('focusout', {relatedTarget: this});
+        }
+        this.dispatch('focus', {relatedTarget: previous});
+        this.dispatch('focusin', {relatedTarget: previous});
+    }
+    get textContent() { return (this._text || '') + this.children.map(child => child.textContent || '').join(''); }
+    set textContent(value) { this._text = String(value); this.children = []; }
 
     getAttribute(name) {
         return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
@@ -138,16 +189,18 @@ class ElementNode {
         this.listeners[type] = (this.listeners[type] || []).filter(item => item !== handler);
     }
 
+    dispatchEvent(event) { this.dispatch(event.type, event); return true; }
+
     dispatch(type, event) {
-        const current = Object.assign({
-            type,
-            target: this,
-            currentTarget: this,
-            preventDefault() {},
+        const current = event?.mockDispatchEvent ? event : Object.assign({
+            type, target: this, button: 0, defaultPrevented: false,
+            bubbles: !['focus', 'blur'].includes(type), mockDispatchEvent: true,
+            preventDefault() { this.defaultPrevented = true; },
             stopPropagation() { this.cancelBubble = true; },
         }, event || {});
+        current.currentTarget = this;
         (this.listeners[type] || []).forEach(handler => handler(current));
-        if (!current.cancelBubble && this.parentNode) this.parentNode.dispatch(type, current);
+        if (!current.cancelBubble && current.bubbles && this.parentNode) this.parentNode.dispatch(type, current);
         return current;
     }
 
@@ -279,27 +332,41 @@ function parseHtml(html) {
     return root;
 }
 
-function createChart() {
+function createChart(settings = {}) {
     const chart = {
         series: [],
         _rangeHandlers: [],
+        _clickHandlers: [],
+        _crosshairHandlers: [],
+        _range: null,
+        _rangeSets: 0,
     };
     const timeScale = {
         subscribeVisibleLogicalRangeChange(handler) { chart._rangeHandlers.push(handler); },
         subscribeVisibleTimeRangeChange() {},
-        getVisibleLogicalRange() { return {from: 0, to: 1}; },
+        getVisibleLogicalRange() { return chart._range ? {...chart._range} : null; },
         getVisibleRange() { return {from: '2024-01-02', to: '2024-01-03'}; },
-        setVisibleLogicalRange() {},
-        coordinateToLogical(x) { return x > 100 ? 1 : 0; },
-        logicalToCoordinate(index) { return 40 + index * 20; },
+        setVisibleLogicalRange(range) {
+            chart._rangeSets++;
+            if (settings.failRestore && settings.chartIndex === 0 && chart._rangeSets === 2) throw new Error('Simulated range restore failure');
+            if (chart._range && chart._range.from === range.from && chart._range.to === range.to) return;
+            chart._range = {from: range.from, to: range.to};
+            chart._rangeHandlers.forEach(handler => handler({...chart._range}));
+        },
+        coordinateToLogical(x) { const range = chart._range || {from: 0, to: 1}; return range.from + x / 800 * (range.to - range.from); },
+        logicalToCoordinate(index) { const range = chart._range || {from: 0, to: 1}; return (index - range.from) / (range.to - range.from) * 800; },
         options() { return {barSpacing: 4}; },
         applyOptions() {},
     };
     chart.timeScale = () => timeScale;
     chart.priceScale = () => ({applyOptions() {}, options() { return {}; }, width: () => 70});
     chart.applyOptions = () => {};
-    chart.subscribeClick = () => {};
-    chart.subscribeCrosshairMove = () => {};
+    chart.subscribeClick = handler => chart._clickHandlers.push(handler);
+    chart.subscribeCrosshairMove = handler => chart._crosshairHandlers.push(handler);
+    chart.setCrosshairPosition = () => {};
+    chart.clearCrosshairPosition = () => {};
+    chart.emitClick = value => chart._clickHandlers.forEach(handler => handler(value));
+    chart.emitCrosshair = value => chart._crosshairHandlers.forEach(handler => handler(value));
     chart.addCandlestickSeries = options => makeSeries(chart, 'candle', options);
     chart.addLineSeries = options => makeSeries(chart, 'line', options);
     chart.addHistogramSeries = options => makeSeries(chart, 'histogram', options);
@@ -314,6 +381,8 @@ function makeSeries(chart, kind, options) {
         markers: null,
         applyOptions(next) { Object.assign(this.options, next); },
         setData(data) { this.data = data; },
+        coordinateToPrice: y => 100 - y / 10,
+        priceToCoordinate: price => (100 - price) * 10,
         setMarkers(markers) { this.markers = markers; },
         createPriceLine() { return {}; },
         attachPrimitive() {},
@@ -328,14 +397,17 @@ function installDom(html) {
     const document = {
         documentElement: root,
         body: root.querySelector('body') || root,
-        createElement: tag => new ElementNode(tag),
-        createElementNS: () => new ElementNode('svg'),
+        createElement(tag) { const element = new ElementNode(tag); element.ownerDocument = document; return element; },
+        createElementNS(_namespace, tag) { const element = new ElementNode(tag); element.ownerDocument = document; return element; },
         createTextNode: text => ({nodeType: 3, textContent: String(text), parentNode: null, contains() { return false; }}),
         getElementById: id => root.querySelector('#' + id),
         querySelector: selector => root.querySelector(selector),
         querySelectorAll: selector => root.querySelectorAll(selector),
         addEventListener(type, handler) { root.addEventListener(type, handler); },
     };
+    const attach = element => { element.ownerDocument = document; (element.children || []).forEach(attach); };
+    attach(root);
+    document.activeElement = document.body;
     return document;
 }
 
@@ -354,48 +426,66 @@ function setChecked(box, checked) {
     box.dispatch('change', {target: box});
 }
 
-async function boot(frequency, storageSeed) {
+async function boot(frequency, storageSeed, storageFault = 'available', settings = {}) {
     const storage = new Map(Object.entries(storageSeed || {}));
     const document = installDom(html);
     const charts = [];
     const windowListeners = {};
+    const requests = [];
+    const errors = [];
+    const writes = [];
+    const navigation = [];
+    const timers = new Map();
+    let nextTimer = 0;
+    const storageError = operation => { const error = new Error(operation + ' browser storage failure'); error.name = storageFault === 'quota' ? 'QuotaExceededError' : 'SecurityError'; throw error; };
     const context = {
-        console,
+        console: {...console, log: (...items) => { if (!settings.quiet) console.log(...items); }, error: (...items) => { errors.push(items.map(String).join(" ")); console.error(...items); }},
         document,
         window: {},
         addEventListener(type, handler) { (windowListeners[type] || (windowListeners[type] = [])).push(handler); },
         removeEventListener(type, handler) {
             windowListeners[type] = (windowListeners[type] || []).filter(item => item !== handler);
         },
-        location: {search: '', href: 'http://local/demo', assign() {}},
+        location: {search: '', href: 'http://local/demo', assign: value => navigation.push(String(value))},
         localStorage: {
-            getItem: key => storage.has(key) ? storage.get(key) : null,
-            setItem: (key, value) => storage.set(key, String(value)),
-            removeItem: key => storage.delete(key),
+            getItem: key => { if (storageFault === 'denied') storageError('read'); return storage.has(key) ? storage.get(key) : null; },
+            setItem: (key, value) => { writes.push(key); if (storageFault === 'denied' || storageFault === 'quota') storageError('write'); storage.set(key, String(value)); },
+            removeItem: key => { if (storageFault === 'denied' || storageFault === 'delete') storageError('delete'); storage.delete(key); },
         },
         URLSearchParams,
-        fetch: async url => ({
+        Event: class { constructor(type) { this.type = type; } },
+        fetch: async (url, options = {}) => {
+            requests.push({url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null});
+            if (settings.beforeResponse) await settings.beforeResponse(url, options);
+            return ({
             ok: true,
             status: 200,
             json: async () => {
                 const text = String(url);
+                const module = new URL(text, "http://local").searchParams.get("module");
                 if (text.includes('/watchlists')) return {boards: []};
-                if (text.includes('module=gaps')) {
+                if (text.includes('/stock_screener/presets')) return {presets: [{id: 1, name: 'Storage preset', filters: {frequency: '1day', second_point_type: 0}}]};
+                if (text.includes('/stock_screener/options')) return {dimensions: [{field: 'frequency', options: [{value: '1day', label: 'Day'}]}], states: [{field: 'second_point_type', options: [{value: 0, label: 'Zero'}]}]};
+                if (text.includes('/stock_screener/query')) return {count: 1, results: [{code: 'AAA', display_name: 'StorageProbeResult', asset_class: 'stock', frequencies: ['1day'], url: '/chart?symbol=AAA'}]};
+                if (module === 'gaps') {
                     return {data: [{trade_datetime: '2024-01-02', position: 'aboveBar', color: '#111', shape: 'arrowUp', text: '缺口'}]};
                 }
-                if (text.includes('module=ma')) {
+                if (module === 'ma') {
                     return {data: [{key: 'MA5', color: '#e11', values: [{time: '2024-01-02', value: 10}, {time: '2024-01-03', value: 11}]}, {key: 'MA10', color: '#19e', values: [{time: '2024-01-02', value: 9}, {time: '2024-01-03', value: 10}]}]};
                 }
-                if (text.includes('module=macd')) return {data: {lines: [], stats: [], markers: []}};
+                if (module === 'macd') return {data: {lines: [], stats: [], markers: []}};
                 return {data: []};
             },
-        }),
+        });
+        },
         alert() {},
         requestAnimationFrame: fn => fn(),
+        setTimeout: fn => { const id = ++nextTimer; timers.set(id, fn); return id; },
+        clearTimeout: id => timers.delete(id),
         LightweightCharts: {
             CrosshairMode: {Normal: 0},
             createChart(container) {
-                const chart = createChart();
+                const chart = createChart({...settings, chartIndex: charts.length});
                 chart.container = container;
                 charts.push(chart);
                 return chart;
@@ -404,6 +494,7 @@ async function boot(frequency, storageSeed) {
         NodeFilter: {},
         navigator: {userAgent: 'node'},
     };
+    if (storageFault === 'getter') Object.defineProperty(context, 'localStorage', {get() { return storageError('accessor'); }});
     context.window = context;
     context.globalThis = context;
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
@@ -411,21 +502,50 @@ async function boot(frequency, storageSeed) {
     vm.runInContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(templatePath), '../static/js/screener-history.js'), 'utf8'), context);
     scripts.forEach((source, index) => {
         try {
-            vm.runInContext(prepareScript(source, frequency), context, {filename: `template-${index}.js`});
+            vm.runInContext(prepareScript(source, frequency, settings), context, {filename: `template-${index}.js`});
         } catch (error) {
             error.message = `模板脚本第 ${index + 1} 段执行失败: ${error.message}`;
             throw error;
         }
     });
     await flush();
-    return {document, charts, storage};
+    return {document, charts, storage, context, requests, errors, writes, navigation,
+        pendingTimers: () => timers.size,
+        runTimers() { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(callback => callback()); },
+        async fireWindow(type, event = {}) { for (const handler of windowListeners[type] || []) await handler({type, ...event}); },
+    };
 }
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
 }
 
-(async () => {
+if (require.main === module) (async () => {
+    if (process.argv[3] === '--storage-probe') {
+        const mode = process.argv[4] || 'available';
+        const page = await boot('freq=1day', {'ma:MA5': '0', 'gaps:visible': '0', 'screener:mode': 'realtime', 'screener:results-scroll': '99'}, mode);
+        assert(page.charts.length === 5, 'Storage failure must not prevent main/subchart creation');
+        setChecked(checkbox(page.document, 'maItems', 'MA5'), true); await flush(); await flush();
+        const ma = page.charts[0].series.find(series => series.options.color === '#e11');
+        assert(ma && ma.options.visible, 'MA must still be usable with unavailable persistence');
+        assert(vm.runInContext("lsGetBool('ma:MA5', false)", page.context), 'Current checkbox state must survive in memory');
+        setChecked(page.document.getElementById('showGapsToggle'), true); await flush(); await flush();
+        const candles = page.charts[0].series.find(series => series.kind === 'candle');
+        assert((candles.markers || []).some(item => item.text === '缺口'), 'Gap switch must remain usable');
+        const select = page.document.getElementById('screenerPresetSelect'); select.value = '1'; select.dispatch('change');
+        const apply = page.document.getElementById('screenerPresetApply');
+        assert(!apply.disabled, 'Existing backend presets must remain applicable'); apply.dispatch('click'); await flush(); await flush();
+        assert(page.document.getElementById('screenerResults').textContent.includes('StorageProbeResult'), 'Apply/query must not be blocked by failed cache removal');
+        const queries = page.requests.filter(request => request.url.includes('/stock_screener/query'));
+        assert(queries.length === 1 && queries[0].body.second_point_type === 0, 'Apply must query once with zero preserved');
+        assert(vm.runInContext("lsGetString('screener:results-scroll', '')", page.context) === '', 'Failed deletion must not resurrect stale scroll state');
+        page.document.getElementById('screenerReset').dispatch('click'); await flush();
+        assert(page.document.getElementById('screenerResults').textContent.includes('选择条件后点击确认'), 'Reset must remain usable');
+        assert(page.requests.filter(request => request.url.includes('/stock_screener/query')).length === 1, 'Reset must not send an extra query');
+        assert(page.errors.length === 0, 'Healthy network plus storage degradation must not cause component errors: ' + page.errors.join('; '));
+        console.log(JSON.stringify({mode, charts: page.charts.length, queries: 1, ui_usable: true}));
+        return;
+    }
     const first = await boot('freq=1day', {'ma:MA5': '1', 'layer:bi': '0', 'gaps:visible': '1'});
     const main = first.charts[0];
     const candle = main.series.find(series => series.kind === 'candle');
@@ -472,3 +592,5 @@ function assert(condition, message) {
     console.error(error.stack || error.message);
     process.exit(1);
 });
+
+module.exports = {boot, flush};

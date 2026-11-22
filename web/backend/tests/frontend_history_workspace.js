@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
+const {installStorage}=require('./frontend_storage_harness.js');
 const html=fs.readFileSync(process.argv[2],'utf8');
 const ids=['screenerPanel','screenerRealtimeTab','screenerHistoryTab','screenerRealtimePanel','screenerHistoryPanel','screenerHistoryLink','screenerHistoryPreset','screenerHistoryFrequency','screenerHistoryVersion','screenerHistoryRefresh','screenerHistoryPage','screenerHistoryStatus','screenerHistoryChartHint','screenerHistorySummary','screenerHistoryResults','screenerHistoryViewResults','screenerHistoryViewAdded','screenerHistoryViewRemoved','screenerHistoryViewRetained','screenerExpand'];
 for(const id of ids) assert(html.includes('id="'+id+'"'),'Missing workspace control '+id);
@@ -44,9 +45,9 @@ async function boot(data,{storage=new Map(),search='',symbol='AAA'}={}){
  elements.appShell=new Element();
  const navigation=[];const location={pathname:'/api/v1/test_api/lightweight_charts_demo',search,assign:value=>navigation.push(value)};
  const window={location,history:{replaceState(a,b,target){location.search=target.includes('?')?'?'+target.split('?')[1]:'';}}};
- const context={window,console,URLSearchParams,document:{getElementById:id=>elements[id],createElement:tag=>new Element(tag)},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value))},requestAnimationFrame:callback=>callback()};
- vm.createContext(context);vm.runInContext(script,context);
- const controller=new window.ScreenerHistory({request:data.request,getChartContext:()=>({symbol,market:'cn',asset_class:'stock',frequency:'1day'}),getPresetId:()=>1});
+ const context={window,console,URLSearchParams,document:{getElementById:id=>elements[id],createElement:tag=>new Element(tag)},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,String(value)),removeItem:key=>storage.delete(key)},requestAnimationFrame:callback=>callback()};
+ vm.createContext(context);const sharedStorage=installStorage(context,html);vm.runInContext(script,context);
+ const controller=new window.ScreenerHistory({request:data.request,storage:sharedStorage,getChartContext:()=>({symbol,market:'cn',asset_class:'stock',frequency:'1day'}),getPresetId:()=>1});
  await flush();return {controller,elements,navigation,storage,location};
 }
 (async()=>{

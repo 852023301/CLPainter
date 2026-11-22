@@ -6,6 +6,7 @@ from __future__ import annotations
 不启动浏览器，也不依赖行情数据。
 """
 
+import json
 import re
 import shutil
 import subprocess
@@ -220,6 +221,173 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
 
+    def test_indicator_switch_only_commits_latest_build(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify indicator concurrency")
+        script = Path(__file__).resolve().parent / "repros" / "frontend_contracts.js"
+        completed = subprocess.run(
+            [node, str(script), "--template", str(TEMPLATE), "--group", "indicator_concurrency", "--check"],
+            text=True, capture_output=True, check=False, timeout=10,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+        results = json.loads(completed.stdout)["results"]
+        expected = {
+            "indicator_latest_wins",
+            "indicator_keeps_visible_while_loading",
+            "indicator_failed_latest_keeps_visible",
+            "indicator_stale_success_waits_for_latest",
+            "indicator_stale_failure_has_no_side_effects",
+            "indicator_failed_latest_blocks_older_success",
+            "indicator_repeated_selection_single_commit",
+            "indicator_panels_independent",
+            "indicator_shared_module_survives_switch",
+            "indicator_stale_macd_cannot_mutate_volume",
+            "indicator_rapid_latest_first",
+            "indicator_rapid_latest_last",
+            "control_all_indicators_build",
+        }
+        self.assertEqual(len(results), len(expected))
+        self.assertEqual({result["id"] for result in results}, expected)
+        self.assertTrue(all(result["status"] == "passed" for result in results), completed.stdout)
+
+    def test_chart_modules_retry_after_failure(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify module retries")
+        script = Path(__file__).resolve().parent / "repros" / "frontend_contracts.js"
+        completed = subprocess.run(
+            [node, str(script), "--template", str(TEMPLATE), "--group", "module_retry_lifecycle", "--check"],
+            text=True, capture_output=True, check=False, timeout=10,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+        results = json.loads(completed.stdout)["results"]
+        expected = {
+            "module_retry", "gap_retry", "control_shared_request",
+            "retry_http_failure", "retry_outer_json_failure", "retry_embedded_json_failure",
+            "retry_invalid_response", "retry_sync_fetch_throw", "retry_shared_failure_recovery",
+            "retry_old_failure_keeps_newer_cache", "retry_gap_toggle_recovers",
+            "retry_gap_result_respects_switch", "retry_ma_toggle_recovers",
+            "retry_ma_result_respects_switch", "retry_indicators_recover",
+            "control_empty_success_cached", "control_failed_module_isolated",
+            "control_gap_failure_keeps_replacement",
+        }
+        self.assertEqual(len(results), len(expected))
+        self.assertEqual({result["id"] for result in results}, expected)
+        self.assertTrue(all(result["status"] == "passed" for result in results), completed.stdout)
+
+    def test_indicator_switch_preserves_visible_window(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify viewport preservation")
+        script = Path(__file__).resolve().parent / "repros" / "frontend_contracts.js"
+        completed = subprocess.run(
+            [node, str(script), "--template", str(TEMPLATE), "--group", "viewport_preservation", "--check"],
+            text=True, capture_output=True, check=False, timeout=15,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+        results = json.loads(completed.stdout)["results"]
+        expected = {
+            "indicator_preserves_range", "range_main_is_authority",
+            "range_pan_while_loading_main", "range_pan_while_loading_sub",
+            "range_early_main_pan_preserved", "range_early_sub_pan_syncs",
+            "range_load_failure_keeps_window", "range_render_failure_restores_window",
+            "range_restore_error_releases_sync", "range_ignores_delayed_stale_event",
+            "range_snapshot_preserves_exact_values", "range_no_window_does_not_force_fit",
+            "range_initial_default_runs_once", "range_main_resize_keeps_window",
+            "range_preserves_existing_sync_guard", "range_layout_notification_keeps_window",
+            "control_range_user_sync_still_works",
+        }
+        self.assertEqual(len(results), len(expected))
+        self.assertEqual({result["id"] for result in results}, expected)
+        self.assertTrue(all(result["status"] == "passed" for result in results), completed.stdout)
+        for layout in ("layoutRangeBox", "layoutMeasure", "layoutRect", "layoutFib", "layoutTrend"):
+            self.assertIn("chartContainer.addEventListener('chartlayoutchange', () => " + layout + "());", self.scripts)
+
+    def test_storage_faults_only_degrade_persistence(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify storage resilience")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_storage_behavior.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False, timeout=30,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+        results = json.loads(completed.stdout)["results"]
+        expected = {
+            "storage_denied_defaults", "storage_quota_latest_string", "storage_quota_false_zero_empty",
+            "storage_delete_tombstone", "storage_read_uses_last_known", "storage_getter_denied",
+            "storage_native_absent", "control_storage_available", "control_external_updates_visible",
+            "storage_failed_key_isolated", "storage_explicit_write_recovers",
+            "storage_history_shared_fallback", "storage_search_navigation_survives",
+            "storage_ui_boot_available", "storage_ui_boot_denied", "storage_ui_boot_quota",
+            "storage_ui_boot_delete", "storage_ui_boot_getter",
+        }
+        self.assertEqual(len(results), len(expected))
+        self.assertEqual({result["id"] for result in results}, expected)
+        self.assertTrue(all(result["status"] == "passed" for result in results), completed.stdout)
+        start = self.scripts.index("    // localStorage 持久化辅助")
+        end = self.scripts.index("    const searchInput =", start)
+        unsafe = r"\blocalStorage\.(?:getItem|setItem|removeItem)\s*\("
+        self.assertNotRegex(self.scripts[:start] + self.scripts[end:], unsafe)
+        history = (TEMPLATE.parent.parent / "static/js/screener-history.js").read_text(encoding="utf-8")
+        self.assertNotRegex(history, unsafe)
+
+    def test_screener_cache_freshness_behavior(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify screener cache freshness")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_screener_freshness.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
+    def test_workspace_module_boundary(self):
+        self.assertTrue('{% include "_chart_workspace.js" %}' in self.html, "Main template must compose the workspace module")
+        self.assertFalse("function createChartWorkspace(" in self.scripts, "The implementation must live only in the module")
+        module = TEMPLATE.with_name("_chart_workspace.js")
+        self.assertTrue(module.is_file(), "The extracted workspace module must ship with the template")
+        data = module.read_bytes()
+        self.assertFalse(data.startswith(b"\xef\xbb\xbf"))
+        self.assertIn("function createChartWorkspace(", data.decode("utf-8"))
+        self.assertNotIn("{%", data.decode("utf-8"))
+        self.assertNotIn("{{", data.decode("utf-8"))
+        node = shutil.which("node")
+        self.assertIsNotNone(node)
+        completed = subprocess.run([node, "--check", str(module)], text=True, capture_output=True, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
+    def test_chart_workspace_round_trip(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify chart workspace restoration")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_chart_workspace.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
+    def test_keyboard_accessibility_behavior(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify keyboard accessibility")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_keyboard_behavior.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
+    def test_candle_access_performance_contract(self):
+        node = shutil.which("node")
+        if node is None:
+            self.fail("Node.js is required to verify candle-access behavior and work budgets")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_candle_performance.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+
     def test_history_workspace_behavior(self):
         node = shutil.which("node")
         if node is None:
@@ -256,7 +424,7 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         self.assertIn("const isLatest = Boolean(lastClickedCode) && item.code === lastClickedCode;", self.scripts)
         self.assertIn("lsSetString(SCREENER_LAST_CLICKED_KEY, item.code);", self.scripts)
         self.assertIn("latestTag.textContent = '最近';", self.scripts)
-        self.assertIn("localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);", self.scripts)
+        self.assertIn("lsRemove(SCREENER_LAST_CLICKED_KEY);", self.scripts)
 
     def test_single_time_axis_and_range_stats(self):
         subchart = self.scripts[self.scripts.find("function createSubChart"):self.scripts.find("function buildSubSeries")]

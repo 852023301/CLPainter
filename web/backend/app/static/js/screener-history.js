@@ -8,8 +8,9 @@
     const number = value => Math.max(0, Number.isSafeInteger(Number(value)) ? Number(value) : 0);
 
     class ScreenerHistory {
-        constructor({request, getChartContext, getPresetId}) {
+        constructor({request, getChartContext, getPresetId, storage}) {
             this.request = request;
+            this.storage = storage;
             this.getChartContext = getChartContext;
             this.getPresetId = getPresetId;
             const get = suffix => document.getElementById('screener' + suffix);
@@ -49,7 +50,7 @@
         }
 
         read(key) {
-            try { return localStorage.getItem(key); } catch (_) { return null; }
+            try { return this.storage.getItem(key); } catch (_) { return null; }
         }
 
         readState() {
@@ -71,8 +72,8 @@
 
         store(updateURL = true) {
             try {
-                localStorage.setItem('screener:history-state', JSON.stringify(this.state));
-                localStorage.setItem('screener:mode', this.mode);
+                this.storage.setItem('screener:history-state', JSON.stringify(this.state));
+                this.storage.setItem('screener:mode', this.mode);
             } catch (_) {}
             if (!updateURL) return;
             const query = new URLSearchParams(window.location.search);

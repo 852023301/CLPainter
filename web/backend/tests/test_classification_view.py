@@ -279,7 +279,7 @@ def test_missing_classification_table_does_not_break_existing_charts(chart_page)
 
 
 @pytest.mark.parametrize(
-    "resource", ["templates/_instrument_classification.html", "static/css/instrument-classification.css"]
+    "resource", ["templates/_instrument_classification.html", "static/css/instrument-classification.css", "templates/_chart_workspace.js"]
 )
 def test_component_updates_invalidate_page_and_asset_versions(chart_page, resource):
     client, _, _, app_dir = chart_page
@@ -293,7 +293,7 @@ def test_component_updates_invalidate_page_and_asset_versions(chart_page, resour
     os.utime(path, ns=(stamp, stamp))
     updated = client.get(URL, params={"symbol": "300750SZ"}, headers={"If-None-Match": first.headers["etag"]})
     assert updated.status_code == 200 and updated.headers["etag"] != first.headers["etag"]
-    if path.suffix == ".html":
+    if path.suffix in {".html", ".js"}:
         assert marker in updated.text
 
 

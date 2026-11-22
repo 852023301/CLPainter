@@ -2,8 +2,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const {installStorage} = require('./frontend_storage_harness.js');
 const html = fs.readFileSync(process.argv[2], 'utf8');
-const ids = ['screenerPanel', 'screenerFilters', 'screenerRun', 'screenerReset', 'screenerResults',
+const ids = ['screenerCacheStatus', 'screenerPanel', 'screenerFilters', 'screenerRun', 'screenerReset', 'screenerResults',
     'screenerCollapse', 'screenerExpand', 'screenerResizer', 'screenerPresetSelect', 'screenerPresetName',
     'screenerPresetSave', 'screenerPresetApply', 'screenerPresetUpdate', 'screenerPresetDelete',
     'screenerPresetNew', 'screenerPresetCreatePanel', 'screenerPresetCancel', 'screenerPresetStatus', 'screenerPresetRetry', 'screenerRealtimeTab', 'screenerHistoryTab', 'screenerRealtimePanel', 'screenerHistoryPanel', 'screenerHistoryLink', 'screenerHistoryPreset', 'screenerHistoryFrequency', 'screenerHistoryVersion', 'screenerHistoryRefresh', 'screenerHistoryPage', 'screenerHistoryStatus', 'screenerHistoryChartHint', 'screenerHistorySummary', 'screenerHistoryResults', 'screenerHistoryViewResults', 'screenerHistoryViewAdded', 'screenerHistoryViewRemoved', 'screenerHistoryViewRetained'];
@@ -86,7 +87,7 @@ function makeServer() {
     };
     return server;
 }
-async function boot(server, storage = new Map()) {
+async function boot(server, storage = new Map(), configure = null) {
     const elements = Object.fromEntries(ids.map(id => [id, new Element(id === 'screenerPresetSelect' ? 'select' : 'div')]));
     for (const [id, element] of Object.entries(elements)) {
         const tag = html.match(new RegExp('<[^>]+\\bid="' + id + '"[^>]*>'));
@@ -97,12 +98,11 @@ async function boot(server, storage = new Map()) {
         requestAnimationFrame: callback => callback(), fetch: server.fetch, confirm: () => true,
         localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)),
             removeItem: key => storage.delete(key)},
-        lsGetString: (key, fallback) => storage.get(key) ?? fallback,
-        lsSetString: (key, value) => storage.set(key, String(value)),
-        lsGetBool: (key, fallback) => storage.has(key) ? storage.get(key) === '1' : fallback,
-        lsSetBool: (key, value) => storage.set(key, value ? '1' : '0'), syncChartWidth() {},
+        syncChartWidth() {},
     };
+    if (configure) configure(context);
     vm.createContext(context);
+    installStorage(context, html);
     vm.runInContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[2]), '../static/js/screener-history.js'), 'utf8'), context);
     vm.runInContext(source, context); await flush();
     return {elements, context, storage, field: key => elements.screenerFilters.querySelectorAll('select').find(select => select.dataset.field === key)};
@@ -111,7 +111,7 @@ async function choose(page, id) {
     page.elements.screenerPresetSelect.value = String(id);
     await page.elements.screenerPresetSelect.emit('change');
 }
-(async () => {
+if (require.main === module) (async () => {
     const server = makeServer(); const first = await boot(server);
     assert(first.elements.screenerPresetCreatePanel.hidden, 'New-preset editor must not occupy space on startup');
     assert(first.elements.screenerPresetSave.disabled, 'Closed editor must not allow saving');
@@ -268,3 +268,5 @@ async function choose(page, id) {
     assert(autoPage.elements.screenerResults.textContent.includes('没有匹配的标的'));
     console.log('Saved screener preset behavior passed, including automatic query, results, loading guards, empty results and retry');
 })().catch(error => {console.error(error.stack || error); process.exitCode = 1;});
+
+module.exports = {boot, makeServer, flush};

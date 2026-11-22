@@ -592,6 +592,30 @@
             gap: 8px;
         }
 
+        .indicator-menu { position: relative; }
+        .indicator-menu-trigger {
+            font: inherit;
+            font-size: 14px;
+            user-select: none;
+            cursor: pointer;
+            padding: 2px 6px;
+            border: 0;
+            background: transparent;
+            color: #333;
+        }
+        .indicator-menu-trigger:disabled { opacity: 0.65; cursor: not-allowed; }
+        .indicator-menu-trigger:focus-visible,
+        #maDropdown input:focus-visible,
+        #layerDropdown input:focus-visible,
+        .screener-panel button:focus-visible,
+        .screener-panel input:focus-visible,
+        .screener-panel select:focus-visible,
+        .screener-result:focus-visible {
+            outline: 2px solid #c62828;
+            outline-offset: 2px;
+        }
+        .screener-result:focus-visible { outline-offset: -2px; background: #fff2f2; }
+
         #maDropdown,
         #layerDropdown {
             max-height: min(420px, calc(100vh - 180px));
@@ -1385,16 +1409,18 @@
         <label style="font-size:14px;cursor:pointer;user-select:none;">
             <input type="checkbox" id="showGapsToggle" style="margin-right:4px;cursor:pointer;">显示缺口
         </label>
-        <div id="maTrigger" style="font-size:14px;user-select:none;position:relative;cursor:pointer;padding:2px 6px;">均线 ▾
-            <div id="maDropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:140px;">
+        <div class="indicator-menu">
+            <button type="button" id="maTrigger" class="indicator-menu-trigger" disabled aria-label="均线显示设置" aria-expanded="false" aria-controls="maDropdown">均线 <span aria-hidden="true">▾</span></button>
+            <div id="maDropdown" role="group" aria-labelledby="maTrigger" hidden style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:140px;">
                 <label style="display:block;font-size:13px;padding:2px 0;border-bottom:1px solid #eee;margin-bottom:4px;cursor:pointer;">
                     <input type="checkbox" id="maSelectAll" style="margin-right:6px;cursor:pointer;">全选
                 </label>
                 <div id="maItems"></div>
             </div>
         </div>
-        <div id="layerTrigger" style="font-size:14px;user-select:none;position:relative;cursor:pointer;padding:2px 6px;">图层 ▾
-            <div id="layerDropdown" style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:150px;">
+        <div class="indicator-menu">
+            <button type="button" id="layerTrigger" class="indicator-menu-trigger" disabled aria-label="图层显示设置" aria-expanded="false" aria-controls="layerDropdown">图层 <span aria-hidden="true">▾</span></button>
+            <div id="layerDropdown" role="group" aria-labelledby="layerTrigger" hidden style="display:none;position:absolute;top:100%;left:0;background:#fff;border:1px solid #ddd;border-radius:4px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:2000;min-width:150px;">
                 <label style="display:block;font-size:13px;padding:2px 0;border-bottom:1px solid #eee;margin-bottom:4px;cursor:pointer;">
                     <input type="checkbox" id="layerSelectAll" checked style="margin-right:6px;cursor:pointer;">全选
                 </label>
@@ -1475,7 +1501,8 @@
                 <button type="button" id="screenerRun" class="screener-run">确认</button>
                 <button type="button" id="screenerReset" class="screener-reset">重置</button>
             </div>
-            <div id="screenerResults" class="screener-results">
+            <p id="screenerCacheStatus" class="screener-preset-status" role="status" aria-live="polite" hidden></p>
+            <div id="screenerResults" class="screener-results" role="group" aria-label="实时选股结果">
                 <div class="screener-empty">选择条件后点击确认</div>
             </div>
             </div>
@@ -1502,16 +1529,55 @@
 
 <script>
     // localStorage 持久化辅助(必须放在所有使用者之前, 否则触发 TDZ ReferenceError)
+    function createBrowserStorage() {
+        const memory = new Map();
+        const pending = new Set();
+        return {
+            getItem(key) {
+                const k = String(key);
+                if (pending.has(k)) return memory.has(k) ? memory.get(k) : null;
+                try {
+                    const value = localStorage.getItem(k);
+                    if (value === null) memory.delete(k);
+                    else memory.set(k, value);
+                    return value;
+                } catch (_) {
+                    return memory.has(k) ? memory.get(k) : null;
+                }
+            },
+            setItem(key, value) {
+                const k = String(key);
+                const v = String(value);
+                memory.set(k, v);
+                pending.add(k);
+                try {
+                    localStorage.setItem(k, v);
+                    pending.delete(k);
+                } catch (_) {}
+            },
+            removeItem(key) {
+                const k = String(key);
+                memory.delete(k);
+                pending.add(k);
+                try {
+                    localStorage.removeItem(k);
+                    pending.delete(k);
+                } catch (_) {}
+            },
+        };
+    }
+    const browserStorage = createBrowserStorage();
     const lsGetBool = (k, def) => {
-        const v = localStorage.getItem(k);
+        const v = browserStorage.getItem(k);
         return v === null ? def : v === '1';
     };
-    const lsSetBool = (k, v) => localStorage.setItem(k, v ? '1' : '0');
+    const lsSetBool = (k, v) => browserStorage.setItem(k, v ? '1' : '0');
     const lsGetString = (k, def) => {
-        const v = localStorage.getItem(k);
+        const v = browserStorage.getItem(k);
         return v === null ? def : v;
     };
-    const lsSetString = (k, v) => localStorage.setItem(k, v);
+    const lsSetString = (k, v) => browserStorage.setItem(k, v);
+    const lsRemove = k => browserStorage.removeItem(k);
 
     const searchInput = document.getElementById('instrumentSearchInput');
     const searchResultsElement = document.getElementById('instrumentSearchResults');
@@ -2171,6 +2237,7 @@
     const screenerRun = document.getElementById('screenerRun');
     const screenerReset = document.getElementById('screenerReset');
     const screenerResults = document.getElementById('screenerResults');
+    const screenerCacheStatus = document.getElementById('screenerCacheStatus');
     const screenerCollapse = document.getElementById('screenerCollapse');
     const screenerExpand = document.getElementById('screenerExpand');
     const screenerResizer = document.getElementById('screenerResizer');
@@ -2192,6 +2259,10 @@
     let screenerQueryBusy = false;
     let screenerResize = null;
     const SCREENER_STATE_KEY = 'screener:state';
+    const SCREENER_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+    let screenerCacheEpoch = 0;
+    let screenerCacheRequest = null;
+    let displayedScreenerCache = null;
     // 点击结果跳转前记录滚动位置，目标页渲染选股结果后一次性恢复
     const SCREENER_SCROLL_KEY = 'screener:results-scroll';
     // 记录最后点击的标的，跳转后继续在选股结果中标记
@@ -2227,7 +2298,7 @@
     };
     const queueScreenerScrollRestore = () => {
         const saved = Number(lsGetString(SCREENER_SCROLL_KEY, ''));
-        localStorage.removeItem(SCREENER_SCROLL_KEY);
+        lsRemove(SCREENER_SCROLL_KEY);
         if (!Number.isFinite(saved) || saved <= 0) return;
         pendingScreenerScroll = saved;
         scheduleScreenerScrollRestore();
@@ -2261,6 +2332,8 @@
         const label = document.createElement('label');
         label.textContent = item.label;
         const select = document.createElement('select');
+        select.id = 'screener-filter-' + kind + '-' + item.field;
+        label.htmlFor = select.id;
         select.dataset.field = item.field;
         select.dataset.kind = kind;
         const empty = document.createElement('option');
@@ -2303,33 +2376,100 @@
         });
     };
 
-    const loadScreenerOptions = async () => {
-        let resultsRendered = false;
-        if (screenerState?.options) {
-            renderScreenerFilters(screenerState.options);
-            if (screenerState.results) {
-                renderScreenerResults(screenerState.results, {restoreScroll: true});
-                resultsRendered = true;
-            }
+    const setScreenerCacheStatus = message => {
+        screenerCacheStatus.textContent = message;
+        screenerCacheStatus.hidden = !message;
+    };
+    const showScreenerCacheMessage = message => {
+        screenerResults.textContent = '';
+        const empty = document.createElement('div');
+        empty.className = 'screener-empty';
+        empty.textContent = message;
+        screenerResults.appendChild(empty);
+    };
+    const cacheableScreenerResult = payload => {
+        if (!payload || !Array.isArray(payload.results) || !Number.isInteger(payload.count)
+            || payload.count !== payload.results.length || typeof payload.data_version !== 'string'
+            || !payload.data_version.trim() || typeof payload.queried_at !== 'string') return false;
+        const age = Date.now() - Date.parse(payload.queried_at);
+        return Number.isFinite(age) && age >= -60000 && age < SCREENER_CACHE_MAX_AGE_MS;
+    };
+    const cancelScreenerCacheCheck = () => {
+        screenerCacheEpoch += 1;
+        screenerCacheRequest = null;
+        displayedScreenerCache = null;
+    };
+    const discardScreenerCache = message => {
+        const returnFocus = typeof screenerResults.contains === 'function' && screenerResults.contains(document.activeElement);
+        cancelScreenerCacheCheck();
+        saveScreenerState({results: null});
+        pendingScreenerScroll = null;
+        lsRemove(SCREENER_SCROLL_KEY);
+        lsRemove(SCREENER_LAST_CLICKED_KEY);
+        showScreenerCacheMessage(message);
+        setScreenerCacheStatus(message);
+        screenerResults.scrollTop = 0;
+        if (returnFocus && !screenerRun.disabled) screenerRun.focus();
+    };
+    const restoreScreenerCache = () => {
+        const cached = screenerState?.results;
+        if (!cached || !screenerOptionsReady || screenerQueryBusy) return;
+        if (!cacheableScreenerResult(cached)) {
+            discardScreenerCache('上次选股结果已过期或缺少有效版本，请点击确认重新查询');
+            return;
         }
+        if (screenerCacheRequest?.cached === cached) return screenerCacheRequest.promise;
+        const check = {cached, epoch: screenerCacheEpoch};
+        screenerCacheRequest = check;
+        if (displayedScreenerCache !== cached) showScreenerCacheMessage('正在核验上次选股结果，请稍候');
+        setScreenerCacheStatus('正在核验选股数据版本…');
+        const current = () => check.epoch === screenerCacheEpoch && screenerState?.results === cached && !screenerQueryBusy;
+        check.promise = (async () => {
+            try {
+                const metadata = await requestScreener('/api/v1/test_api/stock_screener/version', {cache: 'no-store'});
+                if (!current()) return;
+                if (typeof metadata?.data_version !== 'string' || !metadata.data_version.trim()) throw new Error('无效版本响应');
+                if (metadata.data_version !== cached.data_version) {
+                    discardScreenerCache('选股数据已更新，上次结果已失效，请点击确认重新查询');
+                    return;
+                }
+                if (!cacheableScreenerResult(cached)) {
+                    discardScreenerCache('上次选股结果已过期，请点击确认重新查询');
+                    return;
+                }
+                if (displayedScreenerCache !== cached) {
+                    renderScreenerResults(screenerState.results, {restoreScroll: true});
+                    displayedScreenerCache = cached;
+                }
+                setScreenerCacheStatus('查询时间：' + new Date(cached.queried_at).toLocaleString('zh-CN', {hour12: false}) + '；数据版本已核对');
+            } catch (_) {
+                if (current()) discardScreenerCache('暂时无法确认选股数据版本，请点击确认重新查询');
+            } finally {
+                if (screenerCacheRequest === check) screenerCacheRequest = null;
+            }
+        })();
+        return check.promise;
+    };
+
+    const loadScreenerOptions = async () => {
+        if (screenerState?.options) renderScreenerFilters(screenerState.options);
+        if (screenerState?.results) showScreenerCacheMessage('正在核验上次选股结果，请稍候');
         try {
-            const payload = await requestScreener('/api/v1/test_api/stock_screener/options');
+            const payload = await requestScreener('/api/v1/test_api/stock_screener/options', {cache: 'no-store'});
             const optionsChanged = JSON.stringify(payload) !== JSON.stringify(screenerState?.options);
             saveScreenerState({options: payload});
-            if (optionsChanged) {
-                renderScreenerFilters(payload);
-            }
-            if (!resultsRendered && screenerState?.results) {
-                renderScreenerResults(screenerState.results, {restoreScroll: true});
-            }
+            if (optionsChanged) renderScreenerFilters(payload);
             screenerOptionsReady = true;
+            syncScreenerPresetControls();
+            await restoreScreenerCache();
         } catch (error) {
             screenerOptionsReady = false;
             screenerFilters.textContent = '';
             const message = document.createElement('div');
             message.className = 'screener-empty';
-            message.textContent = `选股选项加载失败: ${error.message}`;
+            message.textContent = '选股选项加载失败: ' + error.message;
             screenerFilters.appendChild(message);
+            if (screenerState?.results) discardScreenerCache('暂时无法确认选股数据版本，请点击确认重新查询');
         } finally {
             syncScreenerPresetControls();
         }
@@ -2360,7 +2500,9 @@
         screenerResults.appendChild(count);
         const lastClickedCode = lsGetString(SCREENER_LAST_CLICKED_KEY, '');
         results.forEach((item, index) => {
-            const row = document.createElement('div');
+            const row = document.createElement('a');
+            row.href = item.url;
+            row.setAttribute('aria-label', '查看' + item.display_name + ' ' + item.code + '的K线与指标');
             row.className = 'screener-result';
             row.title = `${item.code} · ${item.asset_class} · ${item.frequencies.join(', ')}`;
             const isLatest = Boolean(lastClickedCode) && item.code === lastClickedCode;
@@ -2385,7 +2527,9 @@
                 row.appendChild(latestTag);
             }
             row.appendChild(meta);
-            row.addEventListener('click', () => {
+            row.addEventListener('click', event => {
+                if (event.defaultPrevented || event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
                 lsSetString(SCREENER_SCROLL_KEY, String(screenerResults.scrollTop));
                 lsSetString(SCREENER_LAST_CLICKED_KEY, item.code);
                 row.classList.add('screener-result-latest');
@@ -2525,8 +2669,8 @@
             select.value = value == null ? '' : String(value);
         });
         pendingScreenerScroll = null;
-        localStorage.removeItem(SCREENER_SCROLL_KEY);
-        localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);
+        lsRemove(SCREENER_SCROLL_KEY);
+        lsRemove(SCREENER_LAST_CLICKED_KEY);
         saveScreenerState({filters: collectScreenerFilters(), results: null});
         renderScreenerPlaceholder();
         showScreenerPresetStatus('已应用“' + preset.name + '”');
@@ -2555,6 +2699,10 @@
     const runScreener = async () => {
         if (screenerPresetBusy || screenerQueryBusy || !screenerOptionsReady) return;
         const filters = collectScreenerFilters();
+        cancelScreenerCacheCheck();
+        saveScreenerState({filters, results: null});
+        showScreenerCacheMessage('正在查询最新选股结果…');
+        setScreenerCacheStatus('正在查询最新选股结果…');
         screenerQueryBusy = true;
         syncScreenerPresetControls();
         screenerRun.disabled = true;
@@ -2566,15 +2714,21 @@
                 body: JSON.stringify(filters),
             });
             pendingScreenerScroll = null;
-            localStorage.removeItem(SCREENER_SCROLL_KEY);
+            lsRemove(SCREENER_SCROLL_KEY);
             renderScreenerResults(payload);
-            saveScreenerState({filters, results: payload});
+            const cacheable = cacheableScreenerResult(payload);
+            saveScreenerState({filters, results: cacheable ? payload : null});
+            displayedScreenerCache = cacheable ? payload : null;
+            setScreenerCacheStatus(cacheable
+                ? '查询时间：' + new Date(payload.queried_at).toLocaleString('zh-CN', {hour12: false}) + '；本次查询已完成'
+                : '本次结果未提供可核验版本，刷新后请重新查询');
         } catch (error) {
             screenerResults.textContent = '';
             const message = document.createElement('div');
             message.className = 'screener-empty';
             message.textContent = `查询失败: ${error.message}`;
             screenerResults.appendChild(message);
+            setScreenerCacheStatus('查询未完成，请重新查询');
         } finally {
             screenerRun.disabled = false;
             screenerReset.disabled = false;
@@ -2586,13 +2740,15 @@
 
     const resetScreener = () => {
         if (screenerPresetBusy || screenerQueryBusy) return;
+        cancelScreenerCacheCheck();
+        setScreenerCacheStatus('');
         screenerPresetSelect.value = '';
         setScreenerPresetCreateOpen(false);
         showScreenerPresetStatus('已重置当前条件，已保存方案不变');
         syncScreenerPresetControls();
         pendingScreenerScroll = null;
-        localStorage.removeItem(SCREENER_SCROLL_KEY);
-        localStorage.removeItem(SCREENER_LAST_CLICKED_KEY);
+        lsRemove(SCREENER_SCROLL_KEY);
+        lsRemove(SCREENER_LAST_CLICKED_KEY);
         saveScreenerState({filters: {}, results: null});
         screenerFilters.querySelectorAll('select').forEach(select => {
             const value = SCREENER_DEFAULTS[select.dataset.field];
@@ -2681,6 +2837,7 @@
     try {
         new window.ScreenerHistory({
             request: requestScreener,
+            storage: browserStorage,
             getPresetId: () => Number(screenerPresetSelect.value) || 0,
             getChartContext: () => ({symbol: currentSymbol, market: currentMarket.replace('market=', ''), asset_class: currentAssetClass.replace('asset_class=', ''), frequency: currentFrequency.replace('freq=', '')}),
         });
@@ -2694,6 +2851,16 @@
     }
     loadScreenerPresets();
     loadScreenerOptions();
+    const recheckScreenerCache = () => {
+        if (document.visibilityState === 'hidden') return;
+        return restoreScreenerCache();
+    };
+    if (typeof window.addEventListener === 'function') {
+        window.addEventListener('focus', recheckScreenerCache);
+        window.addEventListener('pageshow', recheckScreenerCache);
+    }
+    if (typeof document.addEventListener === 'function') document.addEventListener('visibilitychange', recheckScreenerCache);
+    if (typeof window.setInterval === 'function') window.setInterval(recheckScreenerCache, 60000);
 
     document.querySelectorAll('#frequencyTabs .frequency-tab').forEach(button => {
         button.addEventListener('click', () => {
@@ -2730,6 +2897,49 @@
     const currentAssetClass = {{ asset_class | tojson }};
     window.currentInstrumentId = {{ instrument_id | tojson }};
 
+    {% include "_chart_workspace.js" %}
+
+    function createCandleAccess(candles) {
+        const type = typeof candles[0]?.time;
+        let ordered = type === 'string' || type === 'number';
+        let previous;
+        candles.forEach((candle, index) => {
+            const time = candle.time;
+            if (ordered && (typeof time !== type || (type === 'number' && !Number.isFinite(time)) || (index > 0 && time < previous))) ordered = false;
+            previous = time;
+        });
+        return {
+            get(time, logical) {
+                if (Number.isNaN(time) || (ordered && typeof time !== type)) return undefined;
+                // Reuse the chart index only if it agrees with the requested time and first duplicate.
+                if (ordered && Number.isInteger(logical) && logical >= 0 && logical < candles.length
+                    && candles[logical].time === time && (logical === 0 || candles[logical - 1].time !== time)) return candles[logical];
+                return candles.find(candle => candle.time === time);
+            },
+            between(from, to) {
+                if (!ordered || typeof from !== type || typeof to !== type || Number.isNaN(from) || Number.isNaN(to)) {
+                    return candles.filter(candle => candle.time >= from && candle.time <= to);
+                }
+                let low = 0, high = candles.length;
+                while (low < high) {
+                    const middle = Math.floor((low + high) / 2);
+                    if (candles[middle].time < from) low = middle + 1;
+                    else high = middle;
+                }
+                const start = low;
+                high = candles.length;
+                while (low < high) {
+                    const middle = Math.floor((low + high) / 2);
+                    if (candles[middle].time <= to) low = middle + 1;
+                    else high = middle;
+                }
+                return candles.slice(start, low);
+            },
+        };
+    }
+
+
+
     console.log('收到的K线数据:', candleData.length);
     console.log('收到的笔数据:', biData.length);
     console.log('收到的线段数据:', xdData.length);
@@ -2744,6 +2954,11 @@
         message.textContent = chartError || '数据加载失败';
         document.getElementById('chart').appendChild(message);
     } else {
+        const chartWorkspace = createChartWorkspace(browserStorage, {
+            market: currentMarket, assetClass: currentAssetClass, symbol: currentSymbol, frequency: currentFrequency,
+        }, candleData);
+        const restoredChartWorkspace = chartWorkspace.restore();
+        let chartWorkspaceReady = false;
         const chartContainer = document.getElementById('chart');
         const tooltip = document.getElementById('ohlcTooltip');
         if (!window.LightweightCharts) {
@@ -2805,6 +3020,7 @@
             wickDownColor: '#26a69a',
         });
         candlestickSeries.setData(candleData);
+        const candleAccess = createCandleAccess(candleData);
 
         // 使用 Series Primitive 绘制中枢框，保持缩放和滚动时与图表同步
         function createZhongshuPrimitive(chart, series, items, fillColor, borderColor, borderDash = []) {
@@ -3019,17 +3235,39 @@
         const chartModulePromises = {};
 
         function fetchChartModule(module) {
-            chartModulePromises[module] = chartModulePromises[module] || fetch(
-                `/api/v1/test_api/lightweight_charts_module`
-                + `?symbol=${encodeURIComponent(currentSymbol)}`
-                + `&frequency=${encodeURIComponent(currentFrequency.replace('freq=', ''))}`
-                + `&market=${encodeURIComponent(currentMarket.replace('market=', ''))}`
-                + `&asset_class=${encodeURIComponent(currentAssetClass.replace('asset_class=', ''))}`
-                + `&module=${encodeURIComponent(module)}`
-            ).then(response => {
-                if (!response.ok) throw new Error(`图表模块加载失败: ${response.status}`);
-                return response.json();
-            });
+            if (!chartModulePromises[module]) {
+                const pending = Promise.resolve().then(() => fetch(
+                    `/api/v1/test_api/lightweight_charts_module`
+                    + `?symbol=${encodeURIComponent(currentSymbol)}`
+                    + `&frequency=${encodeURIComponent(currentFrequency.replace('freq=', ''))}`
+                    + `&market=${encodeURIComponent(currentMarket.replace('market=', ''))}`
+                    + `&asset_class=${encodeURIComponent(currentAssetClass.replace('asset_class=', ''))}`
+                    + `&module=${encodeURIComponent(module)}`
+                )).then(async response => {
+                    if (!response.ok) throw new Error(`图表模块加载失败: ${response.status}`);
+                    const payload = await response.json();
+                    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !('data' in payload)) {
+                        throw new Error('图表模块响应缺少数据');
+                    }
+                    // 将内嵌 JSON 解码纳入共享请求，解析失败也必须释放失败缓存。
+                    let data = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data;
+                    if (data != null) {
+                        const valid = module === 'macd'
+                            ? typeof data === 'object' && !Array.isArray(data)
+                                && ['lines', 'stats', 'markers'].every(key => data[key] == null || Array.isArray(data[key]))
+                            : Array.isArray(data);
+                        if (!valid) throw new Error('图表模块数据格式错误');
+                        if (module === 'macd') {
+                            data = {...data, lines: data.lines || [], stats: data.stats || [], markers: data.markers || []};
+                        }
+                    }
+                    return {...payload, data};
+                }).catch(error => {
+                    if (chartModulePromises[module] === pending) delete chartModulePromises[module];
+                    throw error;
+                });
+                chartModulePromises[module] = pending;
+            }
             return chartModulePromises[module];
         }
 
@@ -3039,6 +3277,7 @@
                 maSeriesMap[item.key].applyOptions({ visible });
                 return;
             }
+            if (!visible) return;
             fetchChartModule('ma').then(payload => {
                 const moduleData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data || [];
                 const moduleItem = moduleData.find(data => data.key === item.key);
@@ -3070,31 +3309,69 @@
             const selectAll = document.getElementById(cfg.selectAllId);
             const defaultVisible = cfg.defaultVisible !== false;
 
-            trigger.addEventListener('click', (e) => {
-                if (e.target === trigger || e.target.nodeType === 3) {
-                    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            const container = trigger.parentNode;
+            let opened = false;
+            const setOpen = value => {
+                opened = value;
+                dropdown.hidden = !value;
+                dropdown.style.display = value ? 'block' : 'none';
+                trigger.setAttribute('aria-expanded', String(value));
+            };
+            const controls = () => Array.from(dropdown.querySelectorAll('input[type=checkbox]')).filter(box => !box.disabled);
+            trigger.addEventListener('click', () => setOpen(!opened));
+            trigger.addEventListener('keydown', event => {
+                if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+                event.preventDefault();
+                setOpen(true);
+                const list = controls();
+                list[event.key === 'ArrowDown' ? 0 : list.length - 1]?.focus();
+            });
+            container.addEventListener('keydown', event => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setOpen(false);
+                    trigger.focus();
+                    return;
                 }
+                if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || !opened || !dropdown.contains(event.target)) return;
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                const list = controls();
+                if (!list.length) return;
+                const index = list.indexOf(event.target);
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? list.length - 1
+                    : (index + (event.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length;
+                event.preventDefault();
+                list[next].focus();
             });
-            document.addEventListener('click', (e) => {
-                if (!trigger.contains(e.target)) dropdown.style.display = 'none';
+            container.addEventListener('focusout', event => {
+                if (!event.relatedTarget || !container.contains(event.relatedTarget)) setOpen(false);
             });
+            document.addEventListener('click', event => {
+                if (!container.contains(event.target)) setOpen(false);
+            });
+            setOpen(false);
 
             const boxes = () => itemsContainer.querySelectorAll('input[type=checkbox]');
             const syncSelectAll = () => {
                 const list = Array.from(boxes());
                 selectAll.checked = list.length > 0 && list.every(b => b.checked);
+                selectAll.indeterminate = list.some(b => b.checked) && !selectAll.checked;
             };
 
-            cfg.data.forEach(item => {
+            cfg.data.forEach((item, index) => {
                 const visible = lsGetBool(cfg.prefix + item.key, defaultVisible);
                 const lbl = document.createElement('label');
                 lbl.style.cssText = 'display:block;font-size:13px;padding:2px 0;cursor:pointer;';
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
+                cb.id = cfg.itemsId + '-option-' + index;
+                lbl.htmlFor = cb.id;
                 cb.checked = visible;
                 cb.dataset.key = String(item.key);
                 cb.style.cssText = 'margin-right:6px;cursor:pointer;';
                 const dot = document.createElement('span');
+                dot.setAttribute('aria-hidden', 'true');
                 dot.style.cssText = "display:inline-block;width:10px;height:10px;border-radius:50%;background:" + item.color + ";margin-right:6px;vertical-align:middle;";
                 lbl.appendChild(cb);
                 lbl.appendChild(dot);
@@ -3121,9 +3398,11 @@
                         ensureMaSeries(item, selectAll.checked);
                     }
                 });
+                syncSelectAll();
             });
 
             syncSelectAll();
+            trigger.disabled = cfg.data.length === 0;
         }
 
         setupIndicatorGroup({
@@ -3249,166 +3528,182 @@
             updateIndicatorLookups();
         }
 
-        // 在指定面板上(重新)构建某指标的系列; 切换指标时先移除旧系列(含依附其上的价格线)
+        // 每个面板独立提交最新构建；新数据就绪前保留已显示的系列。
         function buildIndicator(meta, indicator) {
+            const mainTimeScale = chart.timeScale();
+            const buildVersion = (meta.buildVersion || 0) + 1;
+            meta.buildVersion = buildVersion;
+            meta.ready = false;
+            const isCurrentBuild = () => meta.buildVersion === buildVersion;
             const build = async () => {
             const { chart, container, valueLabel } = meta;
-            meta.addedSeries.forEach(s => { try { chart.removeSeries(s); } catch (e) {} });
-            meta.addedSeries = [];
-            meta.primarySeries = null;
-            meta.lookup = {};
-            meta.labelRenderer = null;
-            valueLabel.style.display = 'none';
-
             try {
                 await ensureIndicatorData(indicator);
             } catch (error) {
-                console.error(`指标${indicator}加载失败:`, error);
+                if (isCurrentBuild()) console.error(`指标${indicator}加载失败:`, error);
                 return;
             }
+            if (!isCurrentBuild()) return;
 
-            const h = INDICATOR_HEIGHT[indicator] || 120;
-            chart.applyOptions({ height: h });
-            container.style.height = h + 'px';
-            resizeMainChart();
+            // 数据等待期间仍可滚动；提交时读取最新主图范围，并复制数值避免布局修改引用。
+            const currentRange = mainTimeScale.getVisibleLogicalRange() || chart.timeScale().getVisibleLogicalRange();
+            const visibleRange = currentRange ? {from: currentRange.from, to: currentRange.to} : null;
+            const previousSyncState = isSyncingTimeRange;
+            isSyncingTimeRange = true;
+            try {
+                meta.addedSeries.forEach(s => { try { chart.removeSeries(s); } catch (e) {} });
+                meta.addedSeries = [];
+                meta.primarySeries = null;
+                meta.lookup = {};
+                meta.labelRenderer = null;
+                valueLabel.style.display = 'none';
 
-            if (indicator === 'volume') {
-                const s = chart.addHistogramSeries({
-                    color: '#26a69a', priceFormat: { type: 'volume' },
-                    lastValueVisible: false, priceLineVisible: false,
-                });
-                s.setData(volumeData);
-                meta.addedSeries.push(s);
-                meta.primarySeries = s;
-                meta.lookup = volumeLookup;
-                meta.labelRenderer = (t) => {
-                    const vl = meta.valueLabel;
-                    if (!(t in volumeLookup)) { vl.style.display = 'none'; return; }
-                    vl.innerHTML = '成交量: <span style="color:' + (volumeColorLookup[t] || '#333') + ';font-weight:bold">' + formatVolume(volumeLookup[t]) + '</span>';
-                    vl.style.display = 'block';
-                };
-            } else if (indicator === 'boll') {
-                const cs = chart.addCandlestickSeries({
-                    priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) },
-                    upColor: 'rgba(239, 83, 80, 0.5)', downColor: 'rgba(38, 166, 154, 0.5)',
-                    borderVisible: false, wickUpColor: 'rgba(239, 83, 80, 0.5)', wickDownColor: 'rgba(38, 166, 154, 0.5)',
-                    lastValueVisible: false, priceLineVisible: false,
-                });
-                cs.setData(candleData);
-                meta.addedSeries.push(cs);
-                meta.primarySeries = cs;
-                meta.lookup = bollLookup;
-                const _bollMaps = {};
-                (bollData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _bollMaps[it.key] = m; });
-                const lines = buildSubSeries(chart, bollData);
-                Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
-                meta.labelRenderer = (t) => {
-                    const vl = meta.valueLabel;
-                    const upM = _bollMaps['BOLL_UP'], dnM = _bollMaps['BOLL_DOWN'];
-                    if (!upM || !dnM || !(t in upM) || !(t in dnM)) { vl.style.display = 'none'; return; }
-                    const bands = (bollData || []).map(it => { const m = _bollMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key.replace('BOLL_', '') + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
-                    const width = upM[t] - dnM[t];
-                    vl.innerHTML = (bands.length ? bands.join('  ') + '  ' : '') + '<span style="color:#666;font-weight:bold">通道宽:' + width.toFixed(currentPrecision) + '</span>';
-                    vl.style.display = 'block';
-                };
-            } else if (indicator === 'rsi') {
-                const lines = buildSubSeries(chart, rsiData);
-                const firstKey = Object.keys(lines)[0];
-                Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
-                const first = lines[firstKey];
-                if (first) {
-                    first.createPriceLine({ price: 80, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '80' });
-                    first.createPriceLine({ price: 50, color: 'rgba(120,120,120,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '50' });
-                    first.createPriceLine({ price: 20, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '20' });
-                }
-                meta.primarySeries = first || null;
-                meta.lookup = rsiLookup;
-                const _rsiMaps = {};
-                (rsiData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _rsiMaps[it.key] = m; });
-                meta.labelRenderer = (t) => {
-                    const vl = meta.valueLabel;
-                    const parts = (rsiData || []).map(it => { const m = _rsiMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
-                    if (!parts.length) { vl.style.display = 'none'; return; }
-                    vl.innerHTML = parts.join('  ');
-                    vl.style.display = 'block';
-                };
-            } else if (indicator === 'macd') {
-                const _hist = chart.addHistogramSeries({ priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) }, lastValueVisible: false, priceLineVisible: false });
-                const _hmap = {};
-                (macdData.stats || []).forEach(s => { _hmap[s.time] = { v: s.macd, c: s.color }; });
-                _hist.setData(candleData.map(k => (k.time in _hmap ? { time: k.time, value: _hmap[k.time].v, color: _hmap[k.time].c } : { time: k.time, value: 0 })));
-                meta.addedSeries.push(_hist);
-                if ((macdData.markers || []).length) _hist.setMarkers(macdData.markers);
-                chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
-                const _mlines = buildSubSeries(chart, macdData.lines || []);
-                Object.keys(_mlines).forEach(k => meta.addedSeries.push(_mlines[k]));
-                // DIFF/DEA 线也挂同一 provider(见下方 _macdAsp), 与柱子共用同一价格范围。
-                // 范围 = 可见(柱子+DIFF+DEA)极值并强制含0 → 线条始终完整可见, 不再被裁切。
-                // 副图加高到180px 以补偿“含线条后柱子占比变小”的问题。
-                meta.primarySeries = _hist;
-                // ---- MACD 副图: autoscaleInfoProvider(序列级) 范围 = 可见(柱子+DIFF+DEA)极值, 强制含 0 ----
-                // v4.1.0 关键事实(已查 typings): IPriceScaleApi 只有 applyOptions/options/width, 无 setVisiblePriceRange(那是 v5)。
-                //   autoscaleInfoProvider 是【序列选项】, 入参 () => AutoscaleInfo; autoScale 必须为 true 才会调用。
-                // 反转根因: 库默认范围在“全正/全负”窗口不含 0 → 柱子翻转。这里强制 min≤0≤max 根除之。
-                // 线条可见性: 把 DIFF/DEA 极值也纳入范围 → 线条完整显示; 含线条后柱子占比变小, 用 180px 副图补偿。
-                const _lineMaps = {};
-                (macdData.lines || []).forEach(function (ln) { const m = {}; (ln.values || []).forEach(v => { m[v.time] = v.value; }); _lineMaps[ln.key] = m; });
-                function _macdAsp(base) {
-                    // base 是【整条序列】的全局极值(库不按可见窗口算), 故忽略它, 自行按可见逻辑范围统计。
-                    var lo = 0, hi = 0, have = false;
-                    try {
-                        var lr = chart.timeScale().getVisibleLogicalRange();
-                        if (lr) {
-                            var iFrom = Math.max(0, Math.ceil(lr.from));
-                            var iTo = Math.min(candleData.length - 1, Math.floor(lr.to));
-                            var mn = Infinity, mx = -Infinity;
-                            for (var i = iFrom; i <= iTo; i++) {
-                                var t = candleData[i].time;
-                                var hv = _hmap[t];
-                                if (hv) { if (hv.v < mn) mn = hv.v; if (hv.v > mx) mx = hv.v; }
-                                Object.keys(_lineMaps).forEach(function (k) { var v = _lineMaps[k][t]; if (typeof v === 'number') { if (v < mn) mn = v; if (v > mx) mx = v; } });
+                const h = INDICATOR_HEIGHT[indicator] || 120;
+                chart.applyOptions({ height: h });
+                container.style.height = h + 'px';
+                resizeMainChart();
+
+                if (indicator === 'volume') {
+                    const s = chart.addHistogramSeries({
+                        color: '#26a69a', priceFormat: { type: 'volume' },
+                        lastValueVisible: false, priceLineVisible: false,
+                    });
+                    s.setData(volumeData);
+                    meta.addedSeries.push(s);
+                    meta.primarySeries = s;
+                    meta.lookup = volumeLookup;
+                    meta.labelRenderer = (t) => {
+                        const vl = meta.valueLabel;
+                        if (!(t in volumeLookup)) { vl.style.display = 'none'; return; }
+                        vl.innerHTML = '成交量: <span style="color:' + (volumeColorLookup[t] || '#333') + ';font-weight:bold">' + formatVolume(volumeLookup[t]) + '</span>';
+                        vl.style.display = 'block';
+                    };
+                } else if (indicator === 'boll') {
+                    const cs = chart.addCandlestickSeries({
+                        priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) },
+                        upColor: 'rgba(239, 83, 80, 0.5)', downColor: 'rgba(38, 166, 154, 0.5)',
+                        borderVisible: false, wickUpColor: 'rgba(239, 83, 80, 0.5)', wickDownColor: 'rgba(38, 166, 154, 0.5)',
+                        lastValueVisible: false, priceLineVisible: false,
+                    });
+                    cs.setData(candleData);
+                    meta.addedSeries.push(cs);
+                    meta.primarySeries = cs;
+                    meta.lookup = bollLookup;
+                    const _bollMaps = {};
+                    (bollData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _bollMaps[it.key] = m; });
+                    const lines = buildSubSeries(chart, bollData);
+                    Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
+                    meta.labelRenderer = (t) => {
+                        const vl = meta.valueLabel;
+                        const upM = _bollMaps['BOLL_UP'], dnM = _bollMaps['BOLL_DOWN'];
+                        if (!upM || !dnM || !(t in upM) || !(t in dnM)) { vl.style.display = 'none'; return; }
+                        const bands = (bollData || []).map(it => { const m = _bollMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key.replace('BOLL_', '') + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
+                        const width = upM[t] - dnM[t];
+                        vl.innerHTML = (bands.length ? bands.join('  ') + '  ' : '') + '<span style="color:#666;font-weight:bold">通道宽:' + width.toFixed(currentPrecision) + '</span>';
+                        vl.style.display = 'block';
+                    };
+                } else if (indicator === 'rsi') {
+                    const lines = buildSubSeries(chart, rsiData);
+                    const firstKey = Object.keys(lines)[0];
+                    Object.keys(lines).forEach(k => meta.addedSeries.push(lines[k]));
+                    const first = lines[firstKey];
+                    if (first) {
+                        first.createPriceLine({ price: 80, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '80' });
+                        first.createPriceLine({ price: 50, color: 'rgba(120,120,120,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '50' });
+                        first.createPriceLine({ price: 20, color: 'rgba(120,120,120,0.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '20' });
+                    }
+                    meta.primarySeries = first || null;
+                    meta.lookup = rsiLookup;
+                    const _rsiMaps = {};
+                    (rsiData || []).forEach(it => { const m = {}; (it.values || []).forEach(v => m[v.time] = v.value); _rsiMaps[it.key] = m; });
+                    meta.labelRenderer = (t) => {
+                        const vl = meta.valueLabel;
+                        const parts = (rsiData || []).map(it => { const m = _rsiMaps[it.key]; return (m && (t in m)) ? '<span style="color:' + it.color + ';font-weight:bold">' + it.key + ':' + m[t].toFixed(currentPrecision) + '</span>' : null; }).filter(Boolean);
+                        if (!parts.length) { vl.style.display = 'none'; return; }
+                        vl.innerHTML = parts.join('  ');
+                        vl.style.display = 'block';
+                    };
+                } else if (indicator === 'macd') {
+                    const _hist = chart.addHistogramSeries({ priceFormat: { type: 'price', precision: currentPrecision, minMove: 1 / Math.pow(10, currentPrecision) }, lastValueVisible: false, priceLineVisible: false });
+                    const _hmap = {};
+                    (macdData.stats || []).forEach(s => { _hmap[s.time] = { v: s.macd, c: s.color }; });
+                    _hist.setData(candleData.map(k => (k.time in _hmap ? { time: k.time, value: _hmap[k.time].v, color: _hmap[k.time].c } : { time: k.time, value: 0 })));
+                    meta.addedSeries.push(_hist);
+                    if ((macdData.markers || []).length) _hist.setMarkers(macdData.markers);
+                    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
+                    const _mlines = buildSubSeries(chart, macdData.lines || []);
+                    Object.keys(_mlines).forEach(k => meta.addedSeries.push(_mlines[k]));
+                    // DIFF/DEA 线也挂同一 provider(见下方 _macdAsp), 与柱子共用同一价格范围。
+                    // 范围 = 可见(柱子+DIFF+DEA)极值并强制含0 → 线条始终完整可见, 不再被裁切。
+                    // 副图加高到180px 以补偿“含线条后柱子占比变小”的问题。
+                    meta.primarySeries = _hist;
+                    // ---- MACD 副图: autoscaleInfoProvider(序列级) 范围 = 可见(柱子+DIFF+DEA)极值, 强制含 0 ----
+                    // v4.1.0 关键事实(已查 typings): IPriceScaleApi 只有 applyOptions/options/width, 无 setVisiblePriceRange(那是 v5)。
+                    //   autoscaleInfoProvider 是【序列选项】, 入参 () => AutoscaleInfo; autoScale 必须为 true 才会调用。
+                    // 反转根因: 库默认范围在“全正/全负”窗口不含 0 → 柱子翻转。这里强制 min≤0≤max 根除之。
+                    // 线条可见性: 把 DIFF/DEA 极值也纳入范围 → 线条完整显示; 含线条后柱子占比变小, 用 180px 副图补偿。
+                    const _lineMaps = {};
+                    (macdData.lines || []).forEach(function (ln) { const m = {}; (ln.values || []).forEach(v => { m[v.time] = v.value; }); _lineMaps[ln.key] = m; });
+                    function _macdAsp(base) {
+                        // base 是【整条序列】的全局极值(库不按可见窗口算), 故忽略它, 自行按可见逻辑范围统计。
+                        var lo = 0, hi = 0, have = false;
+                        try {
+                            var lr = chart.timeScale().getVisibleLogicalRange();
+                            if (lr) {
+                                var iFrom = Math.max(0, Math.ceil(lr.from));
+                                var iTo = Math.min(candleData.length - 1, Math.floor(lr.to));
+                                var mn = Infinity, mx = -Infinity;
+                                for (var i = iFrom; i <= iTo; i++) {
+                                    var t = candleData[i].time;
+                                    var hv = _hmap[t];
+                                    if (hv) { if (hv.v < mn) mn = hv.v; if (hv.v > mx) mx = hv.v; }
+                                    Object.keys(_lineMaps).forEach(function (k) { var v = _lineMaps[k][t]; if (typeof v === 'number') { if (v < mn) mn = v; if (v > mx) mx = v; } });
+                                }
+                                if (isFinite(mn) && isFinite(mx)) { lo = mn; hi = mx; have = true; }
                             }
-                            if (isFinite(mn) && isFinite(mx)) { lo = mn; hi = mx; have = true; }
-                        }
-                    } catch (e) {}
-                    if (!have) { try { var b = (typeof base === 'function') ? base() : base; if (b && typeof b.priceRange === 'object' && b.priceRange) { lo = b.priceRange.minValue; hi = b.priceRange.maxValue; } else if (b && typeof b.minValue === 'number') { lo = b.minValue; hi = b.maxValue; } } catch (e2) {} }
-                    if (lo > 0) lo = 0; if (hi < 0) hi = 0;   // 强制含 0 → 杜绝放大反转
-                    if (hi - lo < 1e-9) hi = lo + 0.01;
-                    return { priceRange: { minValue: lo, maxValue: hi }, margins: { above: 0, below: 0 } };
+                        } catch (e) {}
+                        if (!have) { try { var b = (typeof base === 'function') ? base() : base; if (b && typeof b.priceRange === 'object' && b.priceRange) { lo = b.priceRange.minValue; hi = b.priceRange.maxValue; } else if (b && typeof b.minValue === 'number') { lo = b.minValue; hi = b.maxValue; } } catch (e2) {} }
+                        if (lo > 0) lo = 0; if (hi < 0) hi = 0;   // 强制含 0 → 杜绝放大反转
+                        if (hi - lo < 1e-9) hi = lo + 0.01;
+                        return { priceRange: { minValue: lo, maxValue: hi }, margins: { above: 0, below: 0 } };
+                    }
+                    _hist.applyOptions({ autoscaleInfoProvider: _macdAsp });
+                    Object.keys(_mlines).forEach(function (k) { try { _mlines[k].applyOptions({ autoscaleInfoProvider: _macdAsp }); } catch (e) {} });
+                                    meta.lookup = macdLookup;
+                    meta.labelRenderer = (t) => {
+                        const s = macdStatLookup[t]; const vl = meta.valueLabel;
+                        if (!s) { vl.style.display = 'none'; return; }
+                        const sp = (txt, color) => '<span style="color:' + color + ';font-weight:bold">' + txt + '</span>';
+                        const rg = (v) => v >= 0 ? '#ef5350' : '#26a69a';
+                        vl.innerHTML = sp('MACD ' + s.macd.toFixed(currentPrecision), rg(s.macd))
+                            + '  ' + sp('连增 ' + (s.lianzeng > 0 ? '+' : '') + s.lianzeng, rg(s.lianzeng))
+                            + '  ' + sp((s.area >= 0 ? '红柱面积 ' : '绿柱面积 ') + Math.abs(s.area).toFixed(1) + '  平均 ' + Math.abs(s.avg).toFixed(1), rg(s.area))
+                            + '  ' + sp('DIFF ' + s.dif.toFixed(currentPrecision), '#ff9800')
+                            + '  ' + sp('DEA ' + s.dea.toFixed(currentPrecision), '#5b9bd5');
+                        vl.style.display = 'block';
+                    };
                 }
-                _hist.applyOptions({ autoscaleInfoProvider: _macdAsp });
-                Object.keys(_mlines).forEach(function (k) { try { _mlines[k].applyOptions({ autoscaleInfoProvider: _macdAsp }); } catch (e) {} });
-                                meta.lookup = macdLookup;
-                meta.labelRenderer = (t) => {
-                    const s = macdStatLookup[t]; const vl = meta.valueLabel;
-                    if (!s) { vl.style.display = 'none'; return; }
-                    const sp = (txt, color) => '<span style="color:' + color + ';font-weight:bold">' + txt + '</span>';
-                    const rg = (v) => v >= 0 ? '#ef5350' : '#26a69a';
-                    vl.innerHTML = sp('MACD ' + s.macd.toFixed(currentPrecision), rg(s.macd))
-                        + '  ' + sp('连增 ' + (s.lianzeng > 0 ? '+' : '') + s.lianzeng, rg(s.lianzeng))
-                        + '  ' + sp((s.area >= 0 ? '红柱面积 ' : '绿柱面积 ') + Math.abs(s.area).toFixed(1) + '  平均 ' + Math.abs(s.avg).toFixed(1), rg(s.area))
-                        + '  ' + sp('DIFF ' + s.dif.toFixed(currentPrecision), '#ff9800')
-                        + '  ' + sp('DEA ' + s.dea.toFixed(currentPrecision), '#5b9bd5');
-                    vl.style.display = 'block';
-                };
+
+                meta.indicator = indicator;
+                chart.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH });
+            } finally {
+                // 先释放本次保护，再用正确范围同步主副图；恢复接口抛错也不能锁死后续操作。
+                isSyncingTimeRange = previousSyncState;
+                if (visibleRange) {
+                    mainTimeScale.setVisibleLogicalRange(visibleRange);
+                    chart.timeScale().setVisibleLogicalRange(visibleRange);
+                }
             }
-
-            meta.indicator = indicator;
-            chart.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH });
-
-            // 与主图可见范围保持一致
-            const lr = chart.timeScale().getVisibleLogicalRange();
-            if (lr) meta.chart.timeScale().setVisibleLogicalRange(lr);
-            else meta.chart.timeScale().fitContent();
             };
-            build()
-                .catch(error => console.error(`面板${meta.idx + 1}渲染失败:`, error))
+            return build()
+                .catch(error => {
+                    if (isCurrentBuild()) console.error(`面板${meta.idx + 1}渲染失败:`, error);
+                })
                 .finally(() => {
+                    if (!isCurrentBuild()) return;
                     meta.ready = true;
-                    meta.chart.timeScale().setVisibleLogicalRange(getInitialLogicalRange());
-                    if (panels.length === 4 && panels.every(panel => panel.ready)) {
+                    if (!initialPanelsReady && panels.length === 4 && panels.every(panel => panel.ready)) {
                         initialPanelsReady = true;
-                        applyInitialLogicalRange();
                     }
                 });
         }
@@ -3466,17 +3761,28 @@
 
         function applyInitialLogicalRange() {
             const initialLogicalRange = getInitialLogicalRange();
-            chart.timeScale().setVisibleLogicalRange(initialLogicalRange);
-            subChartList.forEach(sub => sub.timeScale().setVisibleLogicalRange(initialLogicalRange));
+            const previousSyncState = isSyncingTimeRange;
+            isSyncingTimeRange = true;
+            try {
+                chart.timeScale().setVisibleLogicalRange(initialLogicalRange);
+                subChartList.forEach(sub => sub.timeScale().setVisibleLogicalRange(initialLogicalRange));
+            } finally {
+                isSyncingTimeRange = previousSyncState;
+            }
         }
 
         function applyLogicalRange(logicalRange, source) {
             if (isSyncingTimeRange || !logicalRange) return;
-            if (source !== chart && !initialPanelsReady) return;
+            const currentRange = source.timeScale().getVisibleLogicalRange();
+            if (!currentRange || currentRange.from !== logicalRange.from || currentRange.to !== logicalRange.to) return;
+            if (source !== chart && !initialPanelsReady && !chart.timeScale().getVisibleLogicalRange()) return;
             isSyncingTimeRange = true;
-            if (source !== chart) chart.timeScale().setVisibleLogicalRange(logicalRange);
-            subChartList.filter(c => c !== source).forEach(c => c.timeScale().setVisibleLogicalRange(logicalRange));
-            isSyncingTimeRange = false;
+            try {
+                if (source !== chart) chart.timeScale().setVisibleLogicalRange(logicalRange);
+                subChartList.filter(c => c !== source).forEach(c => c.timeScale().setVisibleLogicalRange(logicalRange));
+            } finally {
+                isSyncingTimeRange = false;
+            }
         }
 
         chart.timeScale().subscribeVisibleLogicalRangeChange((lr) => applyLogicalRange(lr, chart));
@@ -3489,6 +3795,21 @@
                 width: chartContainer.clientWidth,
                 height: Math.max(chartContainer.clientHeight, 360),
             });
+            requestAnimationFrame(() => chartContainer.dispatchEvent(new Event('chartlayoutchange')));
+        }
+
+        // 在同一启动帧恢复已保存窗口；完整绘图水合前不写回，避免默认初始化覆盖旧状态。
+        if (restoredChartWorkspace.viewport) {
+            const previousSyncState = isSyncingTimeRange;
+            isSyncingTimeRange = true;
+            try {
+                chart.timeScale().setVisibleLogicalRange(restoredChartWorkspace.viewport);
+                subChartList.forEach(sub => sub.timeScale().setVisibleLogicalRange(restoredChartWorkspace.viewport));
+            } catch (_) {
+                try { applyInitialLogicalRange(); } catch (_) {}
+            } finally {
+                isSyncingTimeRange = previousSyncState;
+            }
         }
 
         // 响应式宽度和主图高度
@@ -3528,8 +3849,8 @@
             p.chart.subscribeCrosshairMove((param) => {
                 if (isSyncingCrosshair) return;
                 isSyncingCrosshair = true;
+                const candleAt = candleAccess.get(param.time, param.logical);
                 if (param.time) {
-                    const candleAt = candleData.find(d => d.time === param.time);
                     if (candleAt) chart.setCrosshairPosition(candleAt.close, param.time, candlestickSeries);
                     syncSubCrosshairs(param.time, p);
                     if (p.labelRenderer) p.labelRenderer(param.time);
@@ -3538,7 +3859,7 @@
                     syncSubCrosshairs(null, p);
                     p.valueLabel.style.display = 'none';
                 }
-                const mainParam = { ...param, seriesData: new Map([[candlestickSeries, candleData.find(d => d.time === param.time)]]) };
+                const mainParam = { ...param, seriesData: new Map([[candlestickSeries, candleAt]]) };
                 updateTooltip(mainParam, candlestickSeries);
                 isSyncingCrosshair = false;
             });
@@ -3625,12 +3946,18 @@
         let gapPromise = null;
 
         function ensureGapMarkers() {
-            gapPromise = gapPromise || fetchChartModule('gaps').then(payload => {
-                gapsData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data || [];
-                displayGapsWithMarkers(gapsData);
-                updateHighLowMarkers();
-                return gapsData;
-            });
+            if (!gapPromise) {
+                const pending = Promise.resolve().then(() => fetchChartModule('gaps')).then(payload => {
+                    gapsData = typeof payload.data === 'string' ? JSON.parse(payload.data) : payload.data || [];
+                    displayGapsWithMarkers(gapsData);
+                    updateHighLowMarkers();
+                    return gapsData;
+                }).catch(error => {
+                    if (gapPromise === pending) gapPromise = null;
+                    throw error;
+                });
+                gapPromise = pending;
+            }
             return gapPromise;
         }
 
@@ -3658,7 +3985,7 @@
             if (!timeRange) return;
 
             // 筛选可见范围内的 K 线
-            const visibleCandles = candleData.filter(d => d.time >= timeRange.from && d.time <= timeRange.to);
+            const visibleCandles = candleAccess.between(timeRange.from, timeRange.to);
             if (visibleCandles.length === 0) return;
 
             // 找最高价和最低价
@@ -3952,6 +4279,7 @@
         });
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutRangeBox());
         chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutRangeBox), { passive: true });
+        chartContainer.addEventListener('chartlayoutchange', () => layoutRangeBox());
         window.addEventListener('resize', () => layoutRangeBox());
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') clearRangeSelection();
@@ -3979,6 +4307,7 @@
         const distanceButton = document.getElementById('toolDistance');
         const distanceHint = document.getElementById('toolDistanceHint');
         const measureState = { enabled: false, start: null, end: null };
+        const drawingShortcutAllowed = event => !event.target?.closest?.('input, textarea, select, [contenteditable]');
 
         const signedText = (value, digits) => (value > 0 ? '+' : '') + value.toFixed(digits);
 
@@ -4058,6 +4387,7 @@
         };
 
         const clearMeasure = () => {
+            const hadMeasurement = Boolean(measureState.start || measureState.end);
             measureState.enabled = false;
             measureState.start = null;
             measureState.end = null;
@@ -4066,6 +4396,7 @@
             chartContainer.classList.remove('measure-mode');
             updateDistanceHint();
             renderMeasure(null);
+            if (hadMeasurement) persistChartDrawings(true);
         };
 
         distanceButton.addEventListener('click', () => {
@@ -4100,6 +4431,7 @@
             }
             updateDistanceHint();
             renderMeasure(measureState.end);
+            persistChartDrawings(true);
         });
         chart.subscribeCrosshairMove(param => {
             if (!measureState.enabled || !measureState.start || measureState.end) return;
@@ -4111,9 +4443,10 @@
         };
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutMeasure());
         chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutMeasure), { passive: true });
+        chartContainer.addEventListener('chartlayoutchange', () => layoutMeasure());
         window.addEventListener('resize', () => layoutMeasure());
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') clearMeasure();
+            if (event.key === 'Escape' && drawingShortcutAllowed(event)) clearMeasure();
         });
 
         // 画方框：可连续画多个，两次点击确定一个方框的对角
@@ -4181,6 +4514,7 @@
                 rectState.boxes.pop();
                 updateRectangleHint();
                 renderRect();
+                persistChartDrawings();
                 return;
             }
             rectState.enabled = false;
@@ -4235,6 +4569,7 @@
                 shapeOrder.push('rect');
                 rectState.start = null;
                 rectState.preview = null;
+                persistChartDrawings();
             }
             updateRectangleHint();
             renderRect();
@@ -4250,9 +4585,10 @@
         };
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutRect());
         chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutRect), { passive: true });
+        chartContainer.addEventListener('chartlayoutchange', () => layoutRect());
         window.addEventListener('resize', () => layoutRect());
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') undoLatestShape();
+            if (event.key === 'Escape' && drawingShortcutAllowed(event)) undoLatestShape();
         });
 
         // 趋势线：两点确定方向，向两端无限延长，可同时保留多条
@@ -4347,6 +4683,7 @@
                 trendState.lines.pop();
                 updateTrendHint();
                 renderTrend();
+                persistChartDrawings();
                 return;
             }
             trendState.enabled = false;
@@ -4401,6 +4738,7 @@
                 shapeOrder.push('trend');
                 trendState.start = null;
                 trendState.preview = null;
+                persistChartDrawings();
             }
             updateTrendHint();
             renderTrend();
@@ -4541,6 +4879,7 @@
                 shapeOrder.push('fib');
                 fibState.start = null;
                 fibState.preview = null;
+                persistChartDrawings();
             }
             updateFibHint();
             renderFib();
@@ -4556,6 +4895,7 @@
         };
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutFib());
         chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutFib), { passive: true });
+        chartContainer.addEventListener('chartlayoutchange', () => layoutFib());
         window.addEventListener('resize', () => layoutFib());
 
         const shapeOrder = [];
@@ -4608,12 +4948,57 @@
                 return false;
             }
             if (!shapeOrder.length) deactivateDrawingTools();
+            persistChartDrawings();
             return true;
         };
 
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutTrend());
         chartContainer.addEventListener('wheel', () => requestAnimationFrame(layoutTrend), { passive: true });
+        chartContainer.addEventListener('chartlayoutchange', () => layoutTrend());
         window.addEventListener('resize', () => layoutTrend());
+
+        function persistChartDrawings(measureChanged = false) {
+            if (!chartWorkspaceReady) return;
+            chartWorkspace.saveDrawings({
+                rectangles: rectState.boxes, trends: trendState.lines, fibs: fibState.items, order: shapeOrder,
+                measure: measureState.start && measureState.end ? {start: measureState.start, end: measureState.end} : null,
+            }, measureChanged);
+        }
+        let chartWorkspaceTimer = null;
+        let pendingChartWorkspaceRange = null;
+        function flushChartWorkspace() {
+            if (chartWorkspaceTimer !== null && typeof window.clearTimeout === 'function') window.clearTimeout(chartWorkspaceTimer);
+            chartWorkspaceTimer = null;
+            if (!chartWorkspaceReady || isSyncingTimeRange) return;
+            const current = chart.timeScale().getVisibleLogicalRange() || pendingChartWorkspaceRange;
+            if (current) chartWorkspace.saveViewport({from: current.from, to: current.to});
+            pendingChartWorkspaceRange = null;
+        }
+        function queueChartWorkspaceRange(range, source) {
+            if (!chartWorkspaceReady || isSyncingTimeRange || !range) return;
+            const current = source.timeScale().getVisibleLogicalRange(), main = chart.timeScale().getVisibleLogicalRange();
+            if (!current || !main || current.from !== range.from || current.to !== range.to || main.from !== range.from || main.to !== range.to) return;
+            pendingChartWorkspaceRange = {from: main.from, to: main.to};
+            if (chartWorkspaceTimer !== null && typeof window.clearTimeout === 'function') window.clearTimeout(chartWorkspaceTimer);
+            if (typeof window.setTimeout === 'function') chartWorkspaceTimer = window.setTimeout(flushChartWorkspace, 150);
+            else flushChartWorkspace();
+        }
+        rectState.boxes.push(...restoredChartWorkspace.rectangles);
+        trendState.lines.push(...restoredChartWorkspace.trends);
+        fibState.items.push(...restoredChartWorkspace.fibs);
+        shapeOrder.push(...restoredChartWorkspace.order);
+        if (restoredChartWorkspace.measure) {
+            measureState.start = restoredChartWorkspace.measure.start;
+            measureState.end = restoredChartWorkspace.measure.end;
+        }
+        renderRect(); renderTrend(); renderFib(); renderMeasure(measureState.end);
+        updateRectangleHint(); updateTrendHint(); updateFibHint(); updateDistanceHint();
+        chartWorkspaceReady = true;
+        chart.timeScale().subscribeVisibleLogicalRangeChange(range => queueChartWorkspaceRange(range, chart));
+        subChartList.forEach(sub => sub.timeScale().subscribeVisibleLogicalRangeChange(range => queueChartWorkspaceRange(range, sub)));
+        window.addEventListener('pagehide', flushChartWorkspace);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushChartWorkspace(); });
+
 
 
     }
