@@ -43,7 +43,7 @@ bash scripts/pipelines/run_update_pipeline.sh
 4. `data_ingestion/data_from_tdata_1day.py`：更新日线。
 5. 并行执行 `aggregation/` 中的四个周期转换脚本。
 6. `cache/dump_stock_caches.py`：导出缓存。
-7. `state/update_cl_state.py --archive-screener`：更新状态并归档到期方案。
+7. `state/update_cl_state.py`：更新状态快照。
 
 任一步骤失败会阻止后续步骤；聚合阶段会等待全部并行任务结束，任一失败都不会导出缓存。
 `data_from_tushare_old.py` 用于补充历史数据，不属于常规日更流水线。
