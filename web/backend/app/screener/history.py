@@ -133,15 +133,25 @@ def _batch_results(preset: StockScreenerPreset, instruments: list[Instrument], l
     results = []
     for item in sorted(universe, key=lambda value: (value.code, value.asset_class)):
         matches = False
+        skip = False
         for scope in scopes:
             key = (item.market, item.asset_class, item.code, filters["frequency"], scope)
             record = lookup.get(key)
-            if record is None or as_date(record.get("data_trade_date")) != day:
-                raise ValueError("标的 " + item.code + " 状态缺失或数据日期不一致，拒绝归档")
+            if record is None:
+                logger.info("标的 %s 没有 %s/%s 状态，跳过", item.code, filters["frequency"], scope)
+                skip = True
+                break
+            trade_day = record.get("data_trade_date")
+            if trade_day is None or as_date(trade_day) != day:
+                logger.info("标的 %s 数据日期 %s 不是归档日 %s，跳过", item.code, trade_day, day.isoformat())
+                skip = True
+                break
             if all(
                 value is None or record.get(field) == value for field, value in filters.items() if field in STATE_FIELDS
             ):
                 matches = True
+        if skip:
+            continue
         if matches:
             results.append(
                 {

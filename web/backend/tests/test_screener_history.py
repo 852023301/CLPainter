@@ -106,15 +106,18 @@ def test_archive_success_immutable_and_differences(history_db):
         assert first["comparison_available"] is False and first["added"] == []
 
 
-def test_incomplete_or_stale_batch_never_creates_false_empty_results(history_db):
+def test_missing_or_stale_symbol_is_skipped(history_db):
     module = service()
-    records = batch("2026-11-20")[:-1]
-    assert module.archive_due_presets(history_db, records, now=NOW, calendar_loader=calendar)["failed"] == 1
-    records = batch("2026-11-20")
-    records[0]["data_trade_date"] = "2026-11-19"
-    assert module.archive_due_presets(history_db, records, now=NOW, calendar_loader=calendar)["failed"] == 1
+    missing = [record for record in batch("2026-11-13") if record["code"] != "CCC"]
+    assert module.archive_due_presets(history_db, missing, now=NOW, calendar_loader=calendar)["saved"] == 1
+    stale = batch("2026-11-20")
+    stale[0]["data_trade_date"] = "2026-11-06"
+    assert module.archive_due_presets(history_db, stale, now=NOW, calendar_loader=calendar)["saved"] == 1
     with Session(history_db) as session:
-        assert session.scalars(select(models.StockScreenerRun)).all() == []
+        rows = session.scalars(select(models.StockScreenerRun).order_by(models.StockScreenerRun.version_date)).all()
+        assert [row.version_date for row in rows] == [date(2026, 11, 13), date(2026, 11, 20)]
+        assert [item["code"] for item in rows[0].results] == ["AAA"]
+        assert rows[1].results == []
 
 
 def test_empty_success_is_saved_but_intraday_and_unknown_calendars_are_not(history_db):
@@ -317,14 +320,7 @@ def test_unique_constraint_and_success_content_are_minimal(history_db):
         assert len(session.scalars(select(models.StockScreenerRun)).all()) == 1
 
 
-def test_missing_scope_or_ddp_failure_only_logs_and_does_not_save(history_db):
-    with Session(history_db) as session:
-        session.get(models.StockScreenerPreset, 1).filters = {"frequency": "1day", "scope": "xianduan"}
-        session.commit()
-    assert (
-        service().archive_due_presets(history_db, batch("2026-11-20"), now=NOW, calendar_loader=calendar)["failed"] == 1
-    )
-
+def test_missing_scope_is_skipped_and_calendar_failure_does_not_save(history_db):
     def unavailable(**kwargs):
         raise ConnectionError("calendar unavailable")
 
@@ -333,7 +329,12 @@ def test_missing_scope_or_ddp_failure_only_logs_and_does_not_save(history_db):
         == 1
     )
     with Session(history_db) as session:
+        session.get(models.StockScreenerPreset, 1).filters = {"frequency": "1day", "scope": "xianduan"}
+        session.commit()
         assert session.scalars(select(models.StockScreenerRun)).all() == []
+    assert service().archive_due_presets(history_db, batch("2026-11-20"), now=NOW, calendar_loader=calendar)["saved"] == 1
+    with Session(history_db) as session:
+        assert session.scalar(select(models.StockScreenerRun)).results == []
 
 
 def test_history_page_pagination_controls(history_http):
