@@ -249,6 +249,21 @@
             min-height: 0;
         }
 
+        .watchlist-feedback {
+            flex-shrink: 0;
+            padding: 6px 8px;
+            color: #666;
+            font-size: 12px;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+        }
+
+        .watchlist-feedback[hidden] { display: none; }
+        .watchlist-feedback[data-error="true"] { color: #c62828; }
+        .watchlist-feedback p { margin: 0; }
+        .watchlist-feedback button { margin-top: 4px; }
+        .watchlist-action:disabled, .watchlist-drag:disabled { opacity: .55; cursor: not-allowed; }
+
         .watchlist-tabs {
             display: flex;
             gap: 4px;
@@ -1416,6 +1431,10 @@
                 <button type="button" id="watchlistRename" class="watchlist-action">改名</button>
                 <button type="button" id="watchlistDelete" class="watchlist-action">删除</button>
             </div>
+            <div id="watchlistFeedback" class="watchlist-feedback" hidden>
+                <p id="watchlistStatus" role="status" aria-live="polite"></p>
+                <button type="button" id="watchlistRetry" class="watchlist-action" hidden>重试加载自选</button>
+            </div>
             <div class="watchlist-list-head"><span>代码</span><span>名称</span></div>
             <div id="watchlistBoards" class="watchlist-items"></div>
             <div class="watchlist-create">
@@ -1876,6 +1895,13 @@
     const watchlistAddCurrent = document.getElementById('watchlistAddCurrent');
     const watchlistRename = document.getElementById('watchlistRename');
     const watchlistDelete = document.getElementById('watchlistDelete');
+    const watchlistFeedback = document.getElementById('watchlistFeedback');
+    const watchlistStatus = document.getElementById('watchlistStatus');
+    const watchlistRetry = document.getElementById('watchlistRetry');
+    let watchlistLoaded = false;
+    let watchlistLoadBusy = false;
+    let watchlistWriteBusy = false;
+    let watchlistNeedsRefresh = false;
     let watchlists = [];
     let selectedWatchlistBoardId = null;
     let draggingInstrumentId = null;
@@ -1885,19 +1911,70 @@
         appShell.style.setProperty('--watchlist-width', Math.round(savedWatchlistWidth) + 'px');
     }
 
-    const requestWatchlist = async (url, options = {}) => {
-        const response = await fetch(url, {
-            headers: {'Content-Type': 'application/json'},
-            ...options,
+    const canWriteWatchlist = () => watchlistLoaded && !watchlistLoadBusy && !watchlistWriteBusy && !watchlistNeedsRefresh;
+    const syncWatchlistControls = () => {
+        const blocked = !canWriteWatchlist();
+        const hasBoard = Boolean(currentBoard());
+        watchlistCreateButton.disabled = blocked;
+        watchlistNameInput.disabled = blocked;
+        watchlistAddCurrent.disabled = blocked || !hasBoard;
+        watchlistRename.disabled = blocked || !hasBoard;
+        watchlistDelete.disabled = blocked || !hasBoard;
+        document.getElementById('symbolGroupButton').disabled = blocked || window.currentInstrumentId == null;
+        watchlistRetry.disabled = watchlistLoadBusy || watchlistWriteBusy;
+        watchlistBoards.setAttribute('aria-busy', String(watchlistLoadBusy || watchlistWriteBusy));
+        watchlistBoards.querySelectorAll('.watchlist-drag').forEach(handle => {
+            handle.disabled = blocked;
+            handle.draggable = !blocked;
         });
-        if (!response.ok) {
-            let detail = `请求失败: ${response.status}`;
-            try {
-                detail = (await response.json()).detail || detail;
-            } catch (_) {}
-            throw new Error(detail);
+        watchlistBoards.querySelectorAll('.watchlist-remove').forEach(button => { button.disabled = blocked; });
+        groupPicker.querySelectorAll('input').forEach(input => { input.disabled = blocked; });
+        groupPicker.querySelectorAll('.group-picker-confirm').forEach(button => {
+            button.disabled = blocked || ![...groupPicker.querySelectorAll('input')].some(input => (input.checked ? '1' : '0') !== input.dataset.original);
+        });
+    };
+    const setWatchlistStatus = (message, error = false, retry = false) => {
+        watchlistStatus.textContent = message;
+        watchlistFeedback.hidden = !message;
+        watchlistFeedback.dataset.error = String(error);
+        watchlistRetry.hidden = !retry;
+        watchlistRetry.textContent = watchlistNeedsRefresh ? '刷新自选并核对' : '重试加载自选';
+    };
+    const showWatchlistError = error => {
+        if (!error.watchlistBlocked) setWatchlistStatus(error.message || '自选操作失败，请刷新核对', true, true);
+    };
+    const validWatchlistBoard = board => board && board.id != null && typeof board.name === 'string' && Array.isArray(board.items);
+    const requestWatchlist = async (url, options = {}) => {
+        const writing = !['GET', 'HEAD'].includes((options.method || 'GET').toUpperCase());
+        if (writing && !canWriteWatchlist()) {
+            const error = new Error('自选正在处理或需要刷新核对');
+            error.watchlistBlocked = true;
+            throw error;
         }
-        return response.status === 204 ? null : response.json();
+        if (writing) {
+            watchlistWriteBusy = true;
+            setWatchlistStatus(url.endsWith('/items/order') ? '正在保存自选顺序，请稍候…' : '正在保存自选，请稍候…');
+            syncWatchlistControls();
+        }
+        try {
+            const payload = await requestJson(url, options);
+            if (writing && payload !== null && !validWatchlistBoard(payload)) throw new Error('自选响应格式错误');
+            if (writing) setWatchlistStatus('自选操作已完成');
+            return payload;
+        } catch (error) {
+            if (!writing) throw error;
+            watchlistNeedsRefresh = true;
+            const detail = String(error.message || '请求失败').replace(/，?请重试$/, '');
+            const failure = new Error('自选操作未确认：' + detail + '；服务端可能已处理，请先刷新自选核对，勿重复提交。');
+            failure.name = error.name || 'Error';
+            setWatchlistStatus(failure.message, true, true);
+            throw failure;
+        } finally {
+            if (writing) {
+                watchlistWriteBusy = false;
+                syncWatchlistControls();
+            }
+        }
     };
 
     const currentBoard = () => watchlists.find(board => board.id === selectedWatchlistBoardId) || null;
@@ -1927,7 +2004,7 @@
     };
 
     const openGroupPicker = (anchor, instrumentId, displayName) => {
-        if (instrumentId == null) return;
+        if (instrumentId == null || !canWriteWatchlist()) return;
         groupPicker.innerHTML = '';
         const title = document.createElement('div');
         title.className = 'group-picker-title';
@@ -1979,11 +2056,12 @@
                 input => (input.checked ? '1' : '0') !== input.dataset.original
             );
             const syncConfirm = () => {
-                confirmButton.disabled = changedInputs().length === 0;
+                confirmButton.disabled = !canWriteWatchlist() || changedInputs().length === 0;
             };
             list.addEventListener('change', syncConfirm);
             syncConfirm();
             confirmButton.addEventListener('click', async () => {
+                if (!canWriteWatchlist()) return;
                 const changes = changedInputs();
                 if (!changes.length) return;
                 confirmButton.disabled = true;
@@ -2010,7 +2088,7 @@
                         }
                     }
                 } catch (error) {
-                    alert(error.message);
+                    showWatchlistError(error);
                 }
                 renderWatchlists();
             });
@@ -2047,10 +2125,7 @@
         ensureSelectedBoard();
         if (selectedWatchlistBoardId != null) lsSetString('watchlist:boardId', String(selectedWatchlistBoardId));
         const board = currentBoard();
-        const hasBoard = !!board;
-        watchlistAddCurrent.disabled = !hasBoard;
-        watchlistRename.disabled = !hasBoard;
-        watchlistDelete.disabled = !hasBoard;
+        syncWatchlistControls();
 
         watchlistTabs.innerHTML = '';
         watchlists.forEach(candidate => {
@@ -2090,11 +2165,13 @@
             const dragHandle = document.createElement('button');
             dragHandle.type = 'button';
             dragHandle.className = 'watchlist-drag';
-            dragHandle.draggable = true;
+            dragHandle.draggable = canWriteWatchlist();
+            dragHandle.disabled = !canWriteWatchlist();
             dragHandle.textContent = '⋮⋮';
             dragHandle.title = '拖动调整顺序';
             dragHandle.setAttribute('aria-label', `调整${item.display_name}的顺序`);
             dragHandle.addEventListener('dragstart', event => {
+                if (!canWriteWatchlist()) { event.preventDefault(); return; }
                 draggingInstrumentId = item.instrument_id;
                 event.dataTransfer.effectAllowed = 'move';
                 event.dataTransfer.setData('text/plain', String(item.instrument_id));
@@ -2108,7 +2185,7 @@
                 });
             });
             row.addEventListener('dragover', event => {
-                if (draggingInstrumentId == null || String(draggingInstrumentId) === String(item.instrument_id)) return;
+                if (!canWriteWatchlist() || draggingInstrumentId == null || String(draggingInstrumentId) === String(item.instrument_id)) return;
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
                 const after = event.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
@@ -2156,9 +2233,11 @@
             removeButton.type = 'button';
             removeButton.className = 'watchlist-action watchlist-remove';
             removeButton.textContent = '×';
+            removeButton.disabled = !canWriteWatchlist();
             removeButton.title = '移出板块';
             removeButton.setAttribute('aria-label', `把${item.display_name}移出板块`);
             removeButton.addEventListener('click', async () => {
+                if (!canWriteWatchlist()) return;
                 try {
                     await requestWatchlist(
                         `/api/v1/test_api/watchlists/${board.id}/items/${item.instrument_id}`,
@@ -2167,7 +2246,7 @@
                     board.items = board.items.filter(candidate => candidate.instrument_id !== item.instrument_id);
                     renderWatchlists();
                 } catch (error) {
-                    alert(error.message);
+                    showWatchlistError(error);
                 }
             });
             row.append(dragHandle, link, quote, removeButton);
@@ -2178,7 +2257,7 @@
     };
 
     const reorderWatchlistItem = async (board, sourceId, targetId, after) => {
-        if (sourceId == null || String(sourceId) === String(targetId)) return;
+        if (!canWriteWatchlist() || sourceId == null || String(sourceId) === String(targetId)) return;
         const ids = board.items.map(item => item.instrument_id);
         const from = ids.findIndex(id => String(id) === String(sourceId));
         if (from < 0) return;
@@ -2201,19 +2280,37 @@
         } catch (error) {
             board.items = previous;
             renderWatchlists();
-            alert(error.message);
+            showWatchlistError(error);
         }
     };
 
     const loadWatchlists = async () => {
+        if (watchlistLoadBusy || watchlistWriteBusy) return;
+        const verifyPreviousWrite = watchlistNeedsRefresh;
+        const returnFocus = document.activeElement === watchlistRetry;
+        watchlistLoadBusy = true;
+        closeGroupPicker();
+        setWatchlistStatus('正在加载自选…');
+        syncWatchlistControls();
         try {
             const payload = await requestWatchlist('/api/v1/test_api/watchlists');
-            watchlists = payload.boards || [];
+            if (!payload || !Array.isArray(payload.boards) || !payload.boards.every(validWatchlistBoard)) throw new Error('自选列表格式错误');
+            watchlists = payload.boards;
+            watchlistLoaded = true;
+            watchlistNeedsRefresh = false;
             renderWatchlists();
+            setWatchlistStatus(verifyPreviousWrite ? '已刷新自选，请核对上次操作结果后继续；超时不保证撤销服务端操作。' : '');
         } catch (error) {
+            watchlistLoaded = false;
+            setWatchlistStatus('自选加载失败：' + error.message + '；请重试加载', true, true);
             console.error('自选板块加载失败:', error);
+        } finally {
+            watchlistLoadBusy = false;
+            syncWatchlistControls();
+            if (returnFocus) (watchlistRetry.hidden ? watchlistCreateButton : watchlistRetry).focus();
         }
     };
+    watchlistRetry.addEventListener('click', loadWatchlists);
 
     document.getElementById('watchlistCollapse').addEventListener('click', () => {
         appShell.classList.add('watchlist-collapsed');
@@ -2265,6 +2362,7 @@
     watchlistResizer.addEventListener('pointerup', finishWatchlistResize);
     watchlistResizer.addEventListener('pointercancel', finishWatchlistResize);
     watchlistAddCurrent.addEventListener('click', async () => {
+        if (!canWriteWatchlist()) return;
         const board = currentBoard();
         if (!board) return;
         try {
@@ -2275,10 +2373,11 @@
             watchlists = watchlists.map(item => item.id === payload.id ? payload : item);
             renderWatchlists();
         } catch (error) {
-            alert(error.message);
+            showWatchlistError(error);
         }
     });
     watchlistRename.addEventListener('click', async () => {
+        if (!canWriteWatchlist()) return;
         const board = currentBoard();
         if (!board) return;
         const newName = prompt('请输入新的板块名称', board.name);
@@ -2291,10 +2390,11 @@
             watchlists = watchlists.map(item => item.id === payload.id ? payload : item);
             renderWatchlists();
         } catch (error) {
-            alert(error.message);
+            showWatchlistError(error);
         }
     });
     watchlistDelete.addEventListener('click', async () => {
+        if (!canWriteWatchlist()) return;
         const board = currentBoard();
         if (!board || !confirm(`确定删除板块“${board.name}”吗？`)) return;
         try {
@@ -2303,10 +2403,11 @@
             selectedWatchlistBoardId = null;
             renderWatchlists();
         } catch (error) {
-            alert(error.message);
+            showWatchlistError(error);
         }
     });
     watchlistCreateButton.addEventListener('click', async () => {
+        if (!canWriteWatchlist()) return;
         const name = watchlistNameInput.value.trim();
         if (!name) return;
         try {
@@ -2319,7 +2420,7 @@
             watchlistNameInput.value = '';
             renderWatchlists();
         } catch (error) {
-            alert(error.message);
+            showWatchlistError(error);
         }
     });
     watchlistNameInput.addEventListener('keydown', event => {

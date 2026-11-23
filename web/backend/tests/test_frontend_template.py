@@ -136,6 +136,29 @@ class FrontendTemplateTest(unittest.TestCase):
             completed = subprocess.run([node, "--check", str(TEMPLATE.with_name(name))], text=True, capture_output=True, check=False)
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_watchlist_requests_are_ordered_and_failures_recover(self):
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "Node.js is required to verify watchlist recovery")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_watchlist_reliability.js"), str(TEMPLATE)],
+            text=True, capture_output=True, check=False, timeout=45,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+        results = json.loads(completed.stdout)["results"]
+        expected = {
+            "sort_single_flight", "sort_busy_controls", "sort_can_continue_after_success",
+            "sort_failure_refresh_does_not_replay", "sort_other_board_navigation_preserved",
+            "initial_failure_visible_and_retryable", "loading_blocks_writes",
+            "read_timeout_releases_and_recovers", "read_body_timeout_is_bounded",
+            "invalid_list_is_not_successful_empty", "write_timeout_requires_explicit_resync",
+            "committed_write_body_timeout_is_not_repeated", "duplicate_create_is_blocked",
+            "delete_204_and_controls_recover", "other_mutations_are_blocked_during_sort",
+            "feedback_is_accessible_and_read_only_retry", "error_detail_is_plain_text",
+        }
+        self.assertEqual({item["id"] for item in results}, expected)
+        self.assertEqual(len(results), len(expected))
+        self.assertTrue(all(item["status"] == "passed" for item in results), completed.stdout)
+
     def test_inline_scripts_parse(self):
         node = shutil.which("node")
         if node is None:
