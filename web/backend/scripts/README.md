@@ -90,7 +90,7 @@ python3 scripts/maintenance/stop_project.py --list-only
 
 部署新流水线前先执行 `python -m alembic upgrade head` 创建 `instrument_classification` 表。使用 `python scripts/data_ingestion/update_instrument_classification.py --dry-run` 可只读验证；不带该参数才写入实例数据库。详情见项目 `docs/instrument-classification.md`。
 
-分类步骤可用 `CLPAINTER_CLASSIFICATION_PYTHON` 指定独立解释器；未指定时，若项目 `.venv-classification/bin/python` 存在则仅该步骤使用它，否则沿用 `PYTHON_BIN`。这用于隔离 tdata 概念读取与 pandas 3 的兼容性问题，不改变其他步骤的运行环境。
+流水线内所有步骤使用同一个解释器。容器中存在 `/root/mambaforge/envs/echarts/bin/python` 时默认使用它；设置 `PYTHON_BIN` 可显式覆盖。依赖已将 pandas 限制在 3.0 以下，不再为分类步骤切换 `.venv-classification`。
 
 ## 统一失效清理
 

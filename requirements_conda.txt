@@ -1,7 +1,7 @@
 # computing
 numpy
 numba
-pandas>=2.2.0
+pandas>=2.2.0,<3.0.0
 
 # data read & write
 clickhouse-driver>=0.2.6  # clickhouse_driver

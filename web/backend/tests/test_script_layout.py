@@ -97,8 +97,7 @@ def test_safe_cli_help_from_another_working_directory(relative, tmp_path):
     "data_ingestion/data_from_tdata_1day.py",
     "aggregation/from_1day_to_1quarter.py", "cache/dump_stock_caches.py", "state/update_cl_state.py",
 ))
-@pytest.mark.parametrize("classification_override", (False, True))
-def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classification_override):
+def test_pipeline_order_and_failure_short_circuit(tmp_path, failure):
     log = tmp_path / "calls.jsonl"
     workspace = tmp_path / "isolated-workspace"
     fixture_scripts = workspace / "CLPainter/web/backend/scripts"
@@ -126,12 +125,6 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
     env = os.environ.copy()
     env.update(PYTHON_BIN=str(interpreter), PYTHONPATH="/preserved-search-path",
                TEST_SCRIPTS_DIR=str(fixture_scripts), TEST_CALL_LOG=str(log), TEST_FAIL_SCRIPT=failure)
-    alternate = tmp_path / "classification-python"
-    alternate.write_text(interpreter.read_text(encoding="utf-8"), encoding="utf-8")
-    alternate.chmod(0o755)
-    env.pop("CLPAINTER_CLASSIFICATION_PYTHON", None)
-    if classification_override:
-        env["CLPAINTER_CLASSIFICATION_PYTHON"] = str(alternate)
     result = subprocess.run(
         ["bash", str(fixture_pipeline)], cwd=tmp_path,
         env=env, capture_output=True, text=True, timeout=30,
@@ -144,9 +137,7 @@ def test_pipeline_order_and_failure_short_circuit(tmp_path, failure, classificat
     assert datetime.fromisoformat(records[0]["pipeline_start"]).tzinfo is not None
     assert all(record["pipeline_start"] == records[0]["pipeline_start"] for record in records)
     for record in records:
-        is_classification = record["script"] == "data_ingestion/update_instrument_classification.py"
-        expected_interpreter = alternate if classification_override and is_classification else interpreter
-        assert record["interpreter"] == str(expected_interpreter)
+        assert record["interpreter"] == str(interpreter)
         assert record["cwd"] == str(workspace)
         assert record["pythonpath"].split(os.pathsep)[0] == str(workspace)
         assert "/preserved-search-path" in record["pythonpath"].split(os.pathsep)

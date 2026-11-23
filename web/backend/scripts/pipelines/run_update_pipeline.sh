@@ -4,7 +4,12 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+# 容器内全部步骤共用 echarts。显式 PYTHON_BIN 仍可覆盖，便于测试。
+if [[ -z "${PYTHON_BIN:-}" && -x /root/mambaforge/envs/echarts/bin/python ]]; then
+    PYTHON_BIN="/root/mambaforge/envs/echarts/bin/python"
+else
+    PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
 export CLPAINTER_PIPELINE_STARTED_AT="$(date -u +'%Y-%m-%dT%H:%M:%S+00:00')"
 
 run_script() {
@@ -45,11 +50,7 @@ export PYTHONPATH="${PROJECT_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
 run_script "data_ingestion/meta_info.py"
 run_script "maintenance/cleanup_stale_data.py" --apply
-CLASSIFICATION_PYTHON="${CLPAINTER_CLASSIFICATION_PYTHON:-${PYTHON_BIN}}"
-if [[ -z "${CLPAINTER_CLASSIFICATION_PYTHON:-}" && -x "${PROJECT_ROOT}/CLPainter/.venv-classification/bin/python" ]]; then
-    CLASSIFICATION_PYTHON="${PROJECT_ROOT}/CLPainter/.venv-classification/bin/python"
-fi
-PYTHON_BIN="${CLASSIFICATION_PYTHON}" run_script "data_ingestion/update_instrument_classification.py"
+run_script "data_ingestion/update_instrument_classification.py"
 run_script "data_ingestion/data_from_tdata_1day.py"
 
 if ! run_parallel_scripts \
