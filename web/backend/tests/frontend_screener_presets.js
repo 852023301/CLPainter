@@ -2,8 +2,8 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {installStorage, declaration} = require('./frontend_storage_harness.js');
-const html = fs.readFileSync(process.argv[2], 'utf8');
+const {installStorage, declaration, readTemplate} = require('./frontend_storage_harness.js');
+const html = readTemplate(process.argv[2]);
 const ids = ['screenerCacheStatus', 'screenerPanel', 'screenerFilters', 'screenerRun', 'screenerCancel', 'screenerReset', 'screenerResults',
     'screenerCollapse', 'screenerExpand', 'screenerResizer', 'screenerPresetSelect', 'screenerPresetName',
     'screenerPresetSave', 'screenerPresetApply', 'screenerPresetUpdate', 'screenerPresetDelete',

@@ -2,10 +2,12 @@
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-function readTemplate(file) {
-    const source = fs.readFileSync(file, 'utf8');
-    return source.replace(/\{%\s*include\s+["']_chart_workspace\.js["']\s*%\}/g,
-        () => fs.readFileSync(path.join(path.dirname(file), '_chart_workspace.js'), 'utf8'));
+function readTemplate(file, stack = new Set()) {
+    const resolved = path.resolve(file);
+    if (stack.has(resolved)) throw new Error('Cyclic JavaScript template include: ' + resolved);
+    const next = new Set(stack); next.add(resolved);
+    return fs.readFileSync(resolved, 'utf8').replace(/\{%\s*include\s+["'](_[A-Za-z0-9_-]+\.js)["']\s*%\}/g,
+        (_match, name) => readTemplate(path.join(path.dirname(resolved), name), next));
 }
 
 function storageSource(html) {

@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const args = process.argv.slice(2);
 const option = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
 const template = option('--template') || path.resolve(__dirname, '../../app/templates/lightweight_charts_demo.html');
-const source = fs.readFileSync(template, 'utf8');
+const source = require(path.join(__dirname, '../frontend_storage_harness.js')).readTemplate(template);
 const plain = value => JSON.parse(JSON.stringify(value));
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 function declaration(name, arrow = false) {

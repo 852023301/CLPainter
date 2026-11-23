@@ -32,6 +32,18 @@ def _read_template() -> str:
     return text
 
 
+def _expanded_template(html: str, stack: tuple[str, ...] = ()) -> str:
+    def include(match):
+        name = match.group(1)
+        if name in stack:
+            raise AssertionError("Cyclic JavaScript template include: " + name)
+        data = TEMPLATE.with_name(name).read_bytes()
+        if data.startswith(b"\xef\xbb\xbf"):
+            raise AssertionError("JavaScript fragment cannot have a UTF-8 BOM: " + name)
+        return _expanded_template(data.decode("utf-8"), stack + (name,))
+    return re.sub(r'''\{%\s*include\s+["'](_[A-Za-z0-9_-]+\.js)["']\s*%\}''', include, html)
+
+
 def _strip_jinja(source: str) -> str:
     """去掉模板标记，保留可被 node --check 解析的脚本。"""
     output = []
@@ -90,7 +102,7 @@ class FrontendTemplateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.html = _read_template()
-        cls.scripts = "\n".join(_inline_scripts(cls.html))
+        cls.scripts = "\n".join(_inline_scripts(_expanded_template(cls.html)))
 
     def test_mobile_layout_keeps_title_and_results_usable(self):
         mobile = self.html[self.html.index("@media (max-width: 860px)"):self.html.index("</style>")]
@@ -104,12 +116,31 @@ class FrontendTemplateTest(unittest.TestCase):
         self.assertIn("flex-wrap: wrap", header)
         self.assertIn("flex: 1 1 220px", self.html)
 
+    def test_frontend_feature_modules_are_separate_leaf_fragments(self):
+        expected = {
+            "_frontend_requests.js": "function requestJson(",
+            "_screener_workspace.js": "const screenerPanel =",
+            "_chart_indicators.js": "function buildIndicator(",
+        }
+        node = shutil.which("node")
+        self.assertIsNotNone(node)
+        for name, marker in expected.items():
+            self.assertTrue('{% include "' + name + '" %}' in self.html, "Missing module: " + name)
+            self.assertNotIn(marker, self.html)
+            data = TEMPLATE.with_name(name).read_bytes()
+            self.assertFalse(data.startswith(b"\xef\xbb\xbf"))
+            fragment = data.decode("utf-8")
+            self.assertIn(marker, fragment)
+            self.assertNotIn("{%", fragment)
+            self.assertNotIn("{{", fragment)
+            completed = subprocess.run([node, "--check", str(TEMPLATE.with_name(name))], text=True, capture_output=True, check=False)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_inline_scripts_parse(self):
         node = shutil.which("node")
         if node is None:
             self.fail("未找到 node，无法检查前端脚本语法")
-        for number, script in enumerate(_inline_scripts(self.html), start=1):
+        for number, script in enumerate(_inline_scripts(_expanded_template(self.html)), start=1):
             completed = subprocess.run(
                 [node, "--check", "-"],
                 input=_strip_jinja(script),
@@ -161,7 +192,7 @@ class FrontendTemplateTest(unittest.TestCase):
         script = r"""
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const html = fs.readFileSync(process.argv[2], 'utf8');
+const html = require(process.argv[3]).readTemplate(process.argv[2]);
 const start = html.indexOf('    const renderScreenerField = ');
 const end = html.indexOf('    const renderScreenerFilters = ', start);
 assert(start >= 0 && end > start, 'Screener renderer must exist');
@@ -203,7 +234,7 @@ assert.deepEqual(rendered({field: 'scope', options}), [
 assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
 """
         completed = subprocess.run(
-            [node, "-", str(TEMPLATE)],
+            [node, "-", str(TEMPLATE), str(Path(__file__).resolve().parent / "frontend_storage_harness.js")],
             input=script,
             text=True,
             capture_output=True,
@@ -382,7 +413,7 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
 
     def test_workspace_module_boundary(self):
         self.assertTrue('{% include "_chart_workspace.js" %}' in self.html, "Main template must compose the workspace module")
-        self.assertFalse("function createChartWorkspace(" in self.scripts, "The implementation must live only in the module")
+        self.assertFalse("function createChartWorkspace(" in self.html, "The implementation must live only in the module")
         module = TEMPLATE.with_name("_chart_workspace.js")
         self.assertTrue(module.is_file(), "The extracted workspace module must ship with the template")
         data = module.read_bytes()

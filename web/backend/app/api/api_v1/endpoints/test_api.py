@@ -806,6 +806,9 @@ async def lightweight_charts_demo(
                 _TEMPLATE_PATH,
                 _TEMPLATE_PATH.with_name("_instrument_classification.html"),
                 _TEMPLATE_PATH.with_name("_chart_workspace.js"),
+                _TEMPLATE_PATH.with_name("_frontend_requests.js"),
+                _TEMPLATE_PATH.with_name("_screener_workspace.js"),
+                _TEMPLATE_PATH.with_name("_chart_indicators.js"),
                 _TEMPLATE_PATH.parent.parent / "static/css/instrument-classification.css",
                 _TEMPLATE_PATH.parent.parent / "static/js/screener-history.js",
             )

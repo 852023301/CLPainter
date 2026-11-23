@@ -44,6 +44,9 @@ def chart_errors(tmp_path, monkeypatch):
         template,
         template.with_name("_instrument_classification.html"),
         template.with_name("_chart_workspace.js"),
+        template.with_name("_frontend_requests.js"),
+        template.with_name("_screener_workspace.js"),
+        template.with_name("_chart_indicators.js"),
         app_dir / "static/css/instrument-classification.css",
         app_dir / "static/js/screener-history.js",
     ]

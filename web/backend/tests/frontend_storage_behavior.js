@@ -4,10 +4,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const {spawnSync}=require('node:child_process');
-const {installStorage,declaration}=require('./frontend_storage_harness.js');
+const {installStorage,declaration,readTemplate}=require('./frontend_storage_harness.js');
 const args=process.argv.slice(2),template=args[0];
 const option=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
-const html=fs.readFileSync(template,'utf8');
+const html=readTemplate(template);
 const historyFile=option('--history')||path.resolve(path.dirname(template),'../static/js/screener-history.js');
 const historyCode=fs.readFileSync(historyFile,'utf8');
 function world(mode='available',seed={}) {
