@@ -26,6 +26,7 @@ def calculate_macd_indicator(
     and area text annotations at sign flips and at the last bar.
 
     Returns {"lines":[DIFF,DEA], "stats":[per-bar], "markers":[area annotations]}.
+    Each stats item retains macd_raw/dif_raw for analysis independent of display precision.
     """
     import numpy as np
 
@@ -85,6 +86,8 @@ def calculate_macd_indicator(
             "dif": round(float(dif_v[i]), precision),
             "dea": round(float(dea_v[i]), precision),
             "macd": round(float(m), precision),
+            "macd_raw": float(m),
+            "dif_raw": float(dif_v[i]),
             "color": color,
             "lianzeng": int(lian_v[i]),
             "area": round(float(area), 2),

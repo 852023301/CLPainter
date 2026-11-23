@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Mapping, Optional, Union
+from typing import TYPE_CHECKING, Mapping, Optional, Union
 
 import numpy as np
-import pandas as pd
+
+if TYPE_CHECKING:
+    from CLPainter.web.backend.app.toolbox.bi import BiBase
+    from CLPainter.web.backend.app.toolbox.xianduan import XianDuanBase
 
 ChartLike = Union[Mapping, str]
-Bound = Union[int, str, datetime, pd.Timestamp]
-_INDEX_LIMIT = 1_000_000_000
 
 
 @dataclass(frozen=True)
@@ -24,54 +26,59 @@ class MacdDivergence:
     earlier_dif: Optional[float]
     later_dif: Optional[float]
     dif_lower: bool
+    macd_turned: bool = False
 
 
 def macd_divergence(
+    earlier: BiBase | XianDuanBase,
+    later: BiBase | XianDuanBase,
     macd_data: ChartLike,
-    earlier_start: Bound,
-    earlier_end: Bound,
-    later_start: Bound,
-    later_end: Bound,
-    upward: bool,
-    earlier_end_price: float,
-    later_end_price: float,
 ) -> MacdDivergence:
     """用当前级别副图比较前一段和后一段是否背驰。
 
-    每段的起点和终点可以是索引，也可以是时间。日线时间用 ``2024-01-02`` 或当天零点的
-    Timestamp；分钟时间用副图里的 UTC 秒，或带时分的 Timestamp。索引只在小于 10 亿时生效。
+    earlier 和 later 为两笔或两段实例，必须同方向；区间、方向和终点价格直接从实例读取。
+    两个实例的 start_idx、end_idx 必须与副图对应同一份完整 K 线序列，不能传截取后的副图。
 
-    面积使用副图 ``stats`` 里已经四舍五入的 ``macd`` 柱。上升段只累计正柱，下降段只累计负柱绝对值，
+    面积优先使用副图 ``stats`` 中未舍入的 ``macd_raw``，DIF 优先使用 ``dif_raw``。
+    手工传入的 stats 没有 raw 字段时，macd/dif 必须是分析用的原始数值；旧副图需重新生成以保留精度。
+    上升段只累计正柱，下降段只累计负柱绝对值，
     区间是起点之后到终点，含终点。段内反向的柱子和快线不计入面积、柱高和快线极值。
-    后一段创出更极端的价格，面积严格更小，并且两段之间至少有一根相反颜色的柱，才算背驰。
-    柱高变低和快线极值变低只记在结果里，不参与判断。``upward`` 表示这两段的共同方向。
+    后一段创出更极端的价格，面积严格更小，两段之间至少有一根相反颜色的柱，
+    且后段没有同向柱或在段内出现过收缩，才算背驰。没有同向柱时 macd_turned 仍为 False。
+    转折要求后段区间内至少出现过一次同向柱收缩；反向柱增强不算收缩，末端重新增强不取消确认。
+    只使用后段自身区间，不使用其终点之后的 K 线。没有同向 DIF 时极值为 None，dif_lower 为 False。
+    柱高变低和快线极值变低只记在结果里，不参与判断。
     """
-    histogram, dif, stats = _load_chart(macd_data)
-    time_index = _time_index(stats)
-    earlier_start_idx = _resolve_bound(earlier_start, time_index, len(histogram))
-    earlier_end_idx = _resolve_bound(earlier_end, time_index, len(histogram))
-    later_start_idx = _resolve_bound(later_start, time_index, len(histogram))
-    later_end_idx = _resolve_bound(later_end, time_index, len(histogram))
+    upward = earlier.is_up()
+    if upward != later.is_up():
+        raise ValueError("比较的两笔或两段必须同方向")
 
-    earlier = _stroke_strength(histogram, dif, earlier_start_idx, earlier_end_idx, upward)
-    later = _stroke_strength(histogram, dif, later_start_idx, later_end_idx, upward)
-    more_extreme = later_end_price > earlier_end_price if upward else later_end_price < earlier_end_price
+    histogram, dif, _ = _load_chart(macd_data)
+    earlier_strength = _stroke_strength(histogram, dif, earlier.start_idx, earlier.end_idx, upward)
+    later_strength = _stroke_strength(histogram, dif, later.start_idx, later.end_idx, upward)
+    macd_turned = _macd_turned(histogram, later.start_idx, later.end_idx, upward)
+    more_extreme = later.end_price > earlier.end_price if upward else later.end_price < earlier.end_price
     diverged = (
-        earlier.area > 0.0
-        and later.area < earlier.area
+        earlier_strength.area > 0.0
+        and later_strength.area < earlier_strength.area
         and more_extreme
-        and _separated(histogram, earlier_end_idx, later_start_idx, upward)
+        and _separated(histogram, earlier.end_idx, later.start_idx, upward)
+        and (later_strength.area == 0.0 or macd_turned)
     )
     return MacdDivergence(
         diverged,
-        earlier.area,
-        later.area,
-        earlier.peak,
-        later.peak,
-        earlier.peak > 0.0 and later.peak < earlier.peak,
-        earlier.dif,
-        later.dif,
-        earlier.dif is not None and later.dif is not None and earlier.dif > 0.0 and later.dif < earlier.dif,
+        earlier_strength.area,
+        later_strength.area,
+        earlier_strength.peak,
+        later_strength.peak,
+        earlier_strength.peak > 0.0 and later_strength.peak < earlier_strength.peak,
+        earlier_strength.dif,
+        later_strength.dif,
+        earlier_strength.dif is not None
+        and later_strength.dif is not None
+        and earlier_strength.dif > 0.0
+        and later_strength.dif < earlier_strength.dif,
+        macd_turned,
     )
 
 
@@ -85,13 +92,35 @@ def _load_chart(macd_data: ChartLike) -> tuple:
             raise ValueError("副图数据缺少 stats")
         payload = nested
     stats = payload["stats"]
-    if not isinstance(stats, list) or any("macd" not in bar or "time" not in bar for bar in stats):
+    if not isinstance(stats, list) or not stats or any(
+        not isinstance(bar, Mapping) or "macd" not in bar or "time" not in bar for bar in stats
+    ):
         raise ValueError("副图 stats 缺少 time 或 macd")
-    dif_flags = ["dif" in bar for bar in stats]
-    if any(dif_flags) and not all(dif_flags):
-        raise ValueError("副图 stats 的 dif 不完整")
-    dif = np.asarray([bar["dif"] for bar in stats], dtype=float) if all(dif_flags) else None
-    return np.asarray([bar["macd"] for bar in stats], dtype=float), dif, stats
+    macd_field = _analysis_field(stats, 'macd')
+    dif_field = _analysis_field(stats, 'dif')
+    histogram = _finite_column(stats, macd_field)
+    dif = _finite_column(stats, dif_field) if dif_field is not None else None
+    return histogram, dif, stats
+
+
+def _analysis_field(stats: list, name: str) -> Optional[str]:
+    for field in (f'{name}_raw', name):
+        flags = [field in bar for bar in stats]
+        if any(flags):
+            if not all(flags):
+                raise ValueError(f'副图 stats 的 {field} 不完整')
+            return field
+    return None
+
+
+def _finite_column(stats: list, field: str) -> np.ndarray:
+    try:
+        values = np.asarray([bar[field] for bar in stats], dtype=float)
+    except (ValueError, TypeError, OverflowError) as error:
+        raise ValueError(f'副图 {field} 必须为一维有限数值') from error
+    if values.ndim != 1 or not np.all(np.isfinite(values)):
+        raise ValueError(f'副图 {field} 必须为一维有限数值，不允许 NaN 或 Infinity')
+    return values
 
 
 @dataclass(frozen=True)
@@ -115,55 +144,16 @@ def _stroke_strength(
     dif_extreme = None
     if dif is not None:
         dif_segment = dif[start_idx + 1 : end_idx + 1]
-        dif_extreme = float(np.max(dif_segment)) if upward else float(abs(np.min(dif_segment)))
+        directional_dif = np.maximum(dif_segment if upward else -dif_segment, 0.0)
+        peak = float(directional_dif.max())
+        dif_extreme = peak if peak > 0.0 else None
     return _StrokeStrength(float(directional.sum()), float(directional.max()), dif_extreme)
 
 
-def _time_index(stats: list) -> dict:
-    mapping = {}
-    for index, bar in enumerate(stats):
-        raw_time = bar["time"]
-        mapping[raw_time] = index
-        mapping[str(raw_time)] = index
-    return mapping
-
-
-def _resolve_bound(value: Bound, time_index: dict, size: int) -> int:
-    if isinstance(value, (int, np.integer)) and not isinstance(value, bool):
-        number = int(value)
-        if number < _INDEX_LIMIT:
-            if number < 0 or number >= size:
-                raise ValueError(f"走势索引越界: {number}, 副图长度={size}")
-            return number
-        try:
-            return time_index[number]
-        except KeyError:
-            raise ValueError(f"副图中找不到时间: {value}") from None
-    key = _chart_time_key(value)
-    try:
-        return time_index[key]
-    except KeyError:
-        raise ValueError(f"副图中找不到时间: {value}") from None
-
-
-def _chart_time_key(value: Bound):
-    if isinstance(value, str):
-        text = value.strip()
-        if text.isdigit():
-            number = int(text)
-            if number >= _INDEX_LIMIT:
-                return number
-            raise ValueError(f"无法把字符串当时间: {value}")
-        value = pd.Timestamp(text)
-    if isinstance(value, datetime) and not isinstance(value, pd.Timestamp):
-        value = pd.Timestamp(value)
-    if not isinstance(value, pd.Timestamp):
-        raise ValueError(f"无法识别的端点: {value!r}")
-    if value.tzinfo is not None:
-        value = value.tz_convert("UTC").tz_localize(None)
-    if value == value.normalize():
-        return value.strftime("%Y-%m-%d")
-    return int(value.replace(tzinfo=timezone.utc).timestamp())
+def _macd_turned(macd: np.ndarray, start_idx: int, end_idx: int, upward: bool) -> bool:
+    segment = macd[start_idx + 1 : end_idx + 1]
+    directional = segment if upward else -segment
+    return bool(np.any((directional[:-1] > 0.0) & (directional[1:] < directional[:-1])))
 
 
 def _separated(macd: np.ndarray, earlier_end_idx: int, later_start_idx: int, upward: bool) -> bool:
