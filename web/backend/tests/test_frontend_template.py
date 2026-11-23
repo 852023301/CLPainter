@@ -92,6 +92,19 @@ class FrontendTemplateTest(unittest.TestCase):
         cls.html = _read_template()
         cls.scripts = "\n".join(_inline_scripts(cls.html))
 
+    def test_mobile_layout_keeps_title_and_results_usable(self):
+        mobile = self.html[self.html.index("@media (max-width: 860px)"):self.html.index("</style>")]
+        self.assertIn(".workspace-header", mobile)
+        self.assertIn("flex-direction: column", mobile)
+        self.assertIn(".instrument-search", mobile)
+        self.assertRegex(mobile, r'\.screener-panel\[data-mode="realtime"\]')
+        self.assertIn("min-height: 160px", mobile)
+        self.assertIn("min-height: 120px", mobile)
+        header = re.search(r"\.workspace-header\s*\{([^}]+)\}", self.html).group(1)
+        self.assertIn("flex-wrap: wrap", header)
+        self.assertIn("flex: 1 1 220px", self.html)
+
+
     def test_inline_scripts_parse(self):
         node = shutil.which("node")
         if node is None:

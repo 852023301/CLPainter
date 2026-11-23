@@ -43,6 +43,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
             gap: 16px;
             padding: 10px 12px 8px;
         }
@@ -432,7 +433,7 @@
             align-items: center;
             gap: 8px;
             min-width: 0;
-            flex: 1;
+            flex: 1 1 220px;
         }
 
         .symbol-group-button {
@@ -1297,6 +1298,23 @@
         }
 
         @media (max-width: 860px) {
+            .workspace-header {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .symbol-heading, .instrument-search {
+                flex: 0 0 auto;
+                width: 100%;
+            }
+            .screener-panel[data-mode="realtime"],
+            .app-shell.screener-collapsed .screener-panel[data-mode="realtime"] {
+                height: min(820px, 100vh);
+                min-height: 660px;
+            }
+            .screener-panel[data-mode="realtime"] .screener-filters { min-height: 120px; }
+            .screener-panel[data-mode="realtime"] .screener-results { min-height: 160px; }
+
             .screener-panel[data-mode="history"],
             .app-shell.screener-collapsed .screener-panel[data-mode="history"] {
                 height: min(760px, 90vh);
