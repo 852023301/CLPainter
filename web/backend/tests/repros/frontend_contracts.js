@@ -21,7 +21,9 @@ function declaration(name, arrow = false) {
     throw new Error('Source function could not be isolated: ' + name);
 }
 function context(values = {}) {
-    return vm.createContext({console: {log() {}, error() {}, warn() {}}, URLSearchParams, AbortController, setTimeout, clearTimeout, ...values});
+    const scope = vm.createContext({console: {log() {}, error() {}, warn() {}}, URLSearchParams, AbortController, setTimeout, clearTimeout, ...values});
+    if (source.includes('function requestJson(')) vm.runInContext(declaration('requestJson'), scope);
+    return scope;
 }
 function storageContext(unavailable) {
     const values = new Map();

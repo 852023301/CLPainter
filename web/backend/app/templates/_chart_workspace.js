@@ -27,26 +27,84 @@ function createChartWorkspace(storage, context, candles) {
             return start && end ? {start, end} : null;
         };
         const cleanAnchor = point => point && finite(point.time) && finite(point.offset) && Math.abs(point.offset) <= 1e6 ? {time: point.time, offset: point.offset} : null;
-        let raw = null;
-        try { raw = JSON.parse(storage.getItem(key) || 'null'); } catch (_) {}
-        if (!raw || raw.schema !== 1 || JSON.stringify(raw.identity) !== JSON.stringify(identity)) raw = {};
-        const unique = new Set();
-        const shapes = [];
-        if (Array.isArray(raw.shapes)) raw.shapes.forEach(item => {
+        const suffix = JSON.stringify(identity);
+        const journalPrefix = 'chart:workspace-drawings:v1:' + suffix + ':';
+        const legacyKey = 'chart:workspace-legacy:v1:' + suffix;
+        let actor;
+        try { actor = globalThis.crypto?.randomUUID?.(); } catch (_) {}
+        actor = actor || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        const journalKey = journalPrefix + actor;
+        const changes = new Map();
+        let measureChange = null, clock = 0, nextId = 0, rootReadFailed = false;
+        const validId = id => Number.isSafeInteger(id) && id > 0 && id <= 1e9
+            || typeof id === 'string' && /^[A-Za-z0-9_-]+:\d+$/.test(id) && id.length < 160;
+        const cleanShape = item => {
             const pair = cleanPair(item);
-            if (!pair || !kinds.has(item.kind) || !Number.isSafeInteger(item.id) || item.id < 1 || item.id > 1e9 || unique.has(item.id)) return;
-            unique.add(item.id);
-            shapes.push({id: item.id, kind: item.kind, ...pair});
+            return pair && validId(item.id) && kinds.has(item.kind) ? {id: item.id, kind: item.kind, ...pair} : null;
+        };
+        const sameIdentity = value => value && JSON.stringify(value.identity) === suffix;
+        const read = name => { try { return JSON.parse(storage.getItem(name) || 'null'); } catch (_) { return null; } };
+        const readHead = () => {
+            rootReadFailed = false;
+            let value;
+            try {
+                value = JSON.parse(storage.getItem(key) || 'null');
+                rootReadFailed = Boolean(storage.status?.().readBlocked);
+            } catch (_) { rootReadFailed = true; }
+            return sameIdentity(value) && (value.schema === 1 || value.schema === 2) ? value : {};
+        };
+        let head = readHead();
+        const backup = read(legacyKey);
+        const original = sameIdentity(backup) ? backup : head.schema === 2 ? head.legacy : head;
+        const legacyIds = new Set();
+        const legacyShapes = (Array.isArray(original?.shapes) ? original.shapes : []).map(cleanShape).filter(shape => {
+            if (!shape || legacyIds.has(shape.id)) return false;
+            legacyIds.add(shape.id); return true;
         });
-        const from = cleanAnchor(raw.viewport?.from), to = cleanAnchor(raw.viewport?.to);
-        const state = {schema: 1, identity, viewport: from && to ? {from, to} : null, shapes, measure: cleanPair(raw.measure)};
-        let nextId = shapes.reduce((value, item) => Math.max(value, item.id), 0) + 1;
+        const legacy = {shapes: legacyShapes, measure: cleanPair(original?.measure)};
+        const ordinal = (a, b) => String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+        const compare = (a, b) => a.clock - b.clock || ordinal(a.actor, b.actor);
+        const stamp = value => value && Number.isSafeInteger(value.clock) && value.clock >= 0 && typeof value.actor === 'string' && value.actor.length < 160;
+        const merge = () => {
+            const latest = readHead(), records = new Map();
+            clock = Math.max(clock, legacy.shapes.length);
+            let measure = {clock: 0, actor: '', value: legacy.measure};
+            legacy.shapes.forEach((shape, index) => records.set(shape.id, {shape, clock: 0, actor: '', born: {clock: index, actor: ''}, deleted: false}));
+            const keys = typeof storage.keys === 'function' ? storage.keys(journalPrefix) : [journalKey];
+            if (typeof storage.keys !== 'function' && latest.schema === 2 && Array.isArray(latest.shapes)) {
+                latest.shapes.map(cleanShape).filter(Boolean).forEach((shape, index) => records.set(shape.id, {shape, clock: 0, actor: '', born: {clock: index, actor: ''}, deleted: false}));
+                measure.value = cleanPair(latest.measure);
+            }
+            for (const name of keys) {
+                const value = read(name);
+                if (!sameIdentity(value) || value.schema !== 1 || typeof value.actor !== 'string' || value.actor.length > 128
+                    || name !== journalPrefix + value.actor || !Array.isArray(value.changes)) continue;
+                for (const change of value.changes) {
+                    const shape = cleanShape(change?.shape);
+                    if (!shape || !stamp(change) || !stamp(change.born) || change.actor !== value.actor || typeof change.deleted !== 'boolean') continue;
+                    clock = Math.max(clock, change.clock);
+                    const previous = records.get(shape.id);
+                    if (!previous || compare(change, previous) > 0) records.set(shape.id, {...change, shape});
+                }
+                const next = value.measure;
+                if (stamp(next) && next.actor === value.actor && (next.value === null || cleanPair(next.value))) {
+                    clock = Math.max(clock, next.clock);
+                    if (compare(next, measure) > 0) measure = {...next, value: cleanPair(next.value)};
+                }
+            }
+            const shapes = [...records.values()].filter(item => !item.deleted).sort((a, b) => compare(a.born, b.born) || ordinal(a.shape.id, b.shape.id)).map(item => item.shape);
+            return {head: latest, records, shapes, measure: measure.value};
+        };
+        const first = merge();
+        const from = cleanAnchor(head.viewport?.from), to = cleanAnchor(head.viewport?.to);
+        const state = {schema: 2, identity, viewport: from && to ? {from, to} : null, shapes: first.shapes, measure: first.measure};
+        const tick = () => { clock = Math.max(clock, Date.now()) + 1; return clock; };
         const decodePoint = point => point && indices.has(point.time) ? {index: indices.get(point.time), price: point.price} : null;
         const decodePair = item => {
             const start = decodePoint(item?.start), end = decodePoint(item?.end);
             return start && end ? {start, end} : null;
         };
-        const hidden = new Set(shapes.filter(item => !decodePair(item)).map(item => item.id));
+        const hidden = new Set(state.shapes.filter(item => !decodePair(item)).map(item => item.id));
         const missingMeasure = Boolean(state.measure && !decodePair(state.measure));
         const encodePoint = point => point && Number.isInteger(point.index) && point.index >= 0 && point.index < times.length && times[point.index] !== null && finite(point.price) && Math.abs(point.price) <= 1e15 ? {time: times[point.index], price: point.price} : null;
         const encodePair = item => {
@@ -72,8 +130,21 @@ function createChartWorkspace(storage, context, candles) {
             const range = {from: a + state.viewport.from.offset, to: b + state.viewport.to.offset};
             return validRange(range) ? range : null;
         };
-        const write = () => {
-            try { storage.setItem(key, JSON.stringify(state)); return true; } catch (_) { return false; }
+        const write = viewportChanged => {
+            let persistent = true;
+            const put = (name, value) => {
+                try { if (storage.setItem(name, JSON.stringify(value)) === false) persistent = false; }
+                catch (_) { persistent = false; }
+            };
+            // Each page owns its change journal; another page can never overwrite it.
+            if (!viewportChanged && (changes.size || measureChange)) put(journalKey, {schema: 1, identity, actor, changes: [...changes.values()], measure: measureChange});
+            const merged = merge();
+            if (rootReadFailed) return false;
+            if ((legacy.shapes.length || legacy.measure) && !sameIdentity(read(legacyKey))) put(legacyKey, {identity, ...legacy});
+            const viewport = viewportChanged ? state.viewport : merged.head.viewport || state.viewport;
+            // The head is a convenience snapshot; journals remain the authoritative drawings.
+            put(key, {schema: 2, identity, legacy, viewport, shapes: merged.shapes, measure: merged.measure});
+            return persistent;
         };
         return {
             key,
@@ -97,7 +168,7 @@ function createChartWorkspace(storage, context, candles) {
                 const from = anchor(range.from), to = anchor(range.to);
                 if (!from || !to) return false;
                 state.viewport = {from, to};
-                return write();
+                return write(true);
             },
             saveDrawings(snapshot, measureChanged = false) {
                 const groups = {rect: snapshot.rectangles || [], trend: snapshot.trends || [], fib: snapshot.fibs || []};
@@ -108,15 +179,25 @@ function createChartWorkspace(storage, context, candles) {
                     const item = groups[kind][positions[kind]++], pair = encodePair(item);
                     if (!pair) continue;
                     let id = item.workspaceId;
-                    if (!old.has(id) || old.get(id).kind !== kind || active.has(id)) id = nextId++;
+                    if (!old.has(id) || old.get(id).kind !== kind || active.has(id)) id = actor + ':' + (++nextId);
                     item.workspaceId = id;
                     const record = {id, kind, ...pair};
                     active.set(id, record); sequence.push(record);
                 }
                 const retained = state.shapes.flatMap(item => active.has(item.id) ? [active.get(item.id)] : hidden.has(item.id) ? [item] : []);
-                state.shapes = retained.concat(sequence.filter(item => !old.has(item.id)));
-                if (measureChanged || !missingMeasure) state.measure = encodePair(snapshot.measure);
-                return write();
+                const nextShapes = retained.concat(sequence.filter(item => !old.has(item.id)));
+                const merged = merge(), next = new Map(nextShapes.map(item => [item.id, item]));
+                const change = (shape, deleted) => {
+                    const previous = merged.records.get(shape.id);
+                    const version = tick();
+                    changes.set(shape.id, {shape, deleted, clock: version, actor, born: previous?.born || {clock: version, actor}});
+                };
+                for (const shape of nextShapes) if (JSON.stringify(shape) !== JSON.stringify(old.get(shape.id))) change(shape, false);
+                for (const shape of state.shapes) if (!next.has(shape.id)) change(shape, true);
+                const measure = measureChanged || !missingMeasure ? encodePair(snapshot.measure) : state.measure;
+                if (JSON.stringify(measure) !== JSON.stringify(state.measure)) measureChange = {value: measure, clock: tick(), actor};
+                state.shapes = nextShapes; state.measure = measure;
+                return write(false);
             },
         };
     }

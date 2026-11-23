@@ -788,6 +788,16 @@
             position: relative;
         }
 
+        .storage-notice {
+            margin: 6px 10px;
+            padding: 8px 10px;
+            color: #8a4400;
+            background: #fff4df;
+            border: 1px solid #e6c48e;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
         .indicator-container {
             flex: 0 0 auto;
             width: 100%;
@@ -810,6 +820,25 @@
             background: rgba(255, 255, 255, 0.92);
             cursor: pointer;
         }
+
+        .panel-request-status {
+            position: absolute;
+            bottom: 6px;
+            left: 8px;
+            max-width: calc(100% - 16px);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 1100;
+            padding: 3px 6px;
+            background: rgba(255, 255, 255, 0.94);
+            color: #555;
+            font-size: 12px;
+            border-radius: 3px;
+        }
+        .panel-request-status[hidden], .panel-request-status button[hidden] { display: none; }
+        .panel-request-status[data-error="true"] { color: #c62828; }
+        .panel-request-status button { padding: 2px 5px; border: 1px solid #ccc; background: white; border-radius: 3px; cursor: pointer; }
 
         .panel-value-label {
             position: absolute;
@@ -1395,6 +1424,7 @@
         </div>
     </div>
 
+    <p id="browserStorageNotice" class="storage-notice" role="status" aria-live="polite" hidden>浏览器存储受限，部分设置或绘图仅临时保存在本页，刷新或关闭后可能丢失。</p>
     <div class="chart-toolbar">
         <div id="frequencyTabs" class="frequency-tabs" aria-label="K线周期">
             {% for option in frequency_options %}
@@ -1450,18 +1480,38 @@
     <div id="panel0" class="indicator-container">
         <select id="panelSelect0" class="panel-select"></select>
         <div id="panelValue0" class="panel-value-label"></div>
+        <div id="panelRequestStatus0" class="panel-request-status" role="status" aria-live="polite" hidden>
+            <span id="panelRequestMessage0"></span>
+            <button type="button" id="panelRetry0" aria-label="重试第1个副图指标" hidden>重试</button>
+            <button type="button" id="panelCancel0" aria-label="取消第1个副图加载" hidden>取消</button>
+        </div>
     </div>
     <div id="panel1" class="indicator-container">
         <select id="panelSelect1" class="panel-select"></select>
         <div id="panelValue1" class="panel-value-label"></div>
+        <div id="panelRequestStatus1" class="panel-request-status" role="status" aria-live="polite" hidden>
+            <span id="panelRequestMessage1"></span>
+            <button type="button" id="panelRetry1" aria-label="重试第2个副图指标" hidden>重试</button>
+            <button type="button" id="panelCancel1" aria-label="取消第2个副图加载" hidden>取消</button>
+        </div>
     </div>
     <div id="panel2" class="indicator-container">
         <select id="panelSelect2" class="panel-select"></select>
         <div id="panelValue2" class="panel-value-label"></div>
+        <div id="panelRequestStatus2" class="panel-request-status" role="status" aria-live="polite" hidden>
+            <span id="panelRequestMessage2"></span>
+            <button type="button" id="panelRetry2" aria-label="重试第3个副图指标" hidden>重试</button>
+            <button type="button" id="panelCancel2" aria-label="取消第3个副图加载" hidden>取消</button>
+        </div>
     </div>
     <div id="panel3" class="indicator-container">
         <select id="panelSelect3" class="panel-select"></select>
         <div id="panelValue3" class="panel-value-label"></div>
+        <div id="panelRequestStatus3" class="panel-request-status" role="status" aria-live="polite" hidden>
+            <span id="panelRequestMessage3"></span>
+            <button type="button" id="panelRetry3" aria-label="重试第4个副图指标" hidden>重试</button>
+            <button type="button" id="panelCancel3" aria-label="取消第4个副图加载" hidden>取消</button>
+        </div>
     </div>
     </div>
     </main>
@@ -1500,6 +1550,7 @@
             <div class="screener-actions">
                 <button type="button" id="screenerRun" class="screener-run">确认</button>
                 <button type="button" id="screenerReset" class="screener-reset">重置</button>
+                <button type="button" id="screenerCancel" class="screener-reset" hidden>取消查询</button>
             </div>
             <p id="screenerCacheStatus" class="screener-preset-status" role="status" aria-live="polite" hidden></p>
             <div id="screenerResults" class="screener-results" role="group" aria-label="实时选股结果">
@@ -1530,39 +1581,61 @@
 <script>
     // localStorage 持久化辅助(必须放在所有使用者之前, 否则触发 TDZ ReferenceError)
     function createBrowserStorage() {
-        const memory = new Map();
-        const pending = new Set();
+        const memory = new Map(), pending = new Set(), listeners = new Set();
+        let readBlocked = false, lastTemporary = false;
+        const notify = () => {
+            const temporary = readBlocked || pending.size > 0;
+            if (temporary === lastTemporary) return;
+            lastTemporary = temporary;
+            listeners.forEach(listener => { try { listener(temporary); } catch (_) {} });
+        };
         return {
             getItem(key) {
                 const k = String(key);
                 if (pending.has(k)) return memory.has(k) ? memory.get(k) : null;
                 try {
                     const value = localStorage.getItem(k);
+                    readBlocked = false;
                     if (value === null) memory.delete(k);
                     else memory.set(k, value);
+                    notify();
                     return value;
                 } catch (_) {
+                    readBlocked = true; notify();
                     return memory.has(k) ? memory.get(k) : null;
                 }
             },
             setItem(key, value) {
-                const k = String(key);
-                const v = String(value);
-                memory.set(k, v);
-                pending.add(k);
+                const k = String(key), v = String(value);
+                memory.set(k, v); pending.add(k);
                 try {
                     localStorage.setItem(k, v);
-                    pending.delete(k);
-                } catch (_) {}
+                    pending.delete(k); notify(); return true;
+                } catch (_) { notify(); return false; }
             },
             removeItem(key) {
                 const k = String(key);
-                memory.delete(k);
-                pending.add(k);
+                memory.delete(k); pending.add(k);
                 try {
                     localStorage.removeItem(k);
-                    pending.delete(k);
-                } catch (_) {}
+                    pending.delete(k); notify(); return true;
+                } catch (_) { notify(); return false; }
+            },
+            keys(prefix = '') {
+                const result = new Set(memory.keys());
+                try {
+                    for (let index = 0; index < localStorage.length; index++) {
+                        const key = localStorage.key(index);
+                        if (key !== null && !(pending.has(key) && !memory.has(key))) result.add(key);
+                    }
+                } catch (_) { readBlocked = true; notify(); }
+                return [...result].filter(key => key.startsWith(prefix));
+            },
+            status() { return {temporary: readBlocked || pending.size > 0, readBlocked}; },
+            subscribe(listener) {
+                listeners.add(listener);
+                try { listener(readBlocked || pending.size > 0); } catch (_) {}
+                return () => listeners.delete(listener);
             },
         };
     }
@@ -1580,6 +1653,10 @@
     const lsRemove = k => browserStorage.removeItem(k);
 
     const searchInput = document.getElementById('instrumentSearchInput');
+    const browserStorageNotice = document.getElementById('browserStorageNotice');
+    browserStorage.subscribe(temporary => {
+        if (browserStorageNotice) browserStorageNotice.hidden = !temporary;
+    });
     const searchResultsElement = document.getElementById('instrumentSearchResults');
     let searchAbortController = null;
     let searchTimer = null;
@@ -2232,9 +2309,51 @@
     });
     loadWatchlists();
 
+    function requestJson(url, options = {}) {
+        const {signal: externalSignal, timeoutMs = 30000, ...requestOptions} = options;
+        const controller = new AbortController();
+        let timedOut = false, timer;
+        const failure = () => {
+            const write = String(url).includes('/stock_screener/presets') && ['POST', 'PUT', 'DELETE'].includes(requestOptions.method);
+            const message = timedOut ? write ? '请求超时，服务端可能已处理，请先刷新方案列表核对后再重试' : '请求超时，请重试' : '已取消请求';
+            const error = new Error(message);
+            error.name = timedOut ? 'TimeoutError' : 'AbortError';
+            return error;
+        };
+        if (externalSignal?.aborted) return Promise.reject(failure());
+        let rejectAbort;
+        const cancelled = new Promise((_resolve, reject) => { rejectAbort = () => reject(failure()); });
+        controller.signal.addEventListener('abort', rejectAbort, {once: true});
+        const forwardAbort = () => controller.abort();
+        externalSignal?.addEventListener('abort', forwardAbort, {once: true});
+        timer = setTimeout(() => { timedOut = true; controller.abort(); }, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000);
+        const work = Promise.resolve().then(async () => {
+            if (controller.signal.aborted) throw failure();
+            const response = await fetch(url, {headers: {'Content-Type': 'application/json'}, ...requestOptions, signal: controller.signal});
+            if (!response.ok) {
+                let detail = '请求失败: ' + response.status;
+                try {
+                    const value = (await response.json()).detail;
+                    if (typeof value === 'string') detail = value;
+                    else if (Array.isArray(value)) detail = value.map(item => item.msg).filter(Boolean).join('；') || detail;
+                } catch (_) {}
+                throw new Error(detail);
+            }
+            return response.status === 204 ? null : await response.json();
+        });
+        // The race also releases UI state when a transport ignores abort or its body stalls.
+        return Promise.race([work, cancelled]).finally(() => {
+            clearTimeout(timer);
+            controller.signal.removeEventListener('abort', rejectAbort);
+            externalSignal?.removeEventListener('abort', forwardAbort);
+        });
+    }
+
     const screenerPanel = document.getElementById('screenerPanel');
     const screenerFilters = document.getElementById('screenerFilters');
     const screenerRun = document.getElementById('screenerRun');
+    const screenerCancel = document.getElementById('screenerCancel');
+    let screenerQueryController = null;
     const screenerReset = document.getElementById('screenerReset');
     const screenerResults = document.getElementById('screenerResults');
     const screenerCacheStatus = document.getElementById('screenerCacheStatus');
@@ -2309,22 +2428,7 @@
         appShell.style.setProperty('--screener-width', Math.round(savedScreenerWidth) + 'px');
     }
 
-    const requestScreener = async (url, options = {}) => {
-        const response = await fetch(url, {
-            headers: {'Content-Type': 'application/json'},
-            ...options,
-        });
-        if (!response.ok) {
-            let detail = `请求失败: ${response.status}`;
-            try {
-                const received = (await response.json()).detail;
-                if (typeof received === 'string') detail = received;
-                else if (Array.isArray(received)) detail = received.map(item => item.msg).filter(Boolean).join('；') || detail;
-            } catch (_) {}
-            throw new Error(detail);
-        }
-        return response.status === 204 ? null : response.json();
-    };
+    const requestScreener = (url, options = {}) => requestJson(url, options);
 
     const renderScreenerField = (item, kind) => {
         const field = document.createElement('div');
@@ -2699,6 +2803,9 @@
     const runScreener = async () => {
         if (screenerPresetBusy || screenerQueryBusy || !screenerOptionsReady) return;
         const filters = collectScreenerFilters();
+        const controller = new AbortController();
+        screenerQueryController = controller;
+        screenerCancel.hidden = false;
         cancelScreenerCacheCheck();
         saveScreenerState({filters, results: null});
         showScreenerCacheMessage('正在查询最新选股结果…');
@@ -2711,7 +2818,7 @@
         try {
             const payload = await requestScreener('/api/v1/test_api/stock_screener/query', {
                 method: 'POST',
-                body: JSON.stringify(filters),
+                body: JSON.stringify(filters), signal: controller.signal,
             });
             pendingScreenerScroll = null;
             lsRemove(SCREENER_SCROLL_KEY);
@@ -2726,15 +2833,21 @@
             screenerResults.textContent = '';
             const message = document.createElement('div');
             message.className = 'screener-empty';
-            message.textContent = `查询失败: ${error.message}`;
+            message.textContent = error.name === 'AbortError' ? '已取消查询，可重新查询' : `查询失败: ${error.message}`;
             screenerResults.appendChild(message);
-            setScreenerCacheStatus('查询未完成，请重新查询');
+            setScreenerCacheStatus(error.name === 'AbortError' ? '查询已取消' : '查询未完成，请重新查询');
         } finally {
+            const returnFocus = document.activeElement === screenerCancel;
             screenerRun.disabled = false;
             screenerReset.disabled = false;
             screenerRun.textContent = '确认';
+            if (screenerQueryController === controller) {
+                screenerQueryController = null;
+                screenerCancel.hidden = true;
+            }
             screenerQueryBusy = false;
             syncScreenerPresetControls();
+            if (returnFocus && !screenerRun.disabled) screenerRun.focus();
         }
     };
 
@@ -2779,6 +2892,7 @@
         scheduleScreenerScrollRestore();
     });
     screenerRun.addEventListener('click', runScreener);
+    screenerCancel.addEventListener('click', () => screenerQueryController?.abort());
     screenerReset.addEventListener('click', resetScreener);
     screenerResizer.addEventListener('pointerdown', event => {
         if (event.button !== 0 || appShell.classList.contains('screener-collapsed')) return;
@@ -3236,16 +3350,14 @@
 
         function fetchChartModule(module) {
             if (!chartModulePromises[module]) {
-                const pending = Promise.resolve().then(() => fetch(
+                const pending = Promise.resolve().then(() => requestJson(
                     `/api/v1/test_api/lightweight_charts_module`
                     + `?symbol=${encodeURIComponent(currentSymbol)}`
                     + `&frequency=${encodeURIComponent(currentFrequency.replace('freq=', ''))}`
                     + `&market=${encodeURIComponent(currentMarket.replace('market=', ''))}`
                     + `&asset_class=${encodeURIComponent(currentAssetClass.replace('asset_class=', ''))}`
                     + `&module=${encodeURIComponent(module)}`
-                )).then(async response => {
-                    if (!response.ok) throw new Error(`图表模块加载失败: ${response.status}`);
-                    const payload = await response.json();
+                )).then(payload => {
                     if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !('data' in payload)) {
                         throw new Error('图表模块响应缺少数据');
                     }
@@ -3530,20 +3642,64 @@
 
         // 每个面板独立提交最新构建；新数据就绪前保留已显示的系列。
         function buildIndicator(meta, indicator) {
+            meta.cancelBuild?.(true);
             const mainTimeScale = chart.timeScale();
             const buildVersion = (meta.buildVersion || 0) + 1;
             meta.buildVersion = buildVersion;
             meta.ready = false;
             const isCurrentBuild = () => meta.buildVersion === buildVersion;
+            let cancelled = false, stopWaiting;
+            const cancellation = new Promise(resolve => { stopWaiting = () => resolve(false); });
+            const label = key => typeof INDICATOR_LABEL === 'object' ? INDICATOR_LABEL[key] || key : key;
+            const restoreSelection = () => {
+                if (!meta.indicator || !meta.primarySeries) return;
+                meta.select.value = meta.indicator;
+                if (typeof lsSetString === 'function') lsSetString('panel:v3:' + meta.idx, meta.indicator);
+            };
+            const status = (phase, error) => {
+                if (!isCurrentBuild()) return;
+                const returnFocus = typeof document !== 'undefined' && (document.activeElement === meta.cancelButton || document.activeElement === meta.retryButton);
+                const visible = meta.indicator && meta.primarySeries ? '当前仍显示' + label(meta.indicator) : '当前没有已加载指标';
+                if (phase === 'error' || phase === 'cancelled') restoreSelection();
+                if (meta.requestStatus) {
+                    meta.requestStatus.hidden = phase === 'success';
+                    meta.requestStatus.dataset.error = String(phase === 'error' || phase === 'renderError');
+                }
+                if (meta.requestMessage) meta.requestMessage.textContent = phase === 'loading'
+                    ? '正在加载 ' + label(indicator) + '；' + visible
+                    : phase === 'cancelled' ? '已取消 ' + label(indicator) + ' 加载；' + visible
+                    : phase === 'renderError' ? label(indicator) + ' 渲染失败：' + error.message + '；请重试'
+                    : label(indicator) + ' 加载失败：' + (error?.message || '') + '；' + visible;
+                if (meta.retryButton) meta.retryButton.hidden = phase === 'loading' || phase === 'success';
+                if (meta.cancelButton) meta.cancelButton.hidden = phase !== 'loading';
+                if (returnFocus && phase !== 'loading') meta.select.focus?.();
+            };
+            meta.cancelBuild = superseded => {
+                if (cancelled || meta.ready) return;
+                cancelled = true; stopWaiting();
+                if (superseded || !isCurrentBuild()) return;
+                status('cancelled'); meta.ready = true;
+                meta.select.focus?.();
+            };
+            meta.retryBuild = () => {
+                if (!isCurrentBuild()) return;
+                meta.select.value = indicator;
+                return buildIndicator(meta, indicator);
+            };
+            status('loading');
             const build = async () => {
             const { chart, container, valueLabel } = meta;
             try {
-                await ensureIndicatorData(indicator);
+                const loaded = await Promise.race([Promise.resolve().then(() => ensureIndicatorData(indicator)).then(() => true), cancellation]);
+                if (!loaded) return;
             } catch (error) {
-                if (isCurrentBuild()) console.error(`指标${indicator}加载失败:`, error);
+                if (isCurrentBuild() && !cancelled) {
+                    console.error('指标' + indicator + '加载失败:', error);
+                    status('error', error);
+                }
                 return;
             }
-            if (!isCurrentBuild()) return;
+            if (!isCurrentBuild() || cancelled) return;
 
             // 数据等待期间仍可滚动；提交时读取最新主图范围，并复制数值避免布局修改引用。
             const currentRange = mainTimeScale.getVisibleLogicalRange() || chart.timeScale().getVisibleLogicalRange();
@@ -3685,6 +3841,7 @@
                 }
 
                 meta.indicator = indicator;
+                status('success');
                 chart.priceScale('right').applyOptions({ minimumWidth: PRICE_SCALE_WIDTH });
             } finally {
                 // 先释放本次保护，再用正确范围同步主副图；恢复接口抛错也不能锁死后续操作。
@@ -3697,7 +3854,10 @@
             };
             return build()
                 .catch(error => {
-                    if (isCurrentBuild()) console.error(`面板${meta.idx + 1}渲染失败:`, error);
+                    if (isCurrentBuild() && !cancelled) {
+                        console.error(`面板${meta.idx + 1}渲染失败:`, error);
+                        status('renderError', error);
+                    }
                 })
                 .finally(() => {
                     if (!isCurrentBuild()) return;
@@ -3715,7 +3875,11 @@
             const valueLabel = document.getElementById('panelValue' + idx);
             const subChart = createSubChart(container, INDICATOR_HEIGHT.volume);
 
-            const meta = { idx, container, select, valueLabel, chart: subChart, indicator: null, addedSeries: [], primarySeries: null, lookup: {} };
+            const meta = { idx, container, select, valueLabel, chart: subChart, indicator: null, addedSeries: [], primarySeries: null, lookup: {},
+                requestStatus: document.getElementById('panelRequestStatus' + idx), requestMessage: document.getElementById('panelRequestMessage' + idx),
+                retryButton: document.getElementById('panelRetry' + idx), cancelButton: document.getElementById('panelCancel' + idx) };
+            meta.retryButton.addEventListener('click', event => { event.stopPropagation(); return meta.retryBuild?.(); });
+            meta.cancelButton.addEventListener('click', event => { event.stopPropagation(); meta.cancelBuild?.(); });
 
             INDICATOR_KEYS.forEach(key => {
                 const opt = document.createElement('option');

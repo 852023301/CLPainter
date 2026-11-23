@@ -304,6 +304,30 @@ assert.deepEqual(rendered({field: 'frequency'}), [['', '不限']]);
         for layout in ("layoutRangeBox", "layoutMeasure", "layoutRect", "layoutFib", "layoutTrend"):
             self.assertIn("chartContainer.addEventListener('chartlayoutchange', () => " + layout + "());", self.scripts)
 
+    def _check_four_fix_group(self, group, count):
+        node = shutil.which("node")
+        self.assertIsNotNone(node, "Node.js is required to verify frontend failure recovery")
+        completed = subprocess.run(
+            [node, str(Path(__file__).resolve().parent / "frontend_four_fixes.js"), str(TEMPLATE), group],
+            text=True, capture_output=True, check=False, timeout=30,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + "\n" + completed.stderr)
+        results = json.loads(completed.stdout)["results"]
+        self.assertEqual(len(results), count)
+        self.assertTrue(all(item["category"] == group and item["status"] == "passed" for item in results), completed.stdout)
+
+    def test_workspace_multiple_tabs_do_not_erase_each_other(self):
+        self._check_four_fix_group("workspace", 8)
+
+    def test_indicator_failure_is_visible_and_cancel_is_panel_local(self):
+        self._check_four_fix_group("indicator", 4)
+
+    def test_request_timeouts_and_manual_cancel_release_the_ui(self):
+        self._check_four_fix_group("requests", 9)
+
+    def test_storage_degradation_is_visible_and_truthful(self):
+        self._check_four_fix_group("storage", 4)
+
     def test_storage_faults_only_degrade_persistence(self):
         node = shutil.which("node")
         if node is None:

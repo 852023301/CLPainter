@@ -2,9 +2,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {installStorage} = require('./frontend_storage_harness.js');
+const {installStorage, declaration} = require('./frontend_storage_harness.js');
 const html = fs.readFileSync(process.argv[2], 'utf8');
-const ids = ['screenerCacheStatus', 'screenerPanel', 'screenerFilters', 'screenerRun', 'screenerReset', 'screenerResults',
+const ids = ['screenerCacheStatus', 'screenerPanel', 'screenerFilters', 'screenerRun', 'screenerCancel', 'screenerReset', 'screenerResults',
     'screenerCollapse', 'screenerExpand', 'screenerResizer', 'screenerPresetSelect', 'screenerPresetName',
     'screenerPresetSave', 'screenerPresetApply', 'screenerPresetUpdate', 'screenerPresetDelete',
     'screenerPresetNew', 'screenerPresetCreatePanel', 'screenerPresetCancel', 'screenerPresetStatus', 'screenerPresetRetry', 'screenerRealtimeTab', 'screenerHistoryTab', 'screenerRealtimePanel', 'screenerHistoryPanel', 'screenerHistoryLink', 'screenerHistoryPreset', 'screenerHistoryFrequency', 'screenerHistoryVersion', 'screenerHistoryRefresh', 'screenerHistoryPage', 'screenerHistoryStatus', 'screenerHistoryChartHint', 'screenerHistorySummary', 'screenerHistoryResults', 'screenerHistoryViewResults', 'screenerHistoryViewAdded', 'screenerHistoryViewRemoved', 'screenerHistoryViewRetained'];
@@ -54,7 +54,7 @@ const options = {
 const fields = [...options.dimensions, ...options.states].map(item => item.field);
 const emptyFilters = () => Object.fromEntries(fields.map(field => [field, null]));
 const clone = value => JSON.parse(JSON.stringify(value));
-const flush = async () => { for (let step = 0; step < 30; step++) await Promise.resolve(); };
+const flush = async () => { for (let step = 0; step < 80; step++) await Promise.resolve(); };
 function makeServer() {
     const server = {presets: [], requests: [], nextId: 1, failNext: null, holdNext: null};
     server.fetch = async (url, config = {}) => {
@@ -94,7 +94,7 @@ async function boot(server, storage = new Map(), configure = null) {
         element.hidden = Boolean(tag && /\bhidden(?:\s|>|=)/.test(tag[0]));
     }
     const document = {getElementById: id => elements[id], createElement: tag => new Element(tag)};
-    const context = {document, console, URLSearchParams, appShell: new Element(), window: {innerWidth: 1200, location: {search: '', pathname: '/api/v1/test_api/lightweight_charts_demo', assign() {}}, history: {replaceState() {}}},
+    const context = {document, console, URLSearchParams, AbortController, setTimeout, clearTimeout, appShell: new Element(), window: {innerWidth: 1200, location: {search: '', pathname: '/api/v1/test_api/lightweight_charts_demo', assign() {}}, history: {replaceState() {}}},
         requestAnimationFrame: callback => callback(), fetch: server.fetch, confirm: () => true,
         localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)),
             removeItem: key => storage.delete(key)},
@@ -103,6 +103,7 @@ async function boot(server, storage = new Map(), configure = null) {
     if (configure) configure(context);
     vm.createContext(context);
     installStorage(context, html);
+    vm.runInContext(declaration(html, 'requestJson'), context);
     vm.runInContext(fs.readFileSync(require('node:path').join(require('node:path').dirname(process.argv[2]), '../static/js/screener-history.js'), 'utf8'), context);
     vm.runInContext(source, context); await flush();
     return {elements, context, storage, field: key => elements.screenerFilters.querySelectorAll('select').find(select => select.dataset.field === key)};

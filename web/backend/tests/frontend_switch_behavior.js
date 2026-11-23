@@ -412,7 +412,7 @@ function installDom(html) {
 }
 
 async function flush() {
-    for (let step = 0; step < 10; step += 1) await Promise.resolve();
+    for (let step = 0; step < 60; step += 1) await Promise.resolve();
 }
 
 function checkbox(document, containerId, key) {
@@ -448,11 +448,13 @@ async function boot(frequency, storageSeed, storageFault = 'available', settings
         },
         location: {search: '', href: 'http://local/demo', assign: value => navigation.push(String(value))},
         localStorage: {
+            get length() { return storage.size; },
+            key: index => [...storage.keys()][index] ?? null,
             getItem: key => { if (storageFault === 'denied') storageError('read'); return storage.has(key) ? storage.get(key) : null; },
             setItem: (key, value) => { writes.push(key); if (storageFault === 'denied' || storageFault === 'quota') storageError('write'); storage.set(key, String(value)); },
             removeItem: key => { if (storageFault === 'denied' || storageFault === 'delete') storageError('delete'); storage.delete(key); },
         },
-        URLSearchParams,
+        URLSearchParams, AbortController,
         Event: class { constructor(type) { this.type = type; } },
         fetch: async (url, options = {}) => {
             requests.push({url: String(url), method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null});
