@@ -75,13 +75,13 @@ def test_zero_later_area_still_requires_positive_earlier_area(strokes, upward, t
 
 
 @pytest.mark.parametrize('upward', [True, False])
-def test_zero_later_area_still_requires_new_extreme_and_opposite_gap(strokes, upward):
+def test_zero_later_area_still_requires_new_extreme_and_gap_confirmation(strokes, upward):
     direction = 1 if upward else -1
     earlier, later = strokes(upward)
     later.end_price = earlier.end_price
     histogram = np.array([0, 4, 3, 2, -1, -.5, -.3, -.2, -.1]) * direction
     assert not macd_divergence(earlier, later, chart(histogram)).diverged
-    histogram = np.array([0, 4, 3, 2, .2, .1, -.3, -.2, -.1]) * direction
+    histogram = np.array([0, 4, 3, 2, 2.5, 3.0, -.3, -.2, -.1]) * direction
     result = macd_divergence(*strokes(upward), chart(histogram))
     assert result.later_area == 0
     assert not result.diverged
@@ -196,7 +196,73 @@ def test_turn_does_not_look_beyond_later_endpoint(strokes):
     assert not after.diverged
 
 
-def test_opposite_gap_is_still_required(strokes):
+def test_gap_contraction_can_replace_opposite_gap(strokes):
     result = macd_divergence(*strokes(), chart([0, 4, 3, 2, .1, .1, .5, 1, .2]))
     assert result.macd_turned
+    assert result.diverged
+
+
+@pytest.mark.parametrize('upward', [True, False])
+@pytest.mark.parametrize('zero_area', [True, False])
+@pytest.mark.parametrize('gap,expected', [
+    ([1.0, 1.0], True),
+    ([.5, 1.5], True),
+    ([2.0, 2.0], False),
+    ([2.5, 2.2], True),
+    ([2.5, 3.0], False),
+    ([0.0, 0.0], True),
+    ([-.1, -.2], True),
+    ([2.5, 1.9], True),
+    ([3.5, 3.0], True),
+])
+def test_gap_checks_adjacent_bars_starting_at_earlier_last_bar(strokes, upward, zero_area, gap, expected):
+    direction = 1 if upward else -1
+    tail = [-.2, -.1, -.05] if zero_area else [.5, 1.0, .2]
+    histogram = np.array([0, 4, 3, 2, *gap, *tail]) * direction
+    result = macd_divergence(*strokes(upward), chart(histogram))
+    assert result.diverged is expected
+    assert result.macd_turned is not zero_area
+
+
+@pytest.mark.parametrize('upward', [True, False])
+@pytest.mark.parametrize('gap,expected', [([.1, .1], False), ([.5, .1], True), ([.1, .5], False)])
+def test_gap_does_not_use_absolute_height_of_opposite_earlier_last_bar(strokes, upward, gap, expected):
+    direction = 1 if upward else -1
+    histogram = np.array([0, 4, 3, -.2, *gap, .2, .4, .1]) * direction
+    result = macd_divergence(*strokes(upward), chart(histogram))
+    assert result.macd_turned
+    assert result.diverged is expected
+
+
+@pytest.mark.parametrize('upward', [True, False])
+def test_gap_internal_contraction_survives_reacceleration(strokes, upward):
+    direction = 1 if upward else -1
+    earlier, later = strokes(upward)
+    later.start_idx = 6
+    later.end_idx = 9
+    histogram = np.array([0, 4, 3, 2, 3, 2.5, 4, .5, 1, .2]) * direction
+    result = macd_divergence(earlier, later, chart(histogram))
+    assert result.macd_turned
+    assert result.diverged
+
+
+@pytest.mark.parametrize('upward', [True, False])
+def test_empty_gap_cannot_confirm_separation(strokes, upward):
+    direction = 1 if upward else -1
+    earlier, later = strokes(upward)
+    later.start_idx = 3
+    later.end_idx = 6
+    histogram = np.array([0, 4, 3, 2, .5, 1.0, .2]) * direction
+    result = macd_divergence(earlier, later, chart(histogram))
+    assert result.macd_turned
+    assert not result.diverged
+
+
+@pytest.mark.parametrize('upward', [True, False])
+def test_gap_contraction_does_not_replace_later_segment_contraction(strokes, upward):
+    direction = 1 if upward else -1
+    histogram = np.array([0, 4, 3, 2, 1, .8, .2, .4, .6]) * direction
+    result = macd_divergence(*strokes(upward), chart(histogram))
+    assert result.later_area > 0
+    assert not result.macd_turned
     assert not result.diverged

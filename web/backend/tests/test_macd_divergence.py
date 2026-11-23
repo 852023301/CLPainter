@@ -95,7 +95,7 @@ def test_instances_work_with_intraday_subplot_formats(make_stroke, payload_type)
         ([0.0, 0.0, 1.0, -1.0], 10.0, 9.0),
     ],
 )
-def test_area_extreme_and_opposite_bar_requirements_are_unchanged(
+def test_area_extreme_and_in_segment_confirmation_are_required(
     make_stroke, histogram, earlier_price, later_price
 ):
     result = macd_divergence(

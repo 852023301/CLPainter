@@ -43,7 +43,7 @@ def macd_divergence(
     手工传入的 stats 没有 raw 字段时，macd/dif 必须是分析用的原始数值；旧副图需重新生成以保留精度。
     上升段只累计正柱，下降段只累计负柱绝对值，
     区间是起点之后到终点，含终点。段内反向的柱子和快线不计入面积、柱高和快线极值。
-    后一段创出更极端的价格，面积严格更小，两段之间至少有一根相反颜色的柱，
+    后一段创出更极端的价格，面积严格更小，且两段间出现反色柱或相邻同向柱出现过收缩，
     且后段没有同向柱或在段内出现过收缩，才算背驰。没有同向柱时 macd_turned 仍为 False。
     转折要求后段区间内至少出现过一次同向柱收缩；反向柱增强不算收缩，末端重新增强不取消确认。
     只使用后段自身区间，不使用其终点之后的 K 线。没有同向 DIF 时极值为 None，dif_lower 为 False。
@@ -157,9 +157,12 @@ def _macd_turned(macd: np.ndarray, start_idx: int, end_idx: int, upward: bool) -
 
 
 def _separated(macd: np.ndarray, earlier_end_idx: int, later_start_idx: int, upward: bool) -> bool:
+    """间隔内反色或相邻同向柱曾收缩即确认；相邻比较序列包含前段末柱作为起点。"""
     if later_start_idx <= earlier_end_idx:
         return False
-    gap = macd[earlier_end_idx + 1 : later_start_idx + 1]
-    if upward:
-        return bool(np.any(gap < 0.0))
-    return bool(np.any(gap > 0.0))
+    sequence = macd[earlier_end_idx : later_start_idx + 1]
+    directional = sequence if upward else -sequence
+    return bool(
+        np.any(directional[1:] < 0.0)
+        or np.any((directional[:-1] > 0.0) & (directional[1:] < directional[:-1]))
+    )
